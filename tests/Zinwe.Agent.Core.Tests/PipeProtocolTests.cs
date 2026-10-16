@@ -96,6 +96,12 @@ public sealed class PipeProtocolTests
     [Fact]
     public async Task Submit_enrollment_returns_null_when_service_is_not_running()
     {
+        // On a PC with Zinwe installed (or the dev agent running) the pipe is real: never send it a fake
+        // enrollment -- the test only covers the "nothing listening" path.
+        if (await AgentPipeClient.GetStatusAsync(TimeSpan.FromMilliseconds(300)) is not null)
+        {
+            return;
+        }
         Assert.Null(await AgentPipeClient.SubmitEnrollmentAsync("a@b.in", "ZM-X", TimeSpan.FromMilliseconds(300)));
     }
 
