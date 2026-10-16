@@ -35,6 +35,8 @@ internal sealed partial class TrayIcon : IDisposable
 
     // What the last toast was about, so clicking it opens the right window.
     private bool _lastToastWasChat;
+    // The Connect form was opened automatically this session (see RefreshAsync).
+    private bool _promptedConnect;
 
     // One-click update: polled every second once the member pressed "Update now", so the tray closes itself as
     // soon as the installer starts (its files are about to be replaced; the new service reopens it).
@@ -168,6 +170,14 @@ internal sealed partial class TrayIcon : IDisposable
             _icon.ShowBalloonTip(10_000, $"Update available: Zinwe {version}",
                 "Open Zinwe and choose Update now. It takes about a minute.", Forms.ToolTipIcon.Info);
         }
+        // Not connected yet (fresh install, or the member closed the card): open the Connect form once per
+        // sign-in, so nobody is left with an invisible tray icon and no idea what to do next.
+        if (status?.State == AgentState.NotEnrolled && !_promptedConnect)
+        {
+            _promptedConnect = true;
+            ShowStatus();
+        }
+
         _lastState = status?.State;
         ExitIfInstalling(status);
     }

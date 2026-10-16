@@ -60,6 +60,18 @@
       <ComponentGroupRef Id="TrayFiles" />
       <ComponentGroupRef Id="MachineConfig" />
     </Feature>
+
+    <!--
+      Double-click install: open the widget the moment the install finishes, so the member sees "Connect this PC"
+      (email + Member ID) straight away instead of an installer that seems to do nothing. It runs from the UI
+      sequence, i.e. in the member's own (non-elevated) msiexec process, after the install transaction is done.
+      Silent installs (/qn, RMM, the agent's own one-click updates) skip the UI sequence, so they stay silent.
+    -->
+    <CustomAction Id="LaunchWidget" Directory="TRAYFOLDER"
+                  ExeCommand="&quot;[TRAYFOLDER]Zinwe.Agent.Tray.exe&quot; --show" Return="asyncNoWait" />
+    <InstallUISequence>
+      <Custom Action="LaunchWidget" After="ExecuteAction" Condition="NOT Installed AND NOT REMOVE" />
+    </InstallUISequence>
   </Package>
 
   <Fragment>

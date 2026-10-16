@@ -33,7 +33,11 @@ $publish = Join-Path $PSScriptRoot "artifacts\publish"
 if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
 
 if (-not $SkipTests) {
-    Invoke-Step "Test" { dotnet test Zinwe.Agent.slnx -c Release }
+    # One test project at a time: testing the whole .slnx builds the WPF tray twice in parallel (once for the
+    # solution, once for Zinwe.Agent.Tray.Tests) and the two markup-compile passes race on obj\ (CS2001/BG1002).
+    foreach ($testProject in Get-ChildItem tests -Filter *.Tests.csproj -Recurse) {
+        Invoke-Step "Test $($testProject.BaseName)" { dotnet test $testProject.FullName -c Release }
+    }
 }
 
 Invoke-Step "Publish service" {
