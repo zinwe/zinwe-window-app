@@ -6,9 +6,16 @@
   .\build.ps1                    # tests + publish + artifacts\installer\ZinweAgent.msi
   .\build.ps1 -Version 0.2.0
   .\build.ps1 -SkipInstaller     # publish only
+  .\build.ps1 -Version 1.0.0 -BackendUrl https://dev.backend.zinwe.io   # a dev-server build
+
+.PARAMETER BackendUrl
+  Bakes this backend into the service's appsettings.json, so a plain double-click install (and every
+  one-click update) talks to it with no BACKEND_URL property. Default: appsettings.json as committed
+  (production). Must be https.
 #>
 param(
     [string]$Version = "0.1.0",
+    [string]$BackendUrl = "",
     [switch]$SkipTests,
     [switch]$SkipInstaller
 )
@@ -31,6 +38,14 @@ if (-not $SkipTests) {
 
 Invoke-Step "Publish service" {
     dotnet publish src\Zinwe.Agent.Service -c Release -p:Version=$Version -o "$publish\service"
+}
+if ($BackendUrl) {
+    if ($BackendUrl -notmatch '^https://[^/\s]+/?$') { throw "BackendUrl must be https://host" }
+    $settings = Join-Path $publish "service\appsettings.json"
+    $json = Get-Content $settings -Raw | ConvertFrom-Json
+    $json.Agent.BackendBaseUrl = $BackendUrl.TrimEnd("/")
+    [IO.File]::WriteAllText($settings, ($json | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding $false))
+    Write-Host "==> Backend baked in: $($json.Agent.BackendBaseUrl)" -ForegroundColor Cyan
 }
 Invoke-Step "Publish tray" {
     dotnet publish src\Zinwe.Agent.Tray -c Release -p:Version=$Version -o "$publish\tray"
