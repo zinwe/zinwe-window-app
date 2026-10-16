@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Zinwe.Agent.Core;
 using Zinwe.Agent.Core.Ipc;
+using Zinwe.Agent.Core.Policy;
 using Zinwe.Agent.Tray.Widget;
 
 namespace Zinwe.Agent.Tray;
@@ -339,6 +340,7 @@ public partial class WidgetWindow : Window
         ConnectPanel.Visibility = needsConnect ? Visibility.Visible : Visibility.Collapsed;
         SetupScroller.Visibility = needsConnect || needsConsent ? Visibility.Visible : Visibility.Collapsed;
         Chat.SetConnection(status);
+        RenderPlan(status?.Entitlements);
 
         _updateRequired = state == AgentState.UpdateRequired;
         _updateDownloadUrl = status?.DownloadUrl;
@@ -359,6 +361,23 @@ public partial class WidgetWindow : Window
                 ConnectButton.IsEnabled = true;
                 ShowConnectMessage(status?.Message ?? "That didn't work — check the ID and try again.", error: true);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The company's plan decides what the member sees: no work hours → no log in / break / log out; no chat → no
+    /// chat bar. With neither, one quiet "This PC is protected" card. Unknown plan (older backend) → everything.
+    /// </summary>
+    private void RenderPlan(IReadOnlyList<string>? entitlements)
+    {
+        var workOn = PlanModules.Allows(entitlements, PlanModules.WorkTime);
+        var chatOn = PlanModules.Allows(entitlements, PlanModules.TeamChat);
+        WorkCard.Visibility = workOn ? Visibility.Visible : Visibility.Collapsed;
+        Chat.Visibility = chatOn ? Visibility.Visible : Visibility.Collapsed;
+        ProtectedCard.Visibility = workOn || chatOn ? Visibility.Collapsed : Visibility.Visible;
+        if (!workOn && _prompt is not null)
+        {
+            ClosePrompt();
         }
     }
 

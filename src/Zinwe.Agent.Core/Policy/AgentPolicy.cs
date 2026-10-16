@@ -80,6 +80,21 @@ public sealed record RemoteSoftwarePolicy(
     IReadOnlyList<string> ExtraToolExecutables);
 
 /// <summary>
+/// The parts of Zinwe the owner's plan switches on (the backend's <c>Plan.modules</c>). The backend already clamps
+/// the policy it sends to the plan; the agent uses this only to hide what the member can't use on this plan
+/// (the work-day buttons and the chat). An older backend sends no list: then everything stays on.
+/// </summary>
+public static class PlanModules
+{
+    public const string WorkTime = "work_time";
+    public const string TeamChat = "team_chat";
+
+    /// <summary>True when <paramref name="entitlements"/> includes <paramref name="module"/>, or there's no list.</summary>
+    public static bool Allows(IReadOnlyList<string>? entitlements, string module) =>
+        entitlements is null || entitlements.Contains(module);
+}
+
+/// <summary>
 /// The owner's rules for this PC, as returned by GET /api/devices/policy/current/ and cached in policy.json.
 /// <see cref="Version"/> goes up by one each time the owner changes anything.
 ///
@@ -91,7 +106,11 @@ public sealed record AgentPolicy(
     UsbPolicy Usb,
     WebPolicy? Web = null,
     DataTransferPolicy? DataTransfer = null,
-    RemoteSoftwarePolicy? RemoteSoftware = null)
+    RemoteSoftwarePolicy? RemoteSoftware = null,
+    // Plan (2026-10-15): what the owner's plan switches on (see PlanModules) and its PC limit (0 = none).
+    // Optional/trailing: an older backend omits them, and then nothing is hidden.
+    IReadOnlyList<string>? Entitlements = null,
+    int? MaxDevices = null)
 {
     /// <summary>
     /// The serializer fills missing members with null and accepts integers for enums, so check the shape

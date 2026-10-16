@@ -21,7 +21,9 @@ public sealed class ConsentReader
     /// The version of the widget's consent notice. The widget writes it when the member agrees; a new version
     /// asks everyone again (and recording pauses until they agree). Bump it only when the notice changes.
     /// </summary>
-    public const string CurrentVersion = "2026-10-14";
+    // 2026-10-15: the notice no longer promises a 90-day retention period (not configurable yet) and says only
+    // what the company's plan includes is recorded. A correction, so everyone is asked once more.
+    public const string CurrentVersion = "2026-10-15";
 
     private const string FileName = "consent.json";
 

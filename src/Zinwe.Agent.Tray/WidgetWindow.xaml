@@ -98,7 +98,8 @@
                             • Website names you visit (never full addresses or searches)<LineBreak />
                             • Copies to USB drives, shared folders, uploads and email attachments (sizes, not contents)<LineBreak />
                             • Remote-access tools and newly installed software<LineBreak />
-                            • When you start, take breaks (with the reason you pick) and end your day
+                            • When you start, take breaks (with the reason you pick) and end your day<LineBreak />
+                            (Only what your company's Zinwe plan includes is recorded.)
                         </TextBlock>
 
                         <TextBlock Text="What Zinwe never records" FontSize="12" FontWeight="SemiBold" Margin="0,12,0,4" />
@@ -110,7 +111,7 @@
                         </TextBlock>
 
                         <TextBlock FontSize="12" Foreground="{StaticResource Zinwe.Muted}" TextWrapping="Wrap" Margin="0,12,0,0"
-                                   Text="Only your company's Zinwe admins see this, kept for the period your company sets (90 days by default). To see, correct or erase your data, ask your employer. If you think Zinwe is being misused, write to hello@zinwe.io." />
+                                   Text="Only your company's Zinwe admins see this. It's kept while your company uses Zinwe, and your employer can ask Zinwe to delete it. To see, correct or erase your data, ask your employer. If you think Zinwe is being misused, write to hello@zinwe.io." />
 
                         <WrapPanel Margin="0,10,0,0">
                             <Button Style="{StaticResource Zinwe.HeaderButton}" Content="Privacy Policy" Tag="privacy"
@@ -139,8 +140,8 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Today: log in / break / log out -->
-            <Border Style="{StaticResource Zinwe.Card}" Padding="16,12,16,14">
+            <!-- Today: log in / break / log out (hidden when the company's plan has no work hours). -->
+            <Border x:Name="WorkCard" Style="{StaticResource Zinwe.Card}" Padding="16,12,16,14">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -248,8 +249,19 @@
                 </Grid>
             </Border>
 
-            <!-- The chat with the admin: a compact bar that opens the conversation when clicked. -->
+            <!-- The chat with the admin: a compact bar that opens the conversation when clicked
+                 (hidden when the company's plan has no chat). -->
             <tray:ChatPanel x:Name="Chat" Grid.Row="2" Margin="0,10,0,0" />
+
+            <!-- Neither work hours nor chat on the company's plan: just say the PC is protected. -->
+            <Border x:Name="ProtectedCard" Grid.Row="0" Style="{StaticResource Zinwe.Card}" Padding="16,14"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="This PC is protected" FontWeight="SemiBold" FontSize="15" />
+                    <TextBlock FontSize="12.5" Foreground="{StaticResource Zinwe.Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="Zinwe is running and your company's rules apply. There's nothing you need to do here." />
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

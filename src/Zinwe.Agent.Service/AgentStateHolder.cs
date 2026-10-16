@@ -91,6 +91,7 @@ internal sealed class AgentStateHolder
             {
                 PolicyVersion = policy?.Version,
                 UsbMode = policy?.Usb.Mode.ToWire(),
+                Entitlements = policy?.Entitlements,
             });
         }
     }

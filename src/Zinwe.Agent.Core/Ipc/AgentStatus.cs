@@ -46,7 +46,10 @@ public sealed record AgentStatus(
     /// <summary>Plain-language detail for the stage (progress, or why it failed).</summary>
     string? UpdateMessage = null,
     /// <summary>True when an installer was published, so "Update now" can run (else: manual download only).</summary>
-    bool UpdateInstallable = false);
+    bool UpdateInstallable = false,
+    /// <summary>What the owner's plan switches on (<see cref="Policy.PlanModules"/>), from the policy in force;
+    /// null when unknown (no policy yet, or an older backend), which hides nothing.</summary>
+    IReadOnlyList<string>? Entitlements = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages
