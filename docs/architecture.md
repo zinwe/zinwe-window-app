@@ -39,7 +39,7 @@ The device token works **only** on device endpoints (`DeviceTokenAuthentication`
                                                                 │
    NotEnrolled ──key found──► Enrolling ──ok──► Connected ◄──► Offline (network errors, backoff)
         ▲                         │ refused        │  │ 401
-        └──── new key ◄──── Rejected ◄─────────────┼──┘
+        └── new Member ID ◄── Rejected ◄───────────┼──┘  (401 = removed: company rules cleared)
                                                    │ each successful heartbeat:
                                                    ▼ policy_version ≠ cached version?
                               GET policy/current/ → save policy.json → apply → queue usb.policy_applied
@@ -51,9 +51,13 @@ The device token works **only** on device endpoints (`DeviceTokenAuthentication`
 | Enrolling | POST /enroll in flight | 2xx → Connected; 400 on key → Rejected; network → NotEnrolled |
 | Connected | last heartbeat ok; policy synced after each beat | network error → Offline; 401 (heartbeat *or* policy fetch) → Rejected |
 | Offline | backend unreachable; exponential backoff ≤ 5 min | next success |
-| Rejected | key refused or device removed; identity wiped | an admin supplies a *new* key |
+| Rejected | Member ID refused, or the PC was removed by its owner (`removed`); identity wiped | the member connects with a (new) Member ID |
 
-The USB mode in force is independent of this state. It is set at startup from the cache and changes only when a new policy arrives. It survives Offline and Rejected, and the tray shows it in the **USB drives** row (`AgentStatus.policyVersion` / `usbMode`, optional pipe fields).
+The USB mode in force is independent of this state. It is set at startup from the cache and changes only when a new policy arrives. It survives Offline and a refused Member ID, and the tray shows it in the **USB drives** row (`AgentStatus.policyVersion` / `usbMode`, optional pipe fields).
+
+Rule: **a removed PC keeps nothing of its company's rules.** A 401 on the heartbeat means the owner removed this PC: `PolicySync.ClearForRemoval()` sets USB back to allowed, restarts every feature module with everything off (which also takes the website block list out of the hosts file), deletes `policy.json`, and `removed.json` remembers who removed it, so after a restart the widget still says "{Company} removed this PC from Zinwe. Monitoring has stopped." instead of "not set up". The next successful enrolment deletes the marker.
+
+Rule: **consent is the member's choice.** The widget writes the member's answer (`consent.json`: given / declined + the notice version). The notice version is derived from what the policy switches on (`ConsentNotice.VersionFor`, e.g. `2026-10-17.atrw`), so the owner turning on something new (like file names) asks again, while turning things off doesn't. Until the answer is "given" for the notice in force, `ConsentGate` keeps the event queue and metrics store empty; a decline is reported on the heartbeat (`consent: {state: "declined", version}`) and the backend then sends a policy with monitoring off. Work hours and the chat keep working either way.
 
 Rule: **losing the backend never turns protection off.** `PolicySync.ApplyCached()` runs before the first network call. A failed policy fetch keeps the current policy and is retried on the next heartbeat. A failed apply (registry error) is retried on the next heartbeat too, without a refetch.
 

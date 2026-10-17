@@ -46,7 +46,7 @@ window-app/
    dotnet run --project src\Zinwe.Agent.Tray -- --show
    ```
 
-To see the "removed" path, revoke the device in Django admin (**Devices → Revoke**). The next heartbeat gets a 401 and the agent wipes its identity and shows "Not connected".
+To see the "removed" path, remove the person in the dashboard (or revoke the device in Django admin). The next heartbeat gets a 401: the agent wipes its identity, **clears the company's rules** (USB allowed, website block list removed, every feature off, `policy.json` deleted) and the widget says "{Company} removed this PC from Zinwe. Monitoring has stopped." until it is connected again with a new Member ID.
 
 **USB rules in dev are always a dry run.** `appsettings.Development.json` sets `Agent:Enforcement:DryRun=true`, and on top of that the registry is only ever written when the process is LocalSystem. Under `dotnet run` you'll see log lines like `[dry run] USB block: would set Deny_Read=1, set Deny_Write=1 …` and the `usb.policy_applied` event carries `"dry_run": true` (the feed shows "(test mode)"). To try it:
 
@@ -79,6 +79,14 @@ msiexec /x artifacts\installer\ZinweAgent.msi /qn
 
 Uninstall also deletes the USB policy key (`HKLM\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f5630d-…}`), so removing Zinwe never leaves a PC's USB drives locked. Check on the VM after an uninstall with `reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices"`.
 
+## What the employee sees
+
+- **Finding it:** "Zinwe" in Start (opens the widget), a single click on the tray icon, and an entry in Settings ▸ Apps ("Zinwe (company data protection)", publisher "SKYTECHNO (Zinwe)"; Uninstall is disabled). The double-click installer shows a short welcome (what Zinwe is, that Windows will ask for an administrator's permission) and opens the widget at the end.
+- **Opens by itself** once per sign-in while something waits: not connected yet, the monitoring notice not answered (plus an hourly reminder toast), or the work day not started.
+- **Consent is a choice:** the notice names the employer (`company_name` from the backend, else "your employer"), lists only what the policy switches on, and offers **I agree / I don't agree**. Declining keeps work hours and the chat; nothing is recorded. "What Zinwe records on this PC" (widget + tray menu) re-reads it and withdraws or agrees later.
+- **Clear states:** a status line under the logo ("Connected to …", "Offline — your times are saved and will sync", "Zinwe isn't running", "Removed from …"); no-internet during Connect says so and lets the member retry; a required update never pauses the work clock; a blocked website posts "Zinwe blocked {site} — your company's rule".
+- **Text** lives in `src/Zinwe.Agent.Tray/Resources/Strings.resx` (one property per entry in `Strings.cs`), so a `Strings.hi.resx` can be added without code changes. The installer's text is in `installer/Package.en-us.wxl`.
+
 ## Configuration
 
 | Setting | Where | Notes |
@@ -94,7 +102,7 @@ Uninstall also deletes the USB policy key (`HKLM\SOFTWARE\Policies\Microsoft\Win
 | Call | Auth | Result |
 |---|---|---|
 | `POST /api/devices/enroll/` `{enrollment_key, machine_id, hostname, os_version, agent_version, platform}` | none (throttled 60/h/IP) | 201 new / 200 re-enrolled → `{device_id, device_token, re_enrolled}`; 400 `enrollment_key` = refused |
-| `POST /api/devices/heartbeat/` | `Authorization: Device <token>` | `{device_id, server_time, next_heartbeat_seconds, policy_version}`; 401 = removed |
+| `POST /api/devices/heartbeat/` (+ `consent: {state: given\|declined, version}` once the member answered) | `Authorization: Device <token>` | `{device_id, server_time, next_heartbeat_seconds, policy_version}` + optional `consent_state`, `usb_restore` (restore USB to the policy, send `usb.restored`), `company_name`, `owner_name`; 401 = removed (rules cleared) |
 | `GET /api/devices/policy/current/` | `Device` | `{version, usb: {mode: allow\|read_only\|block}}`; fetched when `policy_version` changes |
 | `POST /api/devices/events/upload/` `{events: [{id, type, occurred_at, severity, data}]}` | `Device` | 1..100 per call, idempotent on `id` → `{accepted, duplicates}`; 400 = content refused |
 | `GET /api/devices/`, `GET /api/devices/enrollment-key/`, `POST …/rotate/` | owner `Token` | dashboard |

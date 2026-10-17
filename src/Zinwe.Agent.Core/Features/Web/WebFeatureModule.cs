@@ -14,8 +14,12 @@ public sealed class WebFeatureModule(
     IBlockedAttemptSource attempts,
     Blocklist blocklist,
     WebFeatureOptions options,
-    ILogger<WebFeatureModule> logger) : IFeatureModule
+    ILogger<WebFeatureModule> logger,
+    IWebBlockNotices? notices = null,
+    BlockedSiteThrottle? throttle = null) : IFeatureModule
 {
+    private readonly IWebBlockNotices _notices = notices ?? new NullWebBlockNotices();
+    private readonly BlockedSiteThrottle _throttle = throttle ?? new BlockedSiteThrottle();
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
@@ -23,6 +27,12 @@ public sealed class WebFeatureModule(
 
     public Task StartAsync(CancellationToken ct)
     {
+        if (!options.Enabled || !options.BlockingEnabled)
+        {
+            // Blocking is off now (owner switched it off, the member declined monitoring, or the PC was removed):
+            // take away any block list an earlier policy left in the hosts file. A no-op when there is none.
+            protection.Apply(Blocklist.Empty, report: false);
+        }
         if (!options.Enabled)
         {
             logger.LogInformation("Web feature disabled by config");
@@ -36,6 +46,10 @@ public sealed class WebFeatureModule(
                 protection.Apply(blocklist, report: true);
                 attempts.Attempted += OnAttempted;
                 attempts.Start();
+                if (!blocklist.IsEmpty)
+                {
+                    _notices.BlocklistInForce(blocklist);
+                }
             }
 
             if (options.CollectForegroundUsage)
@@ -104,6 +118,19 @@ public sealed class WebFeatureModule(
         }
     }
 
+    /// <summary>The browser in front is on a blocked site: tell the member it's the company's rule, not the internet.</summary>
+    internal void NoticeIfBlocked(string? domain)
+    {
+        if (!options.BlockingEnabled || domain is null || blocklist.Find(domain) is not { } rule)
+        {
+            return;
+        }
+        if (_throttle.ShouldNotify(rule.Domain))
+        {
+            _notices.SiteBlocked(rule.Domain, rule.Category);
+        }
+    }
+
     private async Task SampleLoopAsync(CancellationToken ct)
     {
         var seconds = Math.Max(1, options.SampleIntervalSeconds);
@@ -117,7 +144,7 @@ public sealed class WebFeatureModule(
                 var sample = sampler.Collect(seconds);
                 if (sample is not null && options.CollectWebDomains && BrowserApps.IsBrowser(sample.ProcessName))
                 {
-                    domains.Collect(seconds);
+                    NoticeIfBlocked(domains.Collect(seconds));
                 }
             }
         }

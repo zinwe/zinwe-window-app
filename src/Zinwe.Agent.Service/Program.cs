@@ -48,8 +48,18 @@ static string DataDirectory(IServiceProvider sp) =>
 
 builder.Services.AddSingleton(sp => new IdentityStore(DataDirectory(sp)));
 builder.Services.AddSingleton(sp => new PolicyStore(DataDirectory(sp)));
-// The member's consent on the widget: until they agree, events and usage metrics aren't recorded at all.
-builder.Services.AddSingleton(sp => new ConsentGate(new ConsentReader(sp.GetRequiredService<IWidgetFolder>())));
+// The member's consent on the widget: until they agree, events and usage metrics aren't recorded at all. The notice in
+// force follows the policy (what is switched on), so turning on something new asks again. PolicySync is resolved
+// lazily: it (through UsbProtection → EventQueue) depends on this gate.
+builder.Services.AddSingleton(sp =>
+{
+    PolicySync? sync = null;
+    return new ConsentGate(
+        new ConsentReader(sp.GetRequiredService<IWidgetFolder>()),
+        noticeVersion: () => ConsentNotice.VersionFor(
+            MonitoringScope.From((sync ??= sp.GetRequiredService<PolicySync>()).Current)));
+});
+builder.Services.AddSingleton(sp => new RemovalMarker(DataDirectory(sp)));
 builder.Services.AddSingleton(sp => new EventQueue(
     DataDirectory(sp), recordingAllowed: sp.GetRequiredService<ConsentGate>().IsGranted));
 builder.Services.AddSingleton(sp => new MetricsStore(

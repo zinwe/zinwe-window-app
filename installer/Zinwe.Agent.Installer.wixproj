@@ -22,6 +22,8 @@
   <ItemGroup>
     <!-- util:ServiceConfig (service crash recovery). -->
     <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+    <!-- The installer's welcome / install / finish screens (WixUI dialogs; our texts in Package.en-us.wxl). -->
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.2" />
   </ItemGroup>
 
 </Project>

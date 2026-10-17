@@ -3,10 +3,26 @@ using Zinwe.Agent.Core.Messages;
 
 namespace Zinwe.Agent.Core.Work;
 
-/// <summary>The member's consent to monitoring on this PC, as given on the widget's consent screen.</summary>
-/// <param name="Version">The consent notice version they agreed to (<see cref="ConsentReader.CurrentVersion"/>).</param>
-/// <param name="AcceptedAt">When they agreed.</param>
-public sealed record ConsentRecord(string Version, DateTimeOffset AcceptedAt);
+/// <summary>The member's answer on the widget's consent screen.</summary>
+public enum ConsentChoice
+{
+    /// <summary>"I agree": recording may run (for the notice version they agreed to).</summary>
+    Given,
+
+    /// <summary>"I don't agree" (or withdrawn later): nothing about the member is recorded on this PC.</summary>
+    Declined,
+}
+
+/// <summary>The member's answer to the monitoring notice on this PC, as given on the widget's consent screen.</summary>
+/// <param name="Version">The consent notice version they answered (<see cref="ConsentNotice"/>).</param>
+/// <param name="AcceptedAt">When they answered (agreed, or declined).</param>
+/// <param name="Choice">Agreed or declined. Files written before "I don't agree" existed are agreements.</param>
+public sealed record ConsentRecord(string Version, DateTimeOffset AcceptedAt, ConsentChoice Choice = ConsentChoice.Given)
+{
+    public bool IsGiven => Choice == ConsentChoice.Given;
+
+    public bool IsDeclined => Choice == ConsentChoice.Declined;
+}
 
 /// <summary>
 /// Reads the widget's per-user consent.json so the service can report the member's consent on each
@@ -18,12 +34,10 @@ public sealed record ConsentRecord(string Version, DateTimeOffset AcceptedAt);
 public sealed class ConsentReader
 {
     /// <summary>
-    /// The version of the widget's consent notice. The widget writes it when the member agrees; a new version
-    /// asks everyone again (and recording pauses until they agree). Bump it only when the notice changes.
+    /// The version of the full consent notice (everything listed). The real notice version depends on what the
+    /// owner switched on (<see cref="ConsentNotice.VersionFor"/>); this one covers any policy with the current wording.
     /// </summary>
-    // 2026-10-15: the notice no longer promises a 90-day retention period (not configurable yet) and says only
-    // what the company's plan includes is recorded. A correction, so everyone is asked once more.
-    public const string CurrentVersion = "2026-10-15";
+    public const string CurrentVersion = ConsentNotice.FullVersion;
 
     private const string FileName = "consent.json";
 
@@ -47,11 +61,14 @@ public sealed class ConsentReader
                 return null;
             }
             var dto = JsonSerializer.Deserialize<Dto>(File.ReadAllText(path), Json);
-            if (dto is null || string.IsNullOrWhiteSpace(dto.Version) || dto.AcceptedAt is not { } at)
+            if (dto is null || string.IsNullOrWhiteSpace(dto.Version) || (dto.DecidedAt ?? dto.AcceptedAt) is not { } at)
             {
                 return null;
             }
-            return new ConsentRecord(dto.Version.Trim(), at);
+            var choice = string.Equals(dto.State?.Trim(), "declined", StringComparison.OrdinalIgnoreCase)
+                ? ConsentChoice.Declined
+                : ConsentChoice.Given;
+            return new ConsentRecord(dto.Version.Trim(), at, choice);
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -63,6 +80,9 @@ public sealed class ConsentReader
     {
         public string Version { get; set; } = "";
         public DateTimeOffset? AcceptedAt { get; set; }
+        // "given" | "declined"; missing (files from before "I don't agree") = given.
+        public string? State { get; set; }
+        public DateTimeOffset? DecidedAt { get; set; }
     }
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };

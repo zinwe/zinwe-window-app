@@ -37,7 +37,7 @@
                 <Setter.Value>
                     <ControlTemplate>
                         <Rectangle Margin="-3" RadiusX="8" RadiusY="8" StrokeThickness="2"
-                                   Stroke="{StaticResource Zinwe.OrangeStrong}" SnapsToDevicePixels="True" />
+                                   Stroke="{DynamicResource Zinwe.OrangeStrong}" SnapsToDevicePixels="True" />
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -45,8 +45,8 @@
 
         <!-- Primary: orange fill, ink text. -->
         <Style x:Key="Zinwe.PrimaryButton" TargetType="Button">
-            <Setter Property="Foreground" Value="{StaticResource Zinwe.Ink}" />
-            <Setter Property="Background" Value="{StaticResource Zinwe.Orange}" />
+            <Setter Property="Foreground" Value="{DynamicResource Zinwe.Ink}" />
+            <Setter Property="Background" Value="{DynamicResource Zinwe.Orange}" />
             <Setter Property="FontFamily" Value="{StaticResource Zinwe.Font}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="13.5" />
@@ -63,14 +63,14 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{StaticResource Zinwe.OrangeDeep}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Zinwe.OrangeDeep}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{StaticResource Zinwe.OrangeStrong}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Zinwe.OrangeStrong}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="b" Property="Background" Value="{StaticResource Zinwe.Line}" />
-                                <Setter Property="Foreground" Value="{StaticResource Zinwe.Muted}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Zinwe.Line}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Zinwe.Muted}" />
                                 <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -81,21 +81,21 @@
 
         <!-- Secondary: white with a hairline border. -->
         <Style x:Key="Zinwe.OutlineButton" TargetType="Button" BasedOn="{StaticResource Zinwe.PrimaryButton}">
-            <Setter Property="Background" Value="{StaticResource Zinwe.White}" />
+            <Setter Property="Background" Value="{DynamicResource Zinwe.White}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="b" CornerRadius="6" BorderThickness="1"
-                                BorderBrush="{StaticResource Zinwe.LineStrong}" Background="{TemplateBinding Background}">
+                                BorderBrush="{DynamicResource Zinwe.LineStrong}" Background="{TemplateBinding Background}">
                             <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{StaticResource Zinwe.Paper}" />
-                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Zinwe.Muted}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Zinwe.Paper}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Zinwe.Muted}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="{StaticResource Zinwe.Muted}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Zinwe.Muted}" />
                                 <Setter TargetName="b" Property="Opacity" Value="0.6" />
                                 <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
@@ -107,7 +107,7 @@
 
         <!-- Quiet text button (Cancel, Clear, header actions). -->
         <Style x:Key="Zinwe.HeaderButton" TargetType="Button">
-            <Setter Property="Foreground" Value="{StaticResource Zinwe.Muted}" />
+            <Setter Property="Foreground" Value="{DynamicResource Zinwe.Muted}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="FontFamily" Value="{StaticResource Zinwe.Font}" />
             <Setter Property="FontSize" Value="12.5" />
@@ -125,7 +125,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="b" Property="Background" Value="#EFEFEA" />
-                                <Setter Property="Foreground" Value="{StaticResource Zinwe.Ink}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Zinwe.Ink}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -135,9 +135,9 @@
 
         <!-- Reason chip: single choice (RadioButton). Picked = orange tint + orange border. -->
         <Style x:Key="Zinwe.Chip" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource Zinwe.Ink}" />
-            <Setter Property="Background" Value="{StaticResource Zinwe.White}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Zinwe.LineStrong}" />
+            <Setter Property="Foreground" Value="{DynamicResource Zinwe.Ink}" />
+            <Setter Property="Background" Value="{DynamicResource Zinwe.White}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Zinwe.LineStrong}" />
             <Setter Property="FontFamily" Value="{StaticResource Zinwe.Font}" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="FontWeight" Value="Medium" />
@@ -154,12 +154,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Zinwe.Muted}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Zinwe.Muted}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{StaticResource Zinwe.OrangeTint}" />
-                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Zinwe.OrangeStrong}" />
-                                <Setter Property="Foreground" Value="{StaticResource Zinwe.OrangeInk}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Zinwe.OrangeTint}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Zinwe.OrangeStrong}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Zinwe.OrangeInk}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -185,14 +185,14 @@
 
         <!-- Text input: hairline border, orange border on focus. -->
         <Style x:Key="Zinwe.Input" TargetType="TextBox">
-            <Setter Property="Foreground" Value="{StaticResource Zinwe.Ink}" />
-            <Setter Property="Background" Value="{StaticResource Zinwe.White}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Zinwe.LineStrong}" />
+            <Setter Property="Foreground" Value="{DynamicResource Zinwe.Ink}" />
+            <Setter Property="Background" Value="{DynamicResource Zinwe.White}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Zinwe.LineStrong}" />
             <Setter Property="FontFamily" Value="{StaticResource Zinwe.Font}" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Padding" Value="10,8" />
-            <Setter Property="CaretBrush" Value="{StaticResource Zinwe.Ink}" />
-            <Setter Property="SelectionBrush" Value="{StaticResource Zinwe.Orange}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Zinwe.Ink}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource Zinwe.Orange}" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -207,10 +207,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Zinwe.Muted}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Zinwe.Muted}" />
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Zinwe.OrangeStrong}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Zinwe.OrangeStrong}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -220,8 +220,8 @@
 
         <!-- Card: white panel, hairline border, 12px radius. -->
         <Style x:Key="Zinwe.Card" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Zinwe.White}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Zinwe.Line}" />
+            <Setter Property="Background" Value="{DynamicResource Zinwe.White}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Zinwe.Line}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="16" />
@@ -229,7 +229,7 @@
 
         <!-- A whole card that opens something (the chat): a real button, so Tab + Enter work too. -->
         <Style x:Key="Zinwe.CardButton" TargetType="Button">
-            <Setter Property="Foreground" Value="{StaticResource Zinwe.Ink}" />
+            <Setter Property="Foreground" Value="{DynamicResource Zinwe.Ink}" />
             <Setter Property="FontFamily" Value="{StaticResource Zinwe.Font}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="16,14" />
@@ -239,16 +239,16 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="b" CornerRadius="12" BorderThickness="1" Padding="{TemplateBinding Padding}"
-                                Background="{StaticResource Zinwe.White}" BorderBrush="{StaticResource Zinwe.Line}">
+                                Background="{DynamicResource Zinwe.White}" BorderBrush="{DynamicResource Zinwe.Line}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Zinwe.LineStrong}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Zinwe.LineStrong}" />
                                 <Setter TargetName="b" Property="Background" Value="#FFFCF9" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{StaticResource Zinwe.OrangeTint}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Zinwe.OrangeTint}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -258,9 +258,9 @@
 
         <!-- Small label above a section ("Good morning"). -->
         <Style x:Key="Zinwe.Eyebrow" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{StaticResource Zinwe.Muted}" />
+            <Setter Property="Foreground" Value="{DynamicResource Zinwe.Muted}" />
         </Style>
     </Application.Resources>
 </Application>

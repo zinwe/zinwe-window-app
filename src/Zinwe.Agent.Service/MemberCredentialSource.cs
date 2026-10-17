@@ -24,6 +24,10 @@ internal sealed class MemberCredentialSource(
     // member ids already used or refused this run; a removed PC can't silently re-join with a leftover id.
     private readonly HashSet<string> _consumed = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _lock = new();
+    private int _submissions;
+
+    /// <summary>Goes up each time the member submits a credential in the widget (the enrol loop wakes up for it).</summary>
+    public int Submissions => Volatile.Read(ref _submissions);
 
     /// <summary>The usable member credential, or null when none is present (or it was already used/refused).</summary>
     public MemberCredential? Current()
@@ -54,6 +58,7 @@ internal sealed class MemberCredentialSource(
             var tmp = _pendingPath + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(new MemberCredential(email, memberId)));
             File.Move(tmp, _pendingPath, overwrite: true);
+            Interlocked.Increment(ref _submissions);
             logger.LogInformation("Member credential submitted from the widget; attempting to connect.");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

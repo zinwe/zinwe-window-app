@@ -1,25 +1,43 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Zinwe.Agent.Core;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Policy;
+using Zinwe.Agent.Core.Work;
+using Zinwe.Agent.Tray.Resources;
 using Zinwe.Agent.Tray.Widget;
+using Forms = System.Windows.Forms;
 
 namespace Zinwe.Agent.Tray;
 
 /// <summary>
-/// The member's Zinwe in one compact view: their day (log in / take a break / log out with today's time) on top,
-/// then the chat with their admin (<see cref="ChatPanel"/>: a bar that opens the conversation when clicked), and
-/// notes from Zinwe's own protection as a slim strip when there are some. "Take a break" and "Log out" share one input view (<see cref="WorkPrompt"/>):
-/// a required reason, plus a note. Minimizing hides it; the agent keeps running.
+/// The member's Zinwe in one compact view: who the PC is connected to (always visible), their day (log in / take a
+/// break / log out with today's time), then the chat with their admin (<see cref="ChatPanel"/>) and notes from
+/// Zinwe's own protection. Before that: Connect (email + Member ID), then the consent notice with a real choice
+/// ("I agree" / "I don't agree"). "What Zinwe records on this PC" re-opens the notice any time (and withdraws).
+/// The window always fits the screen it is on. Minimizing hides it; the agent keeps running.
 /// </summary>
 public partial class WidgetWindow : Window
 {
+    private enum ConsentMode
+    {
+        /// <summary>Not answered yet: I agree / I don't agree.</summary>
+        Decide,
+        /// <summary>Declined earlier, now reading the full notice to agree: I agree / Not now.</summary>
+        AgreeLater,
+        /// <summary>Agreed or declined, re-reading what is recorded.</summary>
+        Review,
+        /// <summary>"Withdraw my agreement" pressed: confirm.</summary>
+        WithdrawConfirm,
+    }
+
     private readonly WorkTimerStore _timerStore = new();
     private readonly ConsentStore _consent = new();
     private readonly NotificationStore _noteStore;
@@ -34,11 +52,20 @@ public partial class WidgetWindow : Window
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(5) };
 
     private int _secondsSinceSave;
+    private int _lastSpokenMinute = -1;
 
-    // Forced upgrade (M12): when the backend requires a newer agent, work is paused and the
-    // employee is prompted to install the update (from this link) until a newer agent reports in.
-    private bool _updateRequired;
+    private AgentStatus? _status;
+    private bool _statusKnown;
     private string? _updateDownloadUrl;
+
+    // The consent notice re-opened from "What Zinwe records" (null = not open).
+    private ConsentMode? _review;
+    private bool _welcome;
+    private WidgetScreen? _lastScreen;
+
+    // Connect: when the member last pressed Connect, and the status message showing just before.
+    private DateTimeOffset _connectSubmittedAt = DateTimeOffset.MinValue;
+    private string? _messageBeforeSubmit;
 
     // The open input view (break / log out), or null.
     private WorkPrompt? _prompt;
@@ -57,6 +84,9 @@ public partial class WidgetWindow : Window
         _watcher = watcher;
         _startUpdate = startUpdate;
         InitializeComponent();
+        ApplyStaticText();
+        // Never taller than the screen (refined to the actual monitor once shown).
+        MaxHeight = WindowFit.MaxHeight(SystemParameters.WorkArea.Height);
 
         _timer = _timerStore.Load(DateTimeOffset.Now);
         Logo.ToolTip = $"Zinwe {AgentInfo.Version}";
@@ -72,10 +102,13 @@ public partial class WidgetWindow : Window
             Chat.Refresh(); // coming back to the window reads the admin's new messages
         };
 
+        // Whenever the window grows (Connect → consent, the chat opening), keep all of it on the screen.
+        SizeChanged += (_, _) => KeepOnScreen();
+
         Loaded += async (_, _) =>
         {
             Chat.Attach(_noteStore, _watcher, () => IsReading);
-            Chat.OpenChanged += KeepOnScreen;
+            KeepOnScreen();
             RenderTimer();
             RenderNotifications(_watcher.Poll());
             await RefreshStatusAsync();
@@ -84,6 +117,29 @@ public partial class WidgetWindow : Window
         };
 
         Closing += OnClosing;
+    }
+
+    /// <summary>The XAML labels that come from Strings.resx (so another language needs no XAML change).</summary>
+    private void ApplyStaticText()
+    {
+        ConnectIntro.Text = Strings.ConnectIntro;
+        EmailLabel.Text = Strings.ConnectEmailLabel;
+        EmailPlaceholder.Text = Strings.ConnectEmailPlaceholder;
+        MemberIdLabel.Text = Strings.ConnectIdLabel;
+        MemberIdPlaceholder.Text = Strings.ConnectIdPlaceholder;
+        ConnectHint.Text = Strings.ConnectHint;
+        ConnectButton.Content = Strings.ConnectButton;
+        AutomationProperties.SetHelpText(EmailInput, Strings.ConnectEmailPlaceholder);
+        AutomationProperties.SetHelpText(MemberIdInput, Strings.ConnectHint);
+        NotRunningTitle.Text = Strings.NotRunningTitle;
+        NotRunningRetry.Content = Strings.NotRunningRetry;
+        DeclinedTitle.Text = Strings.DeclinedBannerTitle;
+        DeclinedBody.Text = Strings.DeclinedBannerBody;
+        DeclinedAgreeButton.Content = Strings.DeclinedBannerButton;
+        WelcomeTitle.Text = Strings.WelcomeTitle;
+        WelcomeDismiss.Content = Strings.WelcomeDismiss;
+        RemovedBody.Text = Strings.RemovedBody;
+        RecordsButton.Content = Strings.RecordsLink;
     }
 
     // ---- Work: log in / break / log out --------------------------------------
@@ -236,8 +292,16 @@ public partial class WidgetWindow : Window
         var now = DateTimeOffset.Now;
         Greeting.Text = WorkSummary.Greeting(now);
         // The big number is whatever is running now: the break while on one, else time worked today.
-        WorkedTime.Text = WorkSummary.Clock(WorkSummary.Hero(_timer, now));
+        var hero = WorkSummary.Hero(_timer, now);
+        WorkedTime.Text = WorkSummary.Clock(hero);
         WorkedTime.Foreground = (Brush)FindResource(_timer.State == WorkState.OnBreak ? "Zinwe.Warn" : "Zinwe.Ink");
+        // Screen readers: "Work time today: 2 h 5 min" (updated once a minute, not every second).
+        if ((int)hero.TotalMinutes != _lastSpokenMinute)
+        {
+            _lastSpokenMinute = (int)hero.TotalMinutes;
+            AutomationProperties.SetName(WorkedTime, Strings.Format(
+                _timer.State == WorkState.OnBreak ? Strings.BreakTimeNow : Strings.WorkTimeToday, SpokenDuration(hero)));
+        }
         StatusLine.Text = WorkSummary.Status(_timer);
 
         var secondary = WorkSummary.Secondary(_timer, now);
@@ -254,7 +318,8 @@ public partial class WidgetWindow : Window
         WorkPill.Background = (Brush)FindResource(pillBg);
         WorkPillText.Foreground = (Brush)FindResource(pillFg);
 
-        // Only the buttons that make sense right now.
+        // Only the buttons that make sense right now. They keep working while an update is pending or the PC
+        // is offline: the times are saved locally and sent later, so the work clock is never trapped.
         var clockedIn = _timer.State is WorkState.Working or WorkState.OnBreak;
         LogInButton.Visibility = clockedIn ? Visibility.Collapsed : Visibility.Visible;
         WorkingActions.Visibility = clockedIn ? Visibility.Visible : Visibility.Collapsed;
@@ -264,17 +329,16 @@ public partial class WidgetWindow : Window
         BreakButton.Content = onBreak ? "I'm back" : "Take a break";
         BreakButton.Style = (Style)FindResource(onBreak ? "Zinwe.PrimaryButton" : "Zinwe.OutlineButton");
 
-        // Work is paused while an update is required.
-        LogInButton.IsEnabled = !_updateRequired;
-        BreakButton.IsEnabled = !_updateRequired;
-        LogOutButton.IsEnabled = !_updateRequired;
-
-        // A prompt that no longer applies (day rolled over, update required) closes itself.
-        if (_prompt is not null && (_updateRequired || !clockedIn || (_prompt == WorkPrompt.Break && onBreak)))
+        // A prompt that no longer applies (day rolled over) closes itself.
+        if (_prompt is not null && (!clockedIn || (_prompt == WorkPrompt.Break && onBreak)))
         {
             ClosePrompt();
         }
     }
+
+    private static string SpokenDuration(TimeSpan t) => t.TotalHours >= 1
+        ? Strings.Format(Strings.DurationHoursMinutes, (int)t.TotalHours, t.Minutes)
+        : Strings.Format(Strings.DurationMinutes, (int)t.TotalMinutes);
 
     // ---- Messages + notices -----------------------------------------------------
 
@@ -298,70 +362,159 @@ public partial class WidgetWindow : Window
         }
     }
 
-    /// <summary>Opening the chat makes the window taller: nudge it up so its bottom stays on the screen.</summary>
-    private void KeepOnScreen() => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
-    {
-        var area = SystemParameters.WorkArea;
-        if (Top + ActualHeight > area.Bottom)
-        {
-            Top = Math.Max(area.Top, area.Bottom - ActualHeight - 8);
-        }
-    });
-
     /// <summary>"Open chat" (tray menu, a message toast): the chat is right here, so go to its end and the composer.</summary>
     public void FocusChat() => Chat.Activate();
 
     private void OnClear(object sender, RoutedEventArgs e) => RenderNotifications(_noteStore.ClearNotices());
 
-    // ---- Protection status (same source as the tray tooltip) ------------------
+    // ---- Fitting the screen -----------------------------------------------------
+
+    /// <summary>The work area (DIPs) of the monitor the widget is on; the primary one before it is shown.</summary>
+    private Rect WorkArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero && PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+        {
+            var area = Forms.Screen.FromHandle(handle).WorkingArea;
+            var toDips = target.TransformFromDevice;
+            return new Rect(toDips.Transform(new Point(area.Left, area.Top)), toDips.Transform(new Point(area.Right, area.Bottom)));
+        }
+        return SystemParameters.WorkArea;
+    }
+
+    /// <summary>Cap the height to the screen and move the window up if its bottom went off it.</summary>
+    private void KeepOnScreen() => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+    {
+        var area = WorkArea();
+        MaxHeight = WindowFit.MaxHeight(area.Height);
+        FitChat();
+        var top = WindowFit.Top(Top, ActualHeight, area.Top, area.Bottom);
+        if (!double.IsNaN(top) && Math.Abs(top - Top) > 0.5)
+        {
+            Top = top;
+        }
+    });
+
+    // Title bar + borders + the root margin: everything around the content (measured once, on the small first view).
+    private double _chrome = double.NaN;
+
+    /// <summary>On a short screen the open chat's conversation gets shorter, so the composer stays visible.</summary>
+    private void FitChat()
+    {
+        if (Content is not FrameworkElement root || root.ActualHeight <= 0)
+        {
+            return;
+        }
+        if (double.IsNaN(_chrome))
+        {
+            _chrome = Math.Max(0, ActualHeight - root.ActualHeight);
+        }
+        if (!Chat.IsOpen || ConnectedContent.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+        root.Measure(new Size(root.ActualWidth, double.PositiveInfinity));
+        var overflow = root.DesiredSize.Height + _chrome - MaxHeight;
+        var height = Math.Clamp(Chat.ConversationHeight - overflow, ChatPanel.MinConversationHeight, ChatPanel.MaxConversationHeight);
+        if (Math.Abs(height - Chat.ConversationHeight) > 1)
+        {
+            Chat.ConversationHeight = height;
+        }
+    }
+
+    /// <summary>A different view (Connect → consent → the day): centre it again on its screen.</summary>
+    private void Recenter() => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+    {
+        var area = WorkArea();
+        MaxHeight = WindowFit.MaxHeight(area.Height);
+        Top = WindowFit.CenteredTop(ActualHeight, area.Top, area.Bottom);
+    });
+
+    // ---- Status → which view -----------------------------------------------------
 
     private async Task RefreshStatusAsync()
     {
-        var status = await AgentPipeClient.GetStatusAsync(TimeSpan.FromSeconds(3));
-        // No status chip in the header: the logo's tooltip carries the protection status and version.
-        var (headline, detail, _) = StatusText.Describe(status);
-        Logo.ToolTip = $"{headline}. {detail}{Environment.NewLine}Zinwe {status?.AgentVersion ?? AgentInfo.Version}";
-
-        RenderConnectState(status);
+        _status = await AgentPipeClient.GetStatusAsync(TimeSpan.FromSeconds(3));
+        _statusKnown = true;
+        Render();
     }
 
-    /// <summary>Show the Connect form until the PC is enrolled; show the normal widget once it is.</summary>
-    private void RenderConnectState(AgentStatus? status)
+    private async void OnRetryStatus(object sender, RoutedEventArgs e)
     {
-        var state = status?.State;
-        // An enrolled PC (connected, offline, or update-required) shows the normal widget body.
-        var enrolled = state is AgentState.Connected or AgentState.Offline or AgentState.UpdateRequired;
-        var needsConnect = state is AgentState.NotEnrolled or AgentState.Rejected or AgentState.Enrolling;
+        NotRunningRetry.IsEnabled = false;
+        await RefreshStatusAsync();
+        NotRunningRetry.IsEnabled = true;
+    }
 
-        // A connected PC asks for the member's consent first (once per policy version).
-        var needsConsent = enrolled && !_consent.HasConsented();
-        ConsentPanel.Visibility = needsConsent ? Visibility.Visible : Visibility.Collapsed;
-        ConnectedContent.Visibility = enrolled && !needsConsent ? Visibility.Visible : Visibility.Collapsed;
-        ConnectPanel.Visibility = needsConnect ? Visibility.Visible : Visibility.Collapsed;
-        SetupScroller.Visibility = needsConnect || needsConsent ? Visibility.Visible : Visibility.Collapsed;
+    private void Render()
+    {
+        var status = _status;
+        if (status?.Removed == true)
+        {
+            _consent.Clear(); // removed from this company: a new one asks afresh
+            _review = null;
+        }
+        var consent = _consent.State(status?.NoticeVersion);
+        var layout = WidgetLayout.From(status, consent);
+        var screen = layout.Screen;
+        if (screen == WidgetScreen.Consent)
+        {
+            _review = null; // a pending answer always shows the choice itself
+        }
+        else if (_review is not null && screen == WidgetScreen.Main)
+        {
+            screen = WidgetScreen.Consent;
+        }
+
+        ConnectScroller.Visibility = screen == WidgetScreen.Connect ? Visibility.Visible : Visibility.Collapsed;
+        ConsentPanel.Visibility = screen == WidgetScreen.Consent ? Visibility.Visible : Visibility.Collapsed;
+        ConnectedContent.Visibility = screen == WidgetScreen.Main ? Visibility.Visible : Visibility.Collapsed;
+        NotRunningPanel.Visibility = layout.NotRunning && _statusKnown ? Visibility.Visible : Visibility.Collapsed;
+        NotRunningBody.Text = Strings.Format(Strings.NotRunningBody, ConsentText.Owner(status?.OwnerName));
+        DeclinedPanel.Visibility = layout.DeclinedBanner && screen == WidgetScreen.Main ? Visibility.Visible : Visibility.Collapsed;
+        WelcomePanel.Visibility = _welcome && screen == WidgetScreen.Main ? Visibility.Visible : Visibility.Collapsed;
+
+        RenderStatusLine(status, consent);
         Chat.SetConnection(status);
+        Chat.OwnerName = status?.OwnerName;
         RenderPlan(status?.Entitlements);
-
-        _updateRequired = state == AgentState.UpdateRequired;
         _updateDownloadUrl = status?.DownloadUrl;
         RenderUpdate(status);
-        // Re-gate the work buttons now that the pause flag may have changed.
-        if (enrolled)
+        RenderConnect(status, layout.Removed);
+        if (screen == WidgetScreen.Consent)
+        {
+            RenderConsent(status, consent);
+        }
+        if (screen == WidgetScreen.Main)
         {
             RenderTimer();
         }
 
-        switch (state)
+        if (_lastScreen is not null && _lastScreen != screen)
         {
-            case AgentState.Enrolling:
-                ConnectButton.IsEnabled = false;
-                ShowConnectMessage("Connecting…", error: false);
-                break;
-            case AgentState.Rejected:
-                ConnectButton.IsEnabled = true;
-                ShowConnectMessage(status?.Message ?? "That didn't work — check the ID and try again.", error: true);
-                break;
+            Recenter();
         }
+        _lastScreen = screen;
+    }
+
+    private void RenderStatusLine(AgentStatus? status, ConsentState consent)
+    {
+        var line = StatusText.Line(status);
+        if (WidgetLayout.IsEnrolled(status) && consent == ConsentState.Declined)
+        {
+            line += " · " + Strings.StatusMonitoringOff;
+        }
+        StatusLineText.Text = line;
+        StatusDot.Fill = (Brush)FindResource(StatusText.Tone(status) switch
+        {
+            StatusTone.Ok => "Zinwe.Ok",
+            StatusTone.Bad => "Zinwe.Bad",
+            _ => "Zinwe.Warn",
+        });
+        var (_, detail, _) = StatusText.Describe(status);
+        AutomationProperties.SetName(StatusChip, line);
+        AutomationProperties.SetHelpText(StatusChip, detail);
+        StatusChip.ToolTip = $"{detail}{Environment.NewLine}Zinwe {status?.AgentVersion ?? AgentInfo.Version}";
     }
 
     /// <summary>
@@ -375,6 +528,7 @@ public partial class WidgetWindow : Window
         WorkCard.Visibility = workOn ? Visibility.Visible : Visibility.Collapsed;
         Chat.Visibility = chatOn ? Visibility.Visible : Visibility.Collapsed;
         ProtectedCard.Visibility = workOn || chatOn ? Visibility.Collapsed : Visibility.Visible;
+        WelcomeBody.Text = workOn ? Strings.WelcomeBodyWork : Strings.WelcomeBodyNoWork;
         if (!workOn && _prompt is not null)
         {
             ClosePrompt();
@@ -382,8 +536,8 @@ public partial class WidgetWindow : Window
     }
 
     /// <summary>
-    /// The update card: required (orange, work paused) or optional (quiet), with "Update now" and its progress.
-    /// Status is polled every second while an update runs, so progress feels live.
+    /// The update card: required (orange) or optional (quiet), with "Update now" and its progress. The work day
+    /// carries on either way. Status is polled every second while an update runs, so progress feels live.
     /// </summary>
     private void RenderUpdate(AgentStatus? status)
     {
@@ -402,12 +556,13 @@ public partial class WidgetWindow : Window
         UpdateTitle.Text = view.Title;
         UpdateBody.Text = view.Body;
         UpdateBody.Foreground = (Brush)FindResource(view.Required ? "Zinwe.OrangeInk" : "Zinwe.Muted");
-        UpdateNotes.Text = view.Notes is null ? "" : $"What's new: {view.Notes}";
+        UpdateNotes.Text = view.Notes is null ? "" : Strings.Format(Strings.UpdateWhatsNew, view.Notes);
         UpdateNotes.Visibility = view.Notes is null ? Visibility.Collapsed : Visibility.Visible;
 
         UpdateButton.Content = view.Button;
         UpdateButton.Visibility = view.ButtonVisible ? Visibility.Visible : Visibility.Collapsed;
         UpdateButton.IsEnabled = view.ButtonEnabled;
+        ManualDownloadButton.Content = Strings.UpdateManual;
         ManualDownloadButton.Visibility = view.ShowManual ? Visibility.Visible : Visibility.Collapsed;
 
         // The service's progress, or (before it took the request) why it refused.
@@ -424,39 +579,109 @@ public partial class WidgetWindow : Window
         await RefreshStatusAsync();
     }
 
-    /// <summary>Open the update download in the default browser; the employee installs it manually.</summary>
+    /// <summary>Open the update's download page in the default browser (only offered when there is one).</summary>
     private void OnDownloadUpdate(object sender, RoutedEventArgs e)
     {
-        var url = string.IsNullOrWhiteSpace(_updateDownloadUrl) ? "https://zinwe.io/download" : _updateDownloadUrl;
+        if (string.IsNullOrWhiteSpace(_updateDownloadUrl))
+        {
+            return;
+        }
+        OpenLink(_updateDownloadUrl);
+    }
+
+    private static void OpenLink(string url)
+    {
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
         catch (Exception)
         {
-            // No browser / blocked: leave the link visible in the panel text; nothing else to do.
+            // No browser / blocked: nothing else to do; the card's text already explains.
         }
     }
 
     // ---- Connect this PC ---------------------------------------------------
 
-    private async void OnConnect(object sender, RoutedEventArgs e)
+    private void RenderConnect(AgentStatus? status, bool removed)
     {
-        var email = EmailInput.Text.Trim();
-        var memberId = MemberIdInput.Text.Trim();
-        if (email.Length == 0 || memberId.Length == 0)
+        RemovedPanel.Visibility = removed ? Visibility.Visible : Visibility.Collapsed;
+        RemovedTitle.Text = Strings.Format(Strings.RemovedTitle, ConsentText.Employer(status?.CompanyName, sentenceStart: true));
+        ConnectTitle.Text = removed ? Strings.RemovedConnectTitle : Strings.ConnectTitle;
+        if (status is null)
         {
-            ShowConnectMessage("Enter both your work email and your Member ID.", error: true);
             return;
         }
 
+        var sinceSubmit = DateTimeOffset.UtcNow - _connectSubmittedAt;
+        switch (status.State)
+        {
+            case AgentState.Enrolling:
+                ConnectButton.IsEnabled = false;
+                ShowConnectMessage(sinceSubmit > TimeSpan.FromSeconds(25) ? Strings.ConnectStillTrying : Strings.Connecting, error: false);
+                break;
+            case AgentState.Rejected:
+                ConnectButton.IsEnabled = true;
+                if (sinceSubmit < TimeSpan.FromSeconds(3) && status.Message == _messageBeforeSubmit)
+                {
+                    // Still the answer to the previous try: keep "Connecting…" until this one's result arrives.
+                    ShowConnectMessage(Strings.Connecting, error: false);
+                }
+                else if (removed && _connectSubmittedAt == DateTimeOffset.MinValue)
+                {
+                    ShowConnectMessage("", error: false); // the card above explains; nothing was typed yet
+                }
+                else
+                {
+                    ShowConnectMessage(status.Message ?? Strings.ConnectRefusedFallback, error: true);
+                }
+                break;
+            case AgentState.NotEnrolled:
+                ConnectButton.IsEnabled = true;
+                if (status.Message is not null && sinceSubmit >= TimeSpan.FromSeconds(1))
+                {
+                    // Can't reach Zinwe / server busy: say so, and let the member try again (it also retries itself).
+                    ShowConnectMessage(status.Message, error: true);
+                }
+                else if (sinceSubmit < TimeSpan.FromSeconds(6))
+                {
+                    ShowConnectMessage(Strings.Connecting, error: false);
+                }
+                break;
+        }
+    }
+
+    private void OnConnectInputChanged(object sender, TextChangedEventArgs e)
+    {
+        EmailPlaceholder.Visibility = EmailInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        MemberIdPlaceholder.Visibility = MemberIdInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Fixing the input clears the old error, so it never looks like the new attempt failed too.
+        if (ConnectButton.IsEnabled)
+        {
+            ShowConnectMessage("", error: false);
+        }
+    }
+
+    private async void OnConnect(object sender, RoutedEventArgs e)
+    {
+        var (email, memberId, problem) = Zinwe.Agent.Core.Backend.MemberIdInput.Validate(EmailInput.Text, MemberIdInput.Text);
+        if (problem is not null)
+        {
+            ShowConnectMessage(problem, error: true);
+            (email.Length == 0 ? EmailInput : MemberIdInput).Focus();
+            return;
+        }
+        MemberIdInput.Text = memberId; // show the tidied ID (ZM-XXXX-XXXX)
+
+        _messageBeforeSubmit = _status?.Message;
+        _connectSubmittedAt = DateTimeOffset.UtcNow;
         ConnectButton.IsEnabled = false;
-        ShowConnectMessage("Connecting…", error: false);
+        ShowConnectMessage(Strings.Connecting, error: false);
 
         var ack = await AgentPipeClient.SubmitEnrollmentAsync(email, memberId, TimeSpan.FromSeconds(5));
         if (ack is null)
         {
-            ShowConnectMessage("Zinwe isn't running yet. Please try again in a moment.", error: true);
+            ShowConnectMessage(Strings.ConnectNotRunning, error: true);
             ConnectButton.IsEnabled = true;
             return;
         }
@@ -466,7 +691,7 @@ public partial class WidgetWindow : Window
             ConnectButton.IsEnabled = true;
             return;
         }
-        // Accepted: the service is enrolling. The status poll flips us to Connected (or back to the form on a bad id).
+        // Accepted: the service is enrolling. The status poll flips us to the notice (or shows why it was refused).
         await RefreshStatusAsync();
     }
 
@@ -475,6 +700,201 @@ public partial class WidgetWindow : Window
         ConnectMessage.Text = message;
         ConnectMessage.Foreground = (Brush)FindResource(error ? "Zinwe.Bad" : "Zinwe.Muted");
         ConnectMessage.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // ---- Consent (DPDP): a real choice, re-readable, withdrawable -------------------
+
+    /// <summary>"What Zinwe records on this PC" (tray menu, widget link): the notice, with the member's answer.</summary>
+    public void ShowRecords()
+    {
+        if (WidgetLayout.IsEnrolled(_status) && _consent.State(_status?.NoticeVersion) != ConsentState.Pending)
+        {
+            _review = ConsentMode.Review;
+            Render();
+            ConsentPrimary.Focus();
+        }
+    }
+
+    private void OnShowRecords(object sender, RoutedEventArgs e) => ShowRecords();
+
+    private void OnReadAndAgree(object sender, RoutedEventArgs e)
+    {
+        _review = ConsentMode.AgreeLater;
+        Render();
+        ConsentPrimary.Focus();
+    }
+
+    private void OnWelcomeDismiss(object sender, RoutedEventArgs e)
+    {
+        _welcome = false;
+        Render();
+    }
+
+    /// <summary>
+    /// What the notice lists. After a decline the backend sends this PC a policy with everything off, so agreeing
+    /// from there is to the full notice (everything that can be on); otherwise exactly what is switched on now.
+    /// </summary>
+    private MonitoringScope NoticeScope(ConsentState consent, ConsentMode mode) =>
+        consent == ConsentState.Declined || mode == ConsentMode.AgreeLater
+            || string.Equals(_status?.ServerConsentState, "declined", StringComparison.OrdinalIgnoreCase)
+            ? MonitoringScope.Everything
+            : _status?.Monitoring ?? MonitoringScope.Everything;
+
+    private ConsentMode CurrentConsentMode(ConsentState consent) =>
+        consent == ConsentState.Pending ? ConsentMode.Decide : _review ?? ConsentMode.Review;
+
+    private void RenderConsent(AgentStatus? status, ConsentState consent)
+    {
+        var mode = CurrentConsentMode(consent);
+        var chatOn = PlanModules.Allows(status?.Entitlements, PlanModules.TeamChat);
+        var view = ConsentText.Build(NoticeScope(consent, mode), status?.CompanyName, status?.OwnerName, chatOn);
+        ConsentTitle.Text = mode is ConsentMode.Review or ConsentMode.WithdrawConfirm ? Strings.RecordsTitle : view.Title;
+        var reviewing = mode is ConsentMode.Review or ConsentMode.WithdrawConfirm;
+        BuildConsentBody(view, reviewing ? view.IntroReview : view.Intro,
+            showDecline: mode != ConsentMode.Review || consent != ConsentState.Declined);
+
+        var record = _consent.Load();
+        var employer = ConsentText.Employer(status?.CompanyName);
+        (string footer, string primary, string secondary) = mode switch
+        {
+            ConsentMode.Decide => (Strings.ConsentDecideFooter, Strings.ConsentAgree, Strings.ConsentDecline),
+            ConsentMode.AgreeLater => (Strings.ConsentDecideFooter, Strings.ConsentAgree, Strings.ConsentNotNow),
+            ConsentMode.WithdrawConfirm => (Strings.Format(Strings.ConsentWithdrawConfirm, employer),
+                Strings.ConsentWithdrawNo, Strings.ConsentWithdrawYes),
+            _ when consent == ConsentState.Declined => (
+                Strings.Format(Strings.ConsentDeclinedOn, ConsentText.When(record?.AcceptedAt ?? DateTimeOffset.Now)),
+                Strings.ConsentAgreeNow, Strings.ConsentClose),
+            _ => (Strings.Format(Strings.ConsentAgreedOn, ConsentText.When(record?.AcceptedAt ?? DateTimeOffset.Now)),
+                Strings.ConsentClose, Strings.ConsentWithdraw),
+        };
+        ConsentFooterText.Text = footer;
+        ConsentPrimary.Content = primary;
+        ConsentSecondary.Content = secondary;
+        AutomationProperties.SetHelpText(ConsentPrimary, footer);
+    }
+
+    private void BuildConsentBody(ConsentNoticeView view, string intro, bool showDecline)
+    {
+        ConsentBody.Children.Clear();
+        Add(new TextBlock { Text = intro, Foreground = Muted, Margin = new Thickness(0, 0, 0, 2) });
+        Heading(view.SeesHeading);
+        Bullets(view.Sees);
+        Add(new TextBlock { Text = view.SeesMore, Foreground = Muted, FontSize = 12, Margin = new Thickness(0, 4, 0, 0) });
+        Heading(view.NeverHeading);
+        Bullets(view.Never);
+        if (showDecline)
+        {
+            Heading(view.DeclineHeading);
+            Add(new TextBlock { Text = view.DeclineBody });
+        }
+        Add(new TextBlock { Text = view.SmallPrint, Foreground = Muted, FontSize = 12, Margin = new Thickness(0, 12, 0, 0) });
+
+        var links = new WrapPanel { Margin = new Thickness(-10, 6, 0, 0) };
+        links.Children.Add(LinkButton(Strings.ConsentPrivacyPolicy, "privacy"));
+        links.Children.Add(LinkButton(Strings.ConsentAcceptableUse, "acceptable-use"));
+        ConsentBody.Children.Add(links);
+        ConsentScroller.ScrollToTop();
+
+        void Heading(string text) => Add(new TextBlock
+        {
+            Text = text, FontSize = 13, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 4),
+        });
+
+        void Bullets(IEnumerable<string> items)
+        {
+            foreach (var item in items)
+            {
+                // A hanging bullet: wrapped lines line up with the text, not under the dot.
+                var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.Children.Add(new TextBlock { Text = "•", FontSize = 12.5, LineHeight = 19 });
+                var text = new TextBlock { Text = item, FontSize = 12.5, LineHeight = 19, TextWrapping = TextWrapping.Wrap };
+                Grid.SetColumn(text, 1);
+                row.Children.Add(text);
+                ConsentBody.Children.Add(row);
+            }
+        }
+    }
+
+    private Brush Muted => (Brush)FindResource("Zinwe.Muted");
+
+    private void Add(TextBlock block)
+    {
+        block.TextWrapping = TextWrapping.Wrap;
+        if (block.ReadLocalValue(TextBlock.FontSizeProperty) == DependencyProperty.UnsetValue)
+        {
+            block.FontSize = 12.5;
+        }
+        block.LineHeight = 19;
+        ConsentBody.Children.Add(block);
+    }
+
+    private Button LinkButton(string text, string slug)
+    {
+        var button = new Button { Content = text, Tag = slug, Style = (Style)FindResource("Zinwe.HeaderButton") };
+        button.Click += OnOpenPolicy;
+        return button;
+    }
+
+    private void OnConsentPrimary(object sender, RoutedEventArgs e)
+    {
+        var consent = _consent.State(_status?.NoticeVersion);
+        var mode = CurrentConsentMode(consent);
+        switch (mode)
+        {
+            case ConsentMode.Decide:
+            case ConsentMode.AgreeLater:
+            case ConsentMode.Review when consent == ConsentState.Declined:
+                Agree(consent, mode);
+                break;
+            case ConsentMode.WithdrawConfirm:
+                _review = ConsentMode.Review; // "Keep my agreement"
+                break;
+            default:
+                _review = null; // "Close"
+                break;
+        }
+        Render();
+    }
+
+    private void OnConsentSecondary(object sender, RoutedEventArgs e)
+    {
+        var consent = _consent.State(_status?.NoticeVersion);
+        switch (CurrentConsentMode(consent))
+        {
+            case ConsentMode.Decide:
+                // "I don't agree": nothing is recorded; the day and the chat stay available.
+                _consent.Decline(_status?.NoticeVersion ?? ConsentNotice.FullVersion, DateTimeOffset.Now);
+                _review = null;
+                break;
+            case ConsentMode.Review when consent == ConsentState.Given:
+                _review = ConsentMode.WithdrawConfirm;
+                break;
+            case ConsentMode.WithdrawConfirm:
+                _consent.Decline(_status?.NoticeVersion ?? ConsentNotice.FullVersion, DateTimeOffset.Now);
+                _review = null;
+                break;
+            default:
+                _review = null; // "Not now" / "Close"
+                break;
+        }
+        Render();
+    }
+
+    private void Agree(ConsentState consent, ConsentMode mode)
+    {
+        // The version agreed to is the notice shown: the full one after a decline, else exactly what is on now.
+        var version = ConsentNotice.VersionFor(NoticeScope(consent, mode));
+        _consent.Accept(version, DateTimeOffset.Now);
+        _review = null;
+        _welcome = true;
+    }
+
+    private void OnOpenPolicy(object sender, RoutedEventArgs e)
+    {
+        var slug = (sender as FrameworkElement)?.Tag as string ?? "privacy";
+        OpenLink($"https://zinwe.io/legal/{slug}");
     }
 
     // ---- Window lifetime ---------------------------------------------------
@@ -498,38 +918,7 @@ public partial class WidgetWindow : Window
     private void HideToBackground()
     {
         _timerStore.Save(_timer);
+        _review = null;
         Hide();
-    }
-
-    // ---- Consent (DPDP): the member's own agreement, once per policy version ----------------
-
-    private void OnConsentCheckChanged(object sender, RoutedEventArgs e) =>
-        ConsentAgree.IsEnabled = ConsentCheck.IsChecked == true;
-
-    private void OnConsentAgree(object sender, RoutedEventArgs e)
-    {
-        if (ConsentCheck.IsChecked != true)
-        {
-            return;
-        }
-        // The service reads this file and reports the agreement on its next heartbeat.
-        _consent.Accept(DateTimeOffset.Now);
-        ConsentPanel.Visibility = Visibility.Collapsed;
-        SetupScroller.Visibility = Visibility.Collapsed;
-        ConnectedContent.Visibility = Visibility.Visible;
-        RenderTimer();
-    }
-
-    private void OnOpenPolicy(object sender, RoutedEventArgs e)
-    {
-        var slug = (sender as FrameworkElement)?.Tag as string ?? "privacy";
-        try
-        {
-            Process.Start(new ProcessStartInfo($"https://zinwe.io/legal/{slug}") { UseShellExecute = true });
-        }
-        catch
-        {
-            // No default browser: nothing to do; the text above already explains the essentials.
-        }
     }
 }

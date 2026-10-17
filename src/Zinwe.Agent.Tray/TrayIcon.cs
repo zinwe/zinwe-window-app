@@ -1,6 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using Zinwe.Agent.Core.Ipc;
+using Zinwe.Agent.Core.Policy;
+using Zinwe.Agent.Core.Work;
+using Zinwe.Agent.Tray.Resources;
 using Zinwe.Agent.Tray.Widget;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
@@ -35,8 +38,14 @@ internal sealed partial class TrayIcon : IDisposable
 
     // What the last toast was about, so clicking it opens the right window.
     private bool _lastToastWasChat;
-    // The Connect form was opened automatically this session (see RefreshAsync).
-    private bool _promptedConnect;
+    // What the widget already opened itself for this sign-in (see RefreshAsync), and the last nudge toast.
+    private readonly HashSet<AutoOpenReason> _autoOpened = [];
+    private DateTime _autoOpenDay = DateTime.Today;
+    private DateTimeOffset _lastNudge = DateTimeOffset.MinValue;
+    private static readonly TimeSpan NudgeInterval = TimeSpan.FromHours(1);
+    private readonly ConsentStore _consent = new();
+    private readonly WorkTimerStore _timerStore = new();
+    private string? _ownerName;
 
     // One-click update: polled every second once the member pressed "Update now", so the tray closes itself as
     // soon as the installer starts (its files are about to be replaced; the new service reopens it).
@@ -53,7 +62,14 @@ internal sealed partial class TrayIcon : IDisposable
         _glyph = CreateGlyph();
         _icon.Icon = _glyph;
         _icon.Text = "Zinwe";
-        _icon.DoubleClick += (_, _) => ShowStatus();
+        // One click opens Zinwe (a double click is two clicks: same result).
+        _icon.MouseClick += (_, e) =>
+        {
+            if (e.Button == Forms.MouseButtons.Left)
+            {
+                ShowStatus();
+            }
+        };
         _icon.BalloonTipClicked += (_, _) =>
         {
             if (_lastToastWasChat)
@@ -67,8 +83,9 @@ internal sealed partial class TrayIcon : IDisposable
         };
 
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Open Zinwe", null, (_, _) => ShowStatus());
-        menu.Items.Add("Open chat", null, (_, _) => ShowChat());
+        menu.Items.Add(Strings.TrayOpen, null, (_, _) => ShowStatus());
+        menu.Items.Add(Strings.TrayOpenChat, null, (_, _) => ShowChat());
+        menu.Items.Add(Strings.TrayRecords, null, (_, _) => ShowRecords());
 #if DEBUG
         menu.Items.Add("Send test chat message (debug)", null, (_, _) => SeedTestChatMessage());
         menu.Items.Add("Send test notice (debug)", null, (_, _) => SeedTestMessage());
@@ -96,7 +113,8 @@ internal sealed partial class TrayIcon : IDisposable
         foreach (var item in items.Where(i => !i.IsChat))
         {
             _lastToastWasChat = false;
-            _icon.ShowBalloonTip(10_000, "Zinwe: " + item.Title, item.Body ?? "", Tone(item));
+            var noticeTitle = item.Title.StartsWith("Zinwe", StringComparison.Ordinal) ? item.Title : "Zinwe: " + item.Title;
+            _icon.ShowBalloonTip(10_000, noticeTitle, item.Body ?? "", Tone(item));
         }
 
         // Chat: only the admin's lines (never the employee's own reply coming back), and not while the
@@ -107,14 +125,19 @@ internal sealed partial class TrayIcon : IDisposable
             return;
         }
         var latest = fromAdmin[0];
-        var title = fromAdmin.Count == 1 ? "New message from your admin" : $"{fromAdmin.Count} new messages from your admin";
-        var text = ChatFeed.Preview(latest);
+        var owner = ConsentText.Owner(_ownerName);
+        var title = fromAdmin.Count == 1
+            ? Strings.Format(Strings.ToastNewMessage, owner)
+            : Strings.Format(Strings.ToastNewMessages, fromAdmin.Count, owner);
+        var text = ChatFeed.Preview(latest, _ownerName);
         if (text.Length > ToastTextMax)
         {
             text = text[..(ToastTextMax - 1)] + "…";
         }
         _lastToastWasChat = true;
-        _icon.ShowBalloonTip(10_000, title, text.Length == 0 ? "Open the chat to read it." : text, Tone(latest));
+        // A break that wasn't approved is a question, not an alarm: an info toast.
+        var tone = ChatFeed.IsBreakNotApproved(latest) ? Forms.ToolTipIcon.Info : Tone(latest);
+        _icon.ShowBalloonTip(10_000, title, text.Length == 0 ? Strings.ToastOpenChat : text, tone);
     }
 
     private static Forms.ToolTipIcon Tone(NotificationItem item) => item.Severity?.ToLowerInvariant() switch
@@ -152,10 +175,12 @@ internal sealed partial class TrayIcon : IDisposable
         var (headline, detail, _) = StatusText.Describe(status);
 
         _headline = headline;
+        _ownerName = status?.OwnerName ?? _ownerName;
         UpdateTooltip();
 
-        // Only interrupt the user for a change that needs action: removal, or a forced update.
-        var needsAction = status?.State is AgentState.Rejected or AgentState.UpdateRequired;
+        // Only interrupt the user for a change they should know about: removal, or a required update. (A refused
+        // Member ID is shown right in the Connect form the member is looking at.)
+        var needsAction = status is { State: AgentState.Rejected, Removed: true } or { State: AgentState.UpdateRequired };
         if (needsAction && _lastState is not null && _lastState != status!.State)
         {
             _lastToastWasChat = false;
@@ -167,19 +192,69 @@ internal sealed partial class TrayIcon : IDisposable
             // A new optional release: tell the member once per version; clicking opens the widget's Update card.
             _toastedUpdate = version;
             _lastToastWasChat = false;
-            _icon.ShowBalloonTip(10_000, $"Update available: Zinwe {version}",
-                "Open Zinwe and choose Update now. It takes about a minute.", Forms.ToolTipIcon.Info);
+            _icon.ShowBalloonTip(10_000, Strings.Format(Strings.ToastUpdateTitle, version),
+                Strings.ToastUpdateBody, Forms.ToolTipIcon.Info);
         }
-        // Not connected yet (fresh install, or the member closed the card): open the Connect form once per
-        // sign-in, so nobody is left with an invisible tray icon and no idea what to do next.
-        if (status?.State == AgentState.NotEnrolled && !_promptedConnect)
-        {
-            _promptedConnect = true;
-            ShowStatus();
-        }
+        OpenIfNeeded(status);
 
         _lastState = status?.State;
         ExitIfInstalling(status);
+    }
+
+    /// <summary>
+    /// Open the widget by itself, once per sign-in for each reason, so nobody is left with a hidden icon: not
+    /// connected yet, the notice not answered (closed, or a silent install), or a work day not started. While the
+    /// notice or the connection is still waiting, a gentle toast repeats every hour.
+    /// </summary>
+    private void OpenIfNeeded(AgentStatus? status)
+    {
+        var consent = _consent.State(status?.NoticeVersion);
+        var workOn = PlanModules.Allows(status?.Entitlements, PlanModules.WorkTime);
+        var today = _timerStore.Load(DateTimeOffset.Now).State;
+        var reason = AutoOpen.Decide(status, consent, today, workOn);
+        if (_autoOpenDay != DateTime.Today)
+        {
+            // A PC left signed in overnight: tomorrow morning counts as a new start of the day.
+            _autoOpenDay = DateTime.Today;
+            _autoOpened.Remove(AutoOpenReason.StartDay);
+        }
+        if (reason == AutoOpenReason.None || (reason == AutoOpenReason.StartDay && DateTime.Now.Hour < 6))
+        {
+            return; // nothing waiting (and no "Good morning" in the middle of the night)
+        }
+        if (_autoOpened.Add(reason))
+        {
+            ShowStatus();
+            if (reason == AutoOpenReason.StartDay)
+            {
+                Toast(Strings.ToastStartDayTitle, Strings.ToastStartDayBody);
+            }
+            else if (reason == AutoOpenReason.Consent)
+            {
+                Toast(Strings.ToastConsentTitle, Strings.ToastConsentBody);
+            }
+            _lastNudge = DateTimeOffset.UtcNow;
+            return;
+        }
+        if (reason is AutoOpenReason.Consent or AutoOpenReason.Connect && DateTimeOffset.UtcNow - _lastNudge >= NudgeInterval
+            && _window?.IsActive != true)
+        {
+            _lastNudge = DateTimeOffset.UtcNow;
+            if (reason == AutoOpenReason.Consent)
+            {
+                Toast(Strings.ToastConsentTitle, Strings.ToastConsentBody);
+            }
+            else
+            {
+                Toast(Strings.ToastConnectTitle, Strings.ToastConnectBody);
+            }
+        }
+    }
+
+    private void Toast(string title, string text)
+    {
+        _lastToastWasChat = false;
+        _icon.ShowBalloonTip(10_000, title, text, Forms.ToolTipIcon.Info);
     }
 
     /// <summary>The widget's "Update now". Null when the service took it on; otherwise why not, for the widget.</summary>
@@ -188,7 +263,7 @@ internal sealed partial class TrayIcon : IDisposable
         var ack = await AgentPipeClient.RequestUpdateAsync(TimeSpan.FromSeconds(5));
         if (ack is null)
         {
-            return "Zinwe isn't running right now. Restart the PC, or ask your admin.";
+            return Strings.ConnectNotRunning;
         }
         if (!ack.Accepted)
         {
@@ -221,6 +296,13 @@ internal sealed partial class TrayIcon : IDisposable
             _window.AllowClose = true;
         }
         System.Windows.Application.Current.Shutdown();
+    }
+
+    /// <summary>Opens the widget at "What Zinwe records on this PC".</summary>
+    public void ShowRecords()
+    {
+        ShowStatus();
+        _window?.ShowRecords();
     }
 
     /// <summary>Opens the widget at its chat (the chat is built into it).</summary>

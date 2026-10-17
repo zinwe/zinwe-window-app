@@ -36,7 +36,13 @@ public sealed record HeartbeatRequest(
     string? EndNote = null,
     IReadOnlyList<WorkEvent>? WorkEvents = null,
     string? ConsentVersion = null,
-    DateTimeOffset? ConsentAt = null);
+    DateTimeOffset? ConsentAt = null,
+    // The member's answer to the monitoring notice ("given" | "declined" + the version). Left out entirely while
+    // they haven't answered, so a backend that doesn't know the field (or doesn't allow null) is unaffected.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ConsentDecision? Consent = null);
+
+/// <summary>Heartbeat <c>consent</c>: <paramref name="State"/> is "given" or "declined"; <paramref name="Version"/> the notice version.</summary>
+public sealed record ConsentDecision(string State, string Version);
 
 /// <summary>
 /// One change the member made in the widget, at its exact time: <paramref name="State"/> is "working" (logged in /
@@ -48,6 +54,10 @@ public sealed record WorkEvent(DateTimeOffset At, string State, string? Reason =
 /// <param name="UpdateRequired">The agent is below a required release (or the minimum) and must be updated.</param>
 /// <param name="DownloadUrl">Public download page (manual fallback when the one-click update can't run).</param>
 /// <param name="Update">A newer release published from the admin app, when there is one.</param>
+/// <param name="ConsentState">The backend's view of the member's consent ("pending" | "given" | "declined"); null = older backend.</param>
+/// <param name="UsbRestore">True once after the owner pressed "Restore USB": put USB back to the policy and send usb.restored.</param>
+/// <param name="CompanyName">The employer's name, when the backend sends it (shown on the consent screen and widget).</param>
+/// <param name="OwnerName">The owner's name, when the backend sends it ("Message Ravi").</param>
 public sealed record HeartbeatResponse(
     long DeviceId,
     DateTimeOffset ServerTime,
@@ -55,7 +65,11 @@ public sealed record HeartbeatResponse(
     int PolicyVersion,
     bool UpdateRequired = false,
     string? DownloadUrl = null,
-    AgentUpdate? Update = null);
+    AgentUpdate? Update = null,
+    string? ConsentState = null,
+    bool? UsbRestore = null,
+    string? CompanyName = null,
+    string? OwnerName = null);
 
 /// <summary>
 /// A newer Windows agent release the PC should install. <paramref name="DownloadUrl"/> is either a path on our own

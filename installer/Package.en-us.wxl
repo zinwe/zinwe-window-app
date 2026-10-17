@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The installer's words (and those of the standard WixUI dialogs that we replace). An employee reads these, often
+  nervous about monitoring and unsure whose "administrator" Windows means: keep them short and plain.
+-->
+<WixLocalization Culture="en-US" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="ProductName" Value="Zinwe (company data protection)" />
+  <String Id="Publisher" Value="SKYTECHNO (Zinwe)" />
+  <String Id="ArpComments" Value="Protects your company's data on this work PC. Open Zinwe from Start to see your work day, chat with your admin and what Zinwe records." />
+  <String Id="ShortcutDescription" Value="Open Zinwe: your work day, chat with your admin, and what Zinwe records on this PC" />
+  <String Id="DowngradeError" Value="A newer version of Zinwe is already installed on this PC. Nothing needs to be done." />
+
+  <String Id="WelcomeDlgTitle" Value="{\WixUI_Font_Bigger}Welcome to Zinwe" />
+  <String Id="WelcomeDlgDescription" Value="Your employer uses Zinwe to protect company data on this work PC. Nothing about you is recorded unless you agree in the Zinwe window.&#13;&#10;&#13;&#10;Windows will ask an administrator's permission next. If it asks for a password you don't have, ask whoever sent you the invite." />
+  <String Id="VerifyReadyDlgInstallTitle" Value="{\WixUI_Font_Title}Ready to install Zinwe" />
+  <String Id="VerifyReadyDlgInstallText" Value="Click Install. Windows will ask for permission to make changes to this PC. If it asks for an administrator's password, ask your admin to type it. It takes about a minute." />
+  <String Id="ExitDialogTitle" Value="{\WixUI_Font_Bigger}Zinwe is installed" />
+  <String Id="ExitDialogDescription" Value="The Zinwe window opens now. Enter your work email and the Member ID from your invite email to connect this PC." />
+</WixLocalization>

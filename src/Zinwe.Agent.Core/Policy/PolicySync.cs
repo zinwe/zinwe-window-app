@@ -63,6 +63,40 @@ public sealed class PolicySync(
     }
 
     /// <summary>
+    /// The owner removed this PC (heartbeat 401): drop the company's rules so nothing stays in force on a PC that
+    /// is no longer managed. USB goes back to allowed, every feature module restarts with everything off (which
+    /// clears the website block list), and policy.json is deleted so a restart can't re-apply it. Never throws.
+    /// </summary>
+    public void ClearForRemoval()
+    {
+        Volatile.Write(ref _current, null);
+        _applyPending = false;
+        usb.Apply(UsbMode.Allow, report: false);
+        ApplyToFeatures(AgentPolicy.Released, CancellationToken.None);
+        try
+        {
+            store.Delete();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(e, "Could not delete the cached policy after this PC was removed");
+        }
+        logger.LogInformation("This PC was removed: company rules cleared (USB allowed, features off, cache deleted)");
+    }
+
+    /// <summary>
+    /// The owner pressed "Restore USB" (heartbeat <c>usb_restore</c>): put USB back to what the policy says, undoing an
+    /// over-limit read-only lockdown, and report <c>usb.restored</c>. Returns false when the setting couldn't be written.
+    /// </summary>
+    public bool RestoreUsb()
+    {
+        var mode = Current?.Usb.Mode ?? UsbMode.Allow;
+        var ok = usb.Restore(mode);
+        logger.LogInformation("USB restore requested by the owner: back to {Mode} ({Result})", mode.ToWire(), ok ? "done" : "failed");
+        return ok;
+    }
+
+    /// <summary>
     /// Call after every successful heartbeat. Returns true when a new policy was fetched and applied.
     /// Network failures are logged and retried on the next heartbeat (the current policy stays in force);
     /// <see cref="DeviceRejectedException"/> propagates so the worker's removal path handles it.

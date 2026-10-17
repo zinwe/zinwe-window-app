@@ -17,6 +17,8 @@ public sealed class NotificationRow
     public Brush ToneBrush { get; init; } = Brushes.Gray;
     /// <summary>True for the employee's own reply (shown right-aligned); false for an admin message.</summary>
     public bool IsMine { get; init; }
+    /// <summary>What a screen reader says for the row: the note, its reason and when.</summary>
+    public string AccessibleText => string.Join(". ", new[] { Title, Body, When }.Where(t => !string.IsNullOrWhiteSpace(t)));
     public Visibility BodyVisibility => string.IsNullOrWhiteSpace(Body) ? Visibility.Collapsed : Visibility.Visible;
     public Visibility TitleVisibility => string.IsNullOrWhiteSpace(Title) ? Visibility.Collapsed : Visibility.Visible;
     public HorizontalAlignment RowAlignment => IsMine ? HorizontalAlignment.Right : HorizontalAlignment.Left;

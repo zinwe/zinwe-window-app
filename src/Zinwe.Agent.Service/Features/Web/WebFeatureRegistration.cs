@@ -34,6 +34,10 @@ public sealed class WebFeatureRegistration : IFeatureRegistration
             sp.GetRequiredService<ILoggerFactory>()));
 
         services.AddScoped<WebProtection>();
+        // "Zinwe blocked {site} — your company's rule" notes in the member's widget (NotificationWriter is the
+        // Program.cs singleton targeting the signed-in member's widget folder). One throttle for the service's life.
+        services.AddScoped<IWebBlockNotices>(sp => new WidgetWebBlockNotices(sp.GetRequiredService<Zinwe.Agent.Core.Messages.NotificationWriter>()));
+        services.AddSingleton<BlockedSiteThrottle>(_ => new BlockedSiteThrottle());
         services.AddScoped<ForegroundUsageSampler>();
         services.AddScoped<WebFeatureModule>();
         services.AddScoped<IFeatureModule>(sp => sp.GetRequiredService<WebFeatureModule>());

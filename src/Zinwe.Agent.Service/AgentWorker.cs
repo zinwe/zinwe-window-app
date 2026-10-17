@@ -13,12 +13,13 @@ namespace Zinwe.Agent.Service;
 /// <summary>
 /// The agent's control loop: enroll once, then heartbeat forever.
 ///
-///   NotEnrolled ──key found──► Enrolling ──ok──► Connected ◄──► Offline (network errors, backoff)
-///        ▲                         │ refused                │ 401
-///        └──── new key ◄──── Rejected ◄─────────────────────┘
+///   NotEnrolled ──ID typed──► Enrolling ──ok──► Connected ◄──► Offline (network errors, backoff)
+///        ▲                         │ refused                │ 401 = removed: company rules cleared
+///        └── new Member ID ◄── Rejected ◄───────────────────┘
 ///
 /// Enforcement hangs off this loop's policy_version, not off its health: the cached policy is applied at startup
-/// before any network call, and losing the backend never switches protection off. After each successful
+/// before any network call, and losing the backend never switches protection off. Only the owner removing the PC
+/// (401) clears the rules, since nothing is left to manage it. After each successful
 /// heartbeat a changed policy_version triggers <see cref="PolicySync.SyncAsync"/> (fetch → cache → apply → event).
 /// </summary>
 internal sealed partial class AgentWorker(
@@ -32,6 +33,8 @@ internal sealed partial class AgentWorker(
     WorkTransitionLog workLog,
     ConsentGate consentGate,
     AgentStateHolder state,
+    RemovalMarker removal,
+    NotificationWriter notifications,
     IOptions<AgentOptions> options,
     ILogger<AgentWorker> logger) : BackgroundService
 {
@@ -42,6 +45,10 @@ internal sealed partial class AgentWorker(
     private static readonly TimeSpan ChatReplyCheckInterval = TimeSpan.FromSeconds(2);
     // How often the heartbeat loop checks the widget's change log (a file-size check).
     private static readonly TimeSpan WorkChangeCheckInterval = TimeSpan.FromSeconds(2);
+    // One enrol call never keeps the member waiting longer than this (no internet = a clear message, not a spinner).
+    private static readonly TimeSpan EnrollTimeout = TimeSpan.FromSeconds(20);
+    // After "can't reach Zinwe", retry the same Member ID this often (sooner when the member presses Connect again).
+    private static readonly TimeSpan EnrollRetryInterval = TimeSpan.FromSeconds(15);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -49,6 +56,13 @@ internal sealed partial class AgentWorker(
 
         // Protection first: the last known policy goes on before we even try the network.
         state.SetPolicy(policy.ApplyCached());
+
+        // Removed by the owner before this restart: keep saying so (not "not set up yet") until a new connect.
+        if (identityStore.Load() is null && removal.Load() is { } removed)
+        {
+            state.SetServerInfo(removed.CompanyName, null, null);
+            state.Set(AgentState.Rejected, message: RemovedMessage(removed.CompanyName), removed: true);
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -64,7 +78,11 @@ internal sealed partial class AgentWorker(
 
             if (identity is null)
             {
-                await Task.Delay(WaitForKeyInterval, stoppingToken);
+                await WaitForCredentialAsync(
+                    state.Current.State == AgentState.NotEnrolled && state.Current.Message is not null
+                        ? EnrollRetryInterval // the last try couldn't reach Zinwe: don't hammer it
+                        : WaitForKeyInterval,
+                    stoppingToken);
                 continue;
             }
             await HeartbeatLoopAsync(identity, stoppingToken);
@@ -77,39 +95,60 @@ internal sealed partial class AgentWorker(
         var credential = keySource.Current();
         if (credential is null)
         {
-            if (state.Current.State != AgentState.Rejected)
+            // Rejected (refused ID, or removed) and "can't reach Zinwe" keep their message until a new attempt.
+            if (state.Current.State is not (AgentState.Rejected or AgentState.NotEnrolled))
             {
-                state.Set(AgentState.NotEnrolled, message: "Waiting for your admin to finish setup.");
+                state.Set(AgentState.NotEnrolled);
             }
             return null;
         }
 
         state.Set(AgentState.Enrolling);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(EnrollTimeout);
         try
         {
             var response = await backend.EnrollAsync(
-                new EnrollRequest(credential.Email, credential.MemberId, MachineInfo.MachineId, MachineInfo.Hostname, MachineInfo.OsVersion, AgentInfo.Version), ct);
+                new EnrollRequest(credential.Email, MemberIdInput.Normalize(credential.MemberId) ?? credential.MemberId,
+                    MachineInfo.MachineId, MachineInfo.Hostname, MachineInfo.OsVersion, AgentInfo.Version), timeout.Token);
 
             var identity = new DeviceIdentity(response.DeviceId, response.DeviceToken, options.Value.BackendBaseUrl, DateTimeOffset.UtcNow);
             identityStore.Save(identity);
             keySource.Consume(credential);
+            removal.Delete();
             LogEnrolled(response.DeviceId, response.ReEnrolled);
             return identity;
         }
         catch (EnrollmentRejectedException e)
         {
             keySource.Consume(credential); // a refused credential will never start working; wait for a new one
-            state.Set(AgentState.Rejected, message: e.Message);
+            state.Set(AgentState.Rejected, message: EnrollmentMessages.ForRefusal(e.Field, e.Message));
             LogEnrollmentRejected(e.Message);
             return null;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
-            state.Set(AgentState.NotEnrolled, message: "Can't reach Zinwe right now. Will retry.");
+            // Keep the credential: it's retried every EnrollRetryInterval, or at once when Connect is pressed again.
+            var busy = e is HttpRequestException { StatusCode: { } code } && ((int)code == 429 || (int)code >= 500);
+            state.Set(AgentState.NotEnrolled, message: busy ? EnrollmentMessages.ServerBusy : EnrollmentMessages.Unreachable);
             LogBackendUnreachable(e.Message);
             return null;
         }
     }
+
+    /// <summary>Waits <paramref name="delay"/>, but returns at once when the member submits a credential in the widget.</summary>
+    private async Task WaitForCredentialAsync(TimeSpan delay, CancellationToken ct)
+    {
+        var mark = keySource.Submissions;
+        var deadline = DateTimeOffset.UtcNow + delay;
+        while (DateTimeOffset.UtcNow < deadline && keySource.Submissions == mark)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
+        }
+    }
+
+    private static string RemovedMessage(string? company) =>
+        $"{(string.IsNullOrWhiteSpace(company) ? "Your company" : company.Trim())} removed this PC from Zinwe. Monitoring has stopped.";
 
     private async Task HeartbeatLoopAsync(DeviceIdentity identity, CancellationToken ct)
     {
@@ -171,11 +210,13 @@ internal sealed partial class AgentWorker(
     {
         var deadline = DateTimeOffset.UtcNow + interval;
         var mark = workLog.Fingerprint();
+        // The member agreeing, declining or withdrawing reaches their employer within seconds too.
+        var consentMark = consentGate.Fingerprint();
         while (DateTimeOffset.UtcNow < deadline)
         {
             var left = deadline - DateTimeOffset.UtcNow;
             await Task.Delay(left < WorkChangeCheckInterval ? left : WorkChangeCheckInterval, ct);
-            if (workLog.Fingerprint() != mark)
+            if (workLog.Fingerprint() != mark || consentGate.Fingerprint() != consentMark)
             {
                 return;
             }
@@ -194,24 +235,30 @@ internal sealed partial class AgentWorker(
                 var ws = work.Read(DateTimeOffset.Now);
                 // Every log in / break / back / log out since the last heartbeat that got through, with exact times.
                 var workEvents = workLog.Pending(DateTimeOffset.Now);
-                // The member's consent from the widget's consent screen (DPDP record), if given. Until it is,
-                // the event queue and metrics store record nothing (ConsentGate); protection rules stay on.
-                var consent = consentGate.Current();
+                // The member's answer on the widget's consent screen (DPDP record): "given" or "declined", with the
+                // notice version. Until they agree, the event queue and metrics store record nothing (ConsentGate);
+                // a decline also makes the backend send this PC a policy with monitoring off.
+                var consent = consentGate.ForHeartbeat();
+                var given = consent is { IsGiven: true };
                 var beat = await backend.HeartbeatAsync(
                     identity.DeviceToken,
                     new HeartbeatRequest(MachineInfo.Hostname, MachineInfo.OsVersion, AgentInfo.Version,
                         ws.State, ws.WorkedSeconds, ws.BreakSeconds, ws.ChangedAt, ws.BreakReason, ws.BreakNote,
-                        ws.EndReason, ws.EndNote, workEvents, consent?.Version, consent?.AcceptedAt), ct);
+                        ws.EndReason, ws.EndNote, workEvents,
+                        // The older fields mean "given": only sent for an agreement.
+                        given ? consent!.Version : null, given ? consent!.At : null,
+                        consent is null ? null : new ConsentDecision(consent.State, consent.Version)), ct);
                 workLog.Acknowledge(workEvents);
+                state.SetServerInfo(beat.CompanyName, beat.OwnerName, beat.ConsentState);
 
                 failures = 0;
                 interval = TimeSpan.FromSeconds(Math.Clamp(beat.NextHeartbeatSeconds, 15, 3600));
                 if (beat.UpdateRequired)
                 {
-                    // Forced upgrade (M12): protection stays on, but the widget pauses the employee's work
-                    // and shows a "download the update" prompt until a newer agent reports in.
+                    // Forced upgrade (M12): protection and the work day carry on; the widget asks the employee to
+                    // install the update until a newer agent reports in.
                     state.Set(AgentState.UpdateRequired, identity.DeviceId, DateTimeOffset.UtcNow,
-                        message: "Update Zinwe to keep working. Protection is still on.",
+                        message: "Zinwe needs an update. Your times are saved and you can keep working.",
                         downloadUrl: beat.DownloadUrl);
                     LogUpdateRequired(beat.DownloadUrl ?? "(none)");
                 }
@@ -228,15 +275,25 @@ internal sealed partial class AgentWorker(
                 {
                     state.SetPolicy(policy.Current);
                 }
+                // The owner pressed "Restore USB" (after an over-limit lockdown): back to the policy's USB rule.
+                if (beat.UsbRestore == true && policy.RestoreUsb())
+                {
+                    NotifyUsbRestored();
+                }
                 await metrics.UploadAsync(identity.DeviceToken, DateTimeOffset.Now, ct); // usage metrics for the dashboard
                 await WaitForNextBeatAsync(interval, ct);
             }
             catch (DeviceRejectedException e)
             {
+                // Removed by the owner: nothing of the company's stays in force on a PC it no longer manages.
+                var company = state.Current.CompanyName;
+                policy.ClearForRemoval();
+                state.SetPolicy(null);
                 identityStore.Delete();
-                state.Set(AgentState.Rejected, message: "This PC was removed from Zinwe. Ask your admin for a new enrollment key.");
+                removal.Save(new RemovalRecord(company, DateTimeOffset.UtcNow));
+                state.Set(AgentState.Rejected, message: RemovedMessage(company), removed: true);
                 LogDeviceRejected(identity.DeviceId, e.Message);
-                return; // back to the enrollment loop, which waits for a fresh key
+                return; // back to the enrollment loop, which waits for a new Member ID
             }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
@@ -246,6 +303,21 @@ internal sealed partial class AgentWorker(
                 LogHeartbeatFailed(failures, (int)backoff.TotalSeconds, e.Message);
                 await Task.Delay(backoff, ct);
             }
+        }
+    }
+
+    /// <summary>Tell the member on their widget that USB works again (best effort).</summary>
+    private void NotifyUsbRestored()
+    {
+        try
+        {
+            notifications.AddNotices([new AgentMessage(-DateTimeOffset.UtcNow.Ticks, "USB drives work again",
+                "Your admin restored USB on this PC. Your company's usual USB rule applies again.",
+                Core.Events.EventSeverity.Info, DateTimeOffset.Now)]);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // the widget note is best effort
         }
     }
 

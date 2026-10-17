@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -31,6 +32,40 @@ public partial class ChatPanel : UserControl
 
     /// <summary>Raised when the chat opens or closes (the window re-measures its height).</summary>
     public event Action? OpenChanged;
+
+    /// <summary>Height of the conversation area: 300 normally, less on a short screen (the widget sets it).</summary>
+    public static readonly DependencyProperty ConversationHeightProperty = DependencyProperty.Register(
+        nameof(ConversationHeight), typeof(double), typeof(ChatPanel), new PropertyMetadata(MaxConversationHeight));
+
+    public const double MaxConversationHeight = 300;
+    public const double MinConversationHeight = 140;
+
+    public double ConversationHeight
+    {
+        get => (double)GetValue(ConversationHeightProperty);
+        set => SetValue(ConversationHeightProperty, value);
+    }
+
+    private string? _ownerName;
+
+    /// <summary>The owner's name when the backend sends it ("Message Ravi", "Ravi: …").</summary>
+    public string? OwnerName
+    {
+        get => _ownerName;
+        set
+        {
+            if (value == _ownerName)
+            {
+                return;
+            }
+            _ownerName = value;
+            _signature = "";
+            if (_store is not null)
+            {
+                Render(_store.Load(), forceScroll: false);
+            }
+        }
+    }
 
     public ChatPanel()
     {
@@ -125,9 +160,17 @@ public partial class ChatPanel : UserControl
         UnreadCount.Text = unread > 9 ? "9+" : unread.ToString();
         UnreadBadge.Visibility = unread > 0 ? Visibility.Visible : Visibility.Collapsed;
         var latest = ChatFeed.Latest(file.Items);
+        var owner = string.IsNullOrWhiteSpace(_ownerName) ? "Admin" : _ownerName.Trim();
         Preview.Text = latest is null
-            ? "Chat with your admin"
-            : $"{(latest.IsFromAdmin ? "Admin" : "You")}: {ChatFeed.Preview(latest)}";
+            ? string.IsNullOrWhiteSpace(_ownerName) ? "Chat with your admin" : $"Chat with {owner}"
+            : $"{(latest.IsFromAdmin ? owner : "You")}: {ChatFeed.Preview(latest, _ownerName)}";
+        // Screen readers hear the unread count with the bar's name.
+        AutomationProperties.SetName(HeaderButton, unread switch
+        {
+            0 => "Messages",
+            1 => "Messages, 1 unread",
+            _ => $"Messages, {unread} unread",
+        });
         Preview.Foreground = (System.Windows.Media.Brush)FindResource(unread > 0 ? "Zinwe.Ink" : "Zinwe.Muted");
         Preview.FontWeight = unread > 0 ? FontWeights.SemiBold : FontWeights.Normal;
 
@@ -135,7 +178,7 @@ public partial class ChatPanel : UserControl
         {
             return; // the conversation renders (and counts as read) only while open
         }
-        var rows = ChatFeed.Build(file.Items, _outbox.Pending());
+        var rows = ChatFeed.Build(file.Items, _outbox.Pending(), owner: _ownerName);
 
         // Re-bind only when something visible changed, so the list doesn't flicker or lose its scroll position.
         var signature = string.Join("|", rows.Select(r => r.Key + "@" + r.Stamp));
@@ -155,6 +198,9 @@ public partial class ChatPanel : UserControl
             _store?.MarkChatRead();
         }
     }
+
+    /// <summary>"Message Ravi" under a break that wasn't approved: straight to the composer.</summary>
+    private void OnReply(object sender, RoutedEventArgs e) => Input.Focus();
 
     private void ScrollToEnd() =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () => Scroller.ScrollToEnd());

@@ -40,6 +40,15 @@ public sealed class PolicyStore(string dataDirectory)
         File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(policy, PolicyJsonContext.Default.AgentPolicy));
         File.Move(temp, FilePath, overwrite: true); // atomic replace: a crash mid-write never leaves half a policy
     }
+
+    /// <summary>Forget the cached policy (the PC was removed: nothing may be re-applied at the next start).</summary>
+    public void Delete()
+    {
+        if (File.Exists(FilePath))
+        {
+            File.Delete(FilePath);
+        }
+    }
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower, WriteIndented = true)]

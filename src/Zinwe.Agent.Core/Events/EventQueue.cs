@@ -60,10 +60,19 @@ public sealed class EventQueue
     /// <see cref="Capacity"/> (callers log a warning when this is non-zero). A repeated id is ignored, and
     /// nothing is stored while recording is paused (no consent yet).
     /// </summary>
-    public int Enqueue(AgentEvent evt)
+    public int Enqueue(AgentEvent evt) => Enqueue(evt, always: false);
+
+    /// <summary>
+    /// Like <see cref="Enqueue(AgentEvent)"/>, but stored even while recording is paused: only for confirmations of
+    /// the owner's own action that hold nothing about the member (e.g. <c>usb.restored</c>), which the dashboard
+    /// needs to clear its state.
+    /// </summary>
+    public int EnqueueAlways(AgentEvent evt) => Enqueue(evt, always: true);
+
+    private int Enqueue(AgentEvent evt, bool always)
     {
         evt.Validate();
-        if (_recordingAllowed is { } allowed && !allowed())
+        if (!always && _recordingAllowed is { } allowed && !allowed())
         {
             return 0;
         }

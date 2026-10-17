@@ -1,0 +1,145 @@
+using System.Globalization;
+using System.Resources;
+
+namespace Zinwe.Agent.Tray.Resources;
+
+/// <summary>
+/// The widget's employee-facing text, from Strings.resx (and, later, Strings.hi.resx etc. for the member's Windows
+/// display language). One property per entry; <see cref="Format"/> fills the {0}/{1} placeholders.
+/// </summary>
+public static class Strings
+{
+    private static readonly ResourceManager Manager = new("Zinwe.Agent.Tray.Resources.Strings", typeof(Strings).Assembly);
+
+    /// <summary>The text for <paramref name="name"/>, or the name itself if it is missing (never throws).</summary>
+    public static string Get(string name) => Manager.GetString(name, CultureInfo.CurrentUICulture) ?? name;
+
+    public static string Format(string text, params object?[] args) => string.Format(CultureInfo.CurrentCulture, text, args);
+
+    public static string YourEmployer => Get(nameof(YourEmployer));
+    public static string YourEmployerStart => Get(nameof(YourEmployerStart));
+    public static string YourAdmin => Get(nameof(YourAdmin));
+    public static string YourAdminStart => Get(nameof(YourAdminStart));
+    public static string ConsentTitle => Get(nameof(ConsentTitle));
+    public static string ConsentIntro => Get(nameof(ConsentIntro));
+    public static string ConsentIntroReview => Get(nameof(ConsentIntroReview));
+    public static string ConsentSeesHeading => Get(nameof(ConsentSeesHeading));
+    public static string ConsentSeesApps => Get(nameof(ConsentSeesApps));
+    public static string ConsentSeesWebsites => Get(nameof(ConsentSeesWebsites));
+    public static string ConsentSeesTransfers => Get(nameof(ConsentSeesTransfers));
+    public static string ConsentSeesDetails => Get(nameof(ConsentSeesDetails));
+    public static string ConsentSeesRemote => Get(nameof(ConsentSeesRemote));
+    public static string ConsentSeesWork => Get(nameof(ConsentSeesWork));
+    public static string ConsentSeesNothing => Get(nameof(ConsentSeesNothing));
+    public static string ConsentSeesMore => Get(nameof(ConsentSeesMore));
+    public static string ConsentNeverHeading => Get(nameof(ConsentNeverHeading));
+    public static string ConsentNeverKeys => Get(nameof(ConsentNeverKeys));
+    public static string ConsentNeverScreen => Get(nameof(ConsentNeverScreen));
+    public static string ConsentNeverContents => Get(nameof(ConsentNeverContents));
+    public static string ConsentNeverPersonal => Get(nameof(ConsentNeverPersonal));
+    public static string ConsentDeclineHeading => Get(nameof(ConsentDeclineHeading));
+    public static string ConsentDeclineBody => Get(nameof(ConsentDeclineBody));
+    public static string ConsentDeclineWork => Get(nameof(ConsentDeclineWork));
+    public static string ConsentDeclineChat => Get(nameof(ConsentDeclineChat));
+    public static string ConsentSmallPrint => Get(nameof(ConsentSmallPrint));
+    public static string ConsentPrivacyPolicy => Get(nameof(ConsentPrivacyPolicy));
+    public static string ConsentAcceptableUse => Get(nameof(ConsentAcceptableUse));
+    public static string ConsentDecideFooter => Get(nameof(ConsentDecideFooter));
+    public static string ConsentAgree => Get(nameof(ConsentAgree));
+    public static string ConsentDecline => Get(nameof(ConsentDecline));
+    public static string ConsentNotNow => Get(nameof(ConsentNotNow));
+    public static string ConsentAgreedOn => Get(nameof(ConsentAgreedOn));
+    public static string ConsentDeclinedOn => Get(nameof(ConsentDeclinedOn));
+    public static string ConsentWithdraw => Get(nameof(ConsentWithdraw));
+    public static string ConsentAgreeNow => Get(nameof(ConsentAgreeNow));
+    public static string ConsentClose => Get(nameof(ConsentClose));
+    public static string ConsentWithdrawConfirm => Get(nameof(ConsentWithdrawConfirm));
+    public static string ConsentWithdrawYes => Get(nameof(ConsentWithdrawYes));
+    public static string ConsentWithdrawNo => Get(nameof(ConsentWithdrawNo));
+    public static string RecordsLink => Get(nameof(RecordsLink));
+    public static string RecordsTitle => Get(nameof(RecordsTitle));
+    public static string DeclinedBannerTitle => Get(nameof(DeclinedBannerTitle));
+    public static string DeclinedBannerBody => Get(nameof(DeclinedBannerBody));
+    public static string DeclinedBannerButton => Get(nameof(DeclinedBannerButton));
+    public static string WelcomeTitle => Get(nameof(WelcomeTitle));
+    public static string WelcomeBodyWork => Get(nameof(WelcomeBodyWork));
+    public static string WelcomeBodyNoWork => Get(nameof(WelcomeBodyNoWork));
+    public static string WelcomeDismiss => Get(nameof(WelcomeDismiss));
+    public static string NotRunningTitle => Get(nameof(NotRunningTitle));
+    public static string NotRunningBody => Get(nameof(NotRunningBody));
+    public static string NotRunningRetry => Get(nameof(NotRunningRetry));
+    public static string RemovedTitle => Get(nameof(RemovedTitle));
+    public static string RemovedBody => Get(nameof(RemovedBody));
+    public static string RemovedConnectTitle => Get(nameof(RemovedConnectTitle));
+    public static string ConnectTitle => Get(nameof(ConnectTitle));
+    public static string ConnectIntro => Get(nameof(ConnectIntro));
+    public static string ConnectEmailLabel => Get(nameof(ConnectEmailLabel));
+    public static string ConnectEmailPlaceholder => Get(nameof(ConnectEmailPlaceholder));
+    public static string ConnectIdLabel => Get(nameof(ConnectIdLabel));
+    public static string ConnectIdPlaceholder => Get(nameof(ConnectIdPlaceholder));
+    public static string ConnectHint => Get(nameof(ConnectHint));
+    public static string ConnectButton => Get(nameof(ConnectButton));
+    public static string Connecting => Get(nameof(Connecting));
+    public static string ConnectStillTrying => Get(nameof(ConnectStillTrying));
+    public static string ConnectNotRunning => Get(nameof(ConnectNotRunning));
+    public static string ConnectRefusedFallback => Get(nameof(ConnectRefusedFallback));
+    public static string StatusNotRunning => Get(nameof(StatusNotRunning));
+    public static string StatusNotRunningDetail => Get(nameof(StatusNotRunningDetail));
+    public static string StatusConnectedTo => Get(nameof(StatusConnectedTo));
+    public static string StatusConnected => Get(nameof(StatusConnected));
+    public static string StatusConnectedDetail => Get(nameof(StatusConnectedDetail));
+    public static string StatusOffline => Get(nameof(StatusOffline));
+    public static string StatusOfflineShort => Get(nameof(StatusOfflineShort));
+    public static string StatusOfflineDetail => Get(nameof(StatusOfflineDetail));
+    public static string StatusConnecting => Get(nameof(StatusConnecting));
+    public static string StatusConnectingDetail => Get(nameof(StatusConnectingDetail));
+    public static string StatusNotConnectedYet => Get(nameof(StatusNotConnectedYet));
+    public static string StatusNotConnectedYetDetail => Get(nameof(StatusNotConnectedYetDetail));
+    public static string StatusRemovedFrom => Get(nameof(StatusRemovedFrom));
+    public static string StatusRemoved => Get(nameof(StatusRemoved));
+    public static string StatusRemovedDetail => Get(nameof(StatusRemovedDetail));
+    public static string StatusNotConnected => Get(nameof(StatusNotConnected));
+    public static string StatusUpdate => Get(nameof(StatusUpdate));
+    public static string StatusUpdateShort => Get(nameof(StatusUpdateShort));
+    public static string StatusUpdateDetail => Get(nameof(StatusUpdateDetail));
+    public static string StatusMonitoringOff => Get(nameof(StatusMonitoringOff));
+    public static string UpdateRequiredTitle => Get(nameof(UpdateRequiredTitle));
+    public static string UpdateRequiredBody => Get(nameof(UpdateRequiredBody));
+    public static string UpdateOptionalTitle => Get(nameof(UpdateOptionalTitle));
+    public static string UpdateOptionalBody => Get(nameof(UpdateOptionalBody));
+    public static string UpdateVersion => Get(nameof(UpdateVersion));
+    public static string UpdateNewVersion => Get(nameof(UpdateNewVersion));
+    public static string UpdateNow => Get(nameof(UpdateNow));
+    public static string UpdateDownloading => Get(nameof(UpdateDownloading));
+    public static string UpdateDownloadingDetail => Get(nameof(UpdateDownloadingDetail));
+    public static string UpdateInstalling => Get(nameof(UpdateInstalling));
+    public static string UpdateInstallingDetail => Get(nameof(UpdateInstallingDetail));
+    public static string UpdateDownloaded => Get(nameof(UpdateDownloaded));
+    public static string UpdateTryAgain => Get(nameof(UpdateTryAgain));
+    public static string UpdateFailed => Get(nameof(UpdateFailed));
+    public static string UpdatePreparing => Get(nameof(UpdatePreparing));
+    public static string UpdateManual => Get(nameof(UpdateManual));
+    public static string UpdateWhatsNew => Get(nameof(UpdateWhatsNew));
+    public static string WorkTimeToday => Get(nameof(WorkTimeToday));
+    public static string BreakTimeNow => Get(nameof(BreakTimeNow));
+    public static string DurationHoursMinutes => Get(nameof(DurationHoursMinutes));
+    public static string DurationMinutes => Get(nameof(DurationMinutes));
+    public static string TrayOpen => Get(nameof(TrayOpen));
+    public static string TrayOpenChat => Get(nameof(TrayOpenChat));
+    public static string TrayRecords => Get(nameof(TrayRecords));
+    public static string ToastNewMessage => Get(nameof(ToastNewMessage));
+    public static string ToastNewMessages => Get(nameof(ToastNewMessages));
+    public static string ToastOpenChat => Get(nameof(ToastOpenChat));
+    public static string ToastConsentTitle => Get(nameof(ToastConsentTitle));
+    public static string ToastConsentBody => Get(nameof(ToastConsentBody));
+    public static string ToastConnectTitle => Get(nameof(ToastConnectTitle));
+    public static string ToastConnectBody => Get(nameof(ToastConnectBody));
+    public static string ToastStartDayTitle => Get(nameof(ToastStartDayTitle));
+    public static string ToastStartDayBody => Get(nameof(ToastStartDayBody));
+    public static string ToastUpdateTitle => Get(nameof(ToastUpdateTitle));
+    public static string ToastUpdateBody => Get(nameof(ToastUpdateBody));
+    public static string ChatBreakTitle => Get(nameof(ChatBreakTitle));
+    public static string ChatBreakNote => Get(nameof(ChatBreakNote));
+    public static string ChatBreakNoNote => Get(nameof(ChatBreakNoNote));
+    public static string ChatMessageOwner => Get(nameof(ChatMessageOwner));
+}

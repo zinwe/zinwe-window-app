@@ -1,14 +1,16 @@
 using Zinwe.Agent.Core.Ipc;
+using Zinwe.Agent.Tray.Resources;
 
 namespace Zinwe.Agent.Tray.Widget;
 
 /// <summary>
 /// What the widget's update card shows, from the service's status. Pure, so it's unit-tested.
 /// <list type="bullet">
-/// <item>Required release: an orange card at the top; log in / break / log out stay paused until updated.</item>
-/// <item>Optional release: a quiet card; work carries on.</item>
-/// <item>The button runs the one-click update and then reports its progress; "Download manually" is the
-///       fallback when no installer was published or the update failed.</item>
+/// <item>Required release: an orange card at the top. The work day is NOT paused: Log in, breaks and Log out keep
+///       working and the times are saved; the card just asks for the one-click update.</item>
+/// <item>Optional release: a quiet card.</item>
+/// <item>The button runs the one-click update and then reports its progress. When Zinwe hasn't published an
+///       installer yet, the card says there's nothing to do; a download page is offered only when there is one.</item>
 /// </list>
 /// </summary>
 public sealed record UpdateView(
@@ -39,26 +41,29 @@ public sealed record UpdateView(
             return Hidden;
         }
 
-        var version = string.IsNullOrWhiteSpace(status.UpdateVersion) ? "A new version of Zinwe" : $"Zinwe {status.UpdateVersion}";
-        var title = required ? "Update Zinwe to keep working" : "Update available";
-        var body = required
-            ? $"{version} is required by your company. Log in, breaks and log out are paused until you update. Protection stays on."
-            : $"{version} is ready. It installs in about a minute and Zinwe reopens by itself.";
-        var notes = string.IsNullOrWhiteSpace(status.UpdateNotes) ? null : status.UpdateNotes.Trim();
+        var version = string.IsNullOrWhiteSpace(status.UpdateVersion)
+            ? Strings.UpdateNewVersion
+            : Strings.Format(Strings.UpdateVersion, status.UpdateVersion);
+        var title = required ? Strings.UpdateRequiredTitle : Strings.UpdateOptionalTitle;
         var installable = status.UpdateInstallable;
+        var body = !installable && required
+            ? Strings.UpdatePreparing
+            : Strings.Format(required ? Strings.UpdateRequiredBody : Strings.UpdateOptionalBody, version);
+        var notes = string.IsNullOrWhiteSpace(status.UpdateNotes) ? null : status.UpdateNotes.Trim();
+        var hasPage = !string.IsNullOrWhiteSpace(status.DownloadUrl);
 
         return status.UpdateStage switch
         {
-            UpdateStages.Downloading => new(true, required, title, body, notes, "Downloading…", true, false, true,
-                status.UpdateMessage ?? "Downloading the update…", false, false),
-            UpdateStages.Installing => new(true, required, title, body, notes, "Installing…", true, false, true,
-                status.UpdateMessage ?? "Installing. Zinwe will reopen in a moment.", false, false),
-            UpdateStages.Ready => new(true, required, title, body, notes, "Downloaded", true, false, false,
+            UpdateStages.Downloading => new(true, required, title, body, notes, Strings.UpdateDownloading, true, false, true,
+                status.UpdateMessage ?? Strings.UpdateDownloadingDetail, false, false),
+            UpdateStages.Installing => new(true, required, title, body, notes, Strings.UpdateInstalling, true, false, true,
+                status.UpdateMessage ?? Strings.UpdateInstallingDetail, false, false),
+            UpdateStages.Ready => new(true, required, title, body, notes, Strings.UpdateDownloaded, true, false, false,
                 status.UpdateMessage, false, false),
-            UpdateStages.Failed => new(true, required, title, body, notes, "Try again", installable, installable, false,
-                status.UpdateMessage ?? "The update didn't work.", true, true),
-            _ => new(true, required, title, body, notes, "Update now", installable, installable, false,
-                installable ? null : "Your admin hasn't published the installer here yet.", false, !installable),
+            UpdateStages.Failed => new(true, required, title, body, notes, Strings.UpdateTryAgain, installable, installable, false,
+                status.UpdateMessage ?? Strings.UpdateFailed, true, hasPage),
+            _ => new(true, required, title, body, notes, Strings.UpdateNow, installable, installable, false,
+                null, false, !installable && hasPage),
         };
     }
 }

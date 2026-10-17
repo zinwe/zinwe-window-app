@@ -9,7 +9,11 @@ using Zinwe.Agent.Core.Policy;
 namespace Zinwe.Agent.Core.Backend;
 
 /// <summary>The member credential was refused (unknown email/id, or the account is disabled).</summary>
-public sealed class EnrollmentRejectedException(string message) : Exception(message);
+/// <param name="field">The response field that carried the refusal ("member_id", "email", "non_field_errors", "detail").</param>
+public sealed class EnrollmentRejectedException(string message, string field = "") : Exception(message)
+{
+    public string Field { get; } = field;
+}
 
 /// <summary>The backend no longer recognises this device's token (removed by the owner, or reinstalled elsewhere).</summary>
 public sealed class DeviceRejectedException(string message) : Exception(message);
@@ -60,7 +64,7 @@ public sealed class BackendClient
             // A bad member credential (or disabled account) is the admin's problem -> Rejected, wait for a fix.
             // Any other 400 is an agent/backend contract bug -> retryable, logged.
             throw field is "email" or "member_id" or "non_field_errors" or "detail"
-                ? new EnrollmentRejectedException(message)
+                ? new EnrollmentRejectedException(message, field)
                 : new HttpRequestException($"Enrollment request rejected ({field}: {message}).");
         }
         response.EnsureSuccessStatusCode();

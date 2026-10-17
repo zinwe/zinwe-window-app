@@ -110,8 +110,23 @@ public sealed record AgentPolicy(
     // Plan (2026-10-15): what the owner's plan switches on (see PlanModules) and its PC limit (0 = none).
     // Optional/trailing: an older backend omits them, and then nothing is hidden.
     IReadOnlyList<string>? Entitlements = null,
-    int? MaxDevices = null)
+    int? MaxDevices = null,
+    // The employer's name and its owner, when the backend sends them (consent screen, widget header). Optional.
+    string? CompanyName = null,
+    string? OwnerName = null)
 {
+    /// <summary>
+    /// What a PC enforces once it no longer belongs to a company (removed by the owner): USB allowed and every
+    /// feature off, so no blocklist, read-only USB or blocked tool is left behind.
+    /// </summary>
+    public static AgentPolicy Released { get; } = new(
+        0,
+        new UsbPolicy(UsbMode.Allow),
+        new WebPolicy(false, WebMode.Monitor, [], []),
+        new DataTransferPolicy(false, long.MaxValue, long.MaxValue, long.MaxValue, false, false),
+        new RemoteSoftwarePolicy(false, false, [], []),
+        Entitlements: []);
+
     /// <summary>
     /// The serializer fills missing members with null and accepts integers for enums, so check the shape
     /// before acting on it. A malformed policy is never applied. Only <see cref="Usb"/> is required; the

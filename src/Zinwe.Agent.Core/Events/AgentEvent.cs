@@ -13,6 +13,8 @@ public static partial class EventTypes
     public const string UsbConnected = "usb.connected";
     public const string UsbBlocked = "usb.blocked";
     public const string UsbPolicyApplied = "usb.policy_applied";
+    /// <summary>The owner pressed "Restore USB" and this PC put USB back to the policy.</summary>
+    public const string UsbRestored = "usb.restored";
 
     /// <summary>Same rule as the backend: dotted lowercase segments, at least two.</summary>
     public static bool IsValid(string? type) => type is not null && Pattern().IsMatch(type);
@@ -112,6 +114,11 @@ public static class AgentEvents
 
     public static AgentEvent UsbPolicyApplied(UsbMode mode, bool dryRun, DateTimeOffset? at = null) =>
         AgentEvent.Create(EventTypes.UsbPolicyApplied, EventSeverity.Info,
+            new JsonObject { ["mode"] = mode.ToWire(), ["dry_run"] = dryRun }, at);
+
+    /// <summary>USB put back to the policy's <paramref name="mode"/> after the owner pressed "Restore USB".</summary>
+    public static AgentEvent UsbRestored(UsbMode mode, bool dryRun, DateTimeOffset? at = null) =>
+        AgentEvent.Create(EventTypes.UsbRestored, EventSeverity.Info,
             new JsonObject { ["mode"] = mode.ToWire(), ["dry_run"] = dryRun }, at);
 
     private static void AddIfPresent(JsonObject data, string name, string? value)

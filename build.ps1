@@ -109,6 +109,12 @@ if (-not $SkipInstaller) {
         dotnet build installer\Zinwe.Agent.Installer.wixproj -c Release -p:ProductVersion=$Version -o artifacts\installer
     }
     $msi = Join-Path $PSScriptRoot "artifacts\installer\ZinweAgent.msi"
+    # The installer's texts (Package.en-us.wxl) make WiX write the MSI into a culture folder: keep the old path.
+    $cultureMsi = Join-Path $PSScriptRoot "artifacts\installer\en-US\ZinweAgent.msi"
+    if (Test-Path $cultureMsi) {
+        Move-Item $cultureMsi $msi -Force
+        Remove-Item (Join-Path $PSScriptRoot "artifacts\installer\en-US") -Recurse -Force
+    }
     if ($signingCert) {
         Write-Host "==> Sign MSI" -ForegroundColor Cyan
         Invoke-Sign @($msi)

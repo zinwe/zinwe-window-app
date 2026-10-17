@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Employee-facing text of the Zinwe widget and tray, in one place so other languages (Hindi first) can be added as
+  Strings.hi.resx etc. without touching code. Edit this file and Strings.cs together: every <data> name has a
+  property of the same name in Strings.cs. {0}, {1} are filled in by the code (see each comment).
+-->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="YourEmployer" xml:space="preserve">
+    <value>your employer</value>
+    <comment>Used mid-sentence when the backend sends no company name.</comment>
+  </data>
+  <data name="YourEmployerStart" xml:space="preserve">
+    <value>Your employer</value>
+    <comment>Start of a sentence, no company name.</comment>
+  </data>
+  <data name="YourAdmin" xml:space="preserve">
+    <value>your admin</value>
+    <comment>When the owner's name isn't known.</comment>
+  </data>
+  <data name="YourAdminStart" xml:space="preserve">
+    <value>Your admin</value>
+  </data>
+  <data name="ConsentTitle" xml:space="preserve">
+    <value>Before Zinwe starts on this PC</value>
+  </data>
+  <data name="ConsentIntro" xml:space="preserve">
+    <value>{0} uses Zinwe to protect company data on this work PC. Here is exactly what it can see. Until you choose, {1} only sees that this PC is connected and online — nothing about what you do.</value>
+    <comment>{0} employer (sentence start), {1} employer (mid-sentence)</comment>
+  </data>
+  <data name="ConsentIntroReview" xml:space="preserve">
+    <value>{0} uses Zinwe to protect company data on this work PC. Here is exactly what it can see.</value>
+    <comment>{0} employer (sentence start)</comment>
+  </data>
+  <data name="ConsentSeesHeading" xml:space="preserve">
+    <value>What {0} can see</value>
+    <comment>{0} employer</comment>
+  </data>
+  <data name="ConsentSeesApps" xml:space="preserve">
+    <value>Which apps you use and for how long</value>
+  </data>
+  <data name="ConsentSeesWebsites" xml:space="preserve">
+    <value>Website names you visit (never full addresses or what you search for)</value>
+  </data>
+  <data name="ConsentSeesTransfers" xml:space="preserve">
+    <value>Copies to USB drives, shared folders and email attachments: how big they are, not what's in them</value>
+  </data>
+  <data name="ConsentSeesDetails" xml:space="preserve">
+    <value>The names of the files you copy, and the subjects of emails with attachments ({0} switched this on)</value>
+    <comment>{0} employer</comment>
+  </data>
+  <data name="ConsentSeesRemote" xml:space="preserve">
+    <value>Remote-access tools (like AnyDesk) and newly installed software</value>
+  </data>
+  <data name="ConsentSeesWork" xml:space="preserve">
+    <value>When you log in, take breaks (with the reason you pick) and log out</value>
+  </data>
+  <data name="ConsentSeesNothing" xml:space="preserve">
+    <value>Nothing about your activity is switched on right now.</value>
+  </data>
+  <data name="ConsentSeesMore" xml:space="preserve">
+    <value>If {0} switches on more, Zinwe asks you again first.</value>
+    <comment>{0} employer</comment>
+  </data>
+  <data name="ConsentNeverHeading" xml:space="preserve">
+    <value>What Zinwe never records</value>
+  </data>
+  <data name="ConsentNeverKeys" xml:space="preserve">
+    <value>Keystrokes or anything you type</value>
+  </data>
+  <data name="ConsentNeverScreen" xml:space="preserve">
+    <value>Screenshots, screen or camera recording</value>
+  </data>
+  <data name="ConsentNeverContents" xml:space="preserve">
+    <value>The contents of your files, emails or messages</value>
+  </data>
+  <data name="ConsentNeverPersonal" xml:space="preserve">
+    <value>Anything on personal devices</value>
+  </data>
+  <data name="ConsentDeclineHeading" xml:space="preserve">
+    <value>If you don't agree</value>
+  </data>
+  <data name="ConsentDeclineBody" xml:space="preserve">
+    <value>Nothing about what you do is recorded on this PC, and your company's monitoring stays off here. {0} will see that you didn't agree. You can change your mind any time in the Zinwe window.</value>
+    <comment>{0} employer (sentence start)</comment>
+  </data>
+  <data name="ConsentDeclineWork" xml:space="preserve">
+    <value>You can still log in, take breaks, log out and message {0}. Those times are shared only when you press the buttons.</value>
+    <comment>{0} owner</comment>
+  </data>
+  <data name="ConsentDeclineChat" xml:space="preserve">
+    <value>You can still message {0} in Zinwe.</value>
+    <comment>{0} owner</comment>
+  </data>
+  <data name="ConsentSmallPrint" xml:space="preserve">
+    <value>Only {0}'s Zinwe admins see this. It's kept while your company uses Zinwe, and your employer can ask Zinwe to delete it. To see, correct or erase your data, ask your employer. If you think Zinwe is being misused, write to hello@zinwe.io.</value>
+    <comment>{0} employer</comment>
+  </data>
+  <data name="ConsentPrivacyPolicy" xml:space="preserve">
+    <value>Privacy Policy</value>
+  </data>
+  <data name="ConsentAcceptableUse" xml:space="preserve">
+    <value>Acceptable Use Policy</value>
+  </data>
+  <data name="ConsentDecideFooter" xml:space="preserve">
+    <value>Choosing “I agree” is your consent to the above. You can withdraw it later.</value>
+  </data>
+  <data name="ConsentAgree" xml:space="preserve">
+    <value>I agree</value>
+  </data>
+  <data name="ConsentDecline" xml:space="preserve">
+    <value>I don't agree</value>
+  </data>
+  <data name="ConsentNotNow" xml:space="preserve">
+    <value>Not now</value>
+  </data>
+  <data name="ConsentAgreedOn" xml:space="preserve">
+    <value>You agreed on {0}. You can withdraw any time.</value>
+    <comment>{0} date</comment>
+  </data>
+  <data name="ConsentDeclinedOn" xml:space="preserve">
+    <value>You chose not to agree on {0}. Monitoring is off on this PC.</value>
+    <comment>{0} date</comment>
+  </data>
+  <data name="ConsentWithdraw" xml:space="preserve">
+    <value>Withdraw</value>
+    <comment>Button; the line above says what it withdraws</comment>
+  </data>
+  <data name="ConsentAgreeNow" xml:space="preserve">
+    <value>I agree now</value>
+  </data>
+  <data name="ConsentClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ConsentWithdrawConfirm" xml:space="preserve">
+    <value>If you withdraw, Zinwe stops recording on this PC and {0} sees that you withdrew. Log in, breaks and the chat keep working.</value>
+    <comment>{0} employer (mid-sentence)</comment>
+  </data>
+  <data name="ConsentWithdrawYes" xml:space="preserve">
+    <value>Withdraw</value>
+  </data>
+  <data name="ConsentWithdrawNo" xml:space="preserve">
+    <value>Keep my agreement</value>
+  </data>
+  <data name="RecordsLink" xml:space="preserve">
+    <value>What Zinwe records on this PC</value>
+  </data>
+  <data name="RecordsTitle" xml:space="preserve">
+    <value>What Zinwe records on this PC</value>
+  </data>
+  <data name="DeclinedBannerTitle" xml:space="preserve">
+    <value>Monitoring is off — you declined</value>
+  </data>
+  <data name="DeclinedBannerBody" xml:space="preserve">
+    <value>Nothing about what you do is recorded on this PC. You can agree any time.</value>
+  </data>
+  <data name="DeclinedBannerButton" xml:space="preserve">
+    <value>Read and agree</value>
+  </data>
+  <data name="WelcomeTitle" xml:space="preserve">
+    <value>You're all set</value>
+  </data>
+  <data name="WelcomeBodyWork" xml:space="preserve">
+    <value>Each morning, open Zinwe (click the Z in the taskbar corner, or find Zinwe in Start) and press Log in.</value>
+  </data>
+  <data name="WelcomeBodyNoWork" xml:space="preserve">
+    <value>Zinwe now runs quietly. Find it any time in Start, or click the Z in the taskbar corner.</value>
+  </data>
+  <data name="WelcomeDismiss" xml:space="preserve">
+    <value>Got it</value>
+  </data>
+  <data name="NotRunningTitle" xml:space="preserve">
+    <value>Zinwe isn't running</value>
+  </data>
+  <data name="NotRunningBody" xml:space="preserve">
+    <value>Restart your PC — Zinwe starts by itself. If you still see this, tell {0}. Your log in and break times are kept on this PC meanwhile.</value>
+    <comment>{0} owner</comment>
+  </data>
+  <data name="NotRunningRetry" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="RemovedTitle" xml:space="preserve">
+    <value>{0} removed this PC from Zinwe</value>
+    <comment>{0} employer (sentence start)</comment>
+  </data>
+  <data name="RemovedBody" xml:space="preserve">
+    <value>Monitoring has stopped and your company's rules no longer apply on this PC. If you were sent a new Member ID, connect again below.</value>
+  </data>
+  <data name="RemovedConnectTitle" xml:space="preserve">
+    <value>Connect with a new Member ID</value>
+  </data>
+  <data name="ConnectTitle" xml:space="preserve">
+    <value>Connect this PC</value>
+  </data>
+  <data name="ConnectIntro" xml:space="preserve">
+    <value>Enter your work email and the Member ID from the invite email your admin sent you.</value>
+  </data>
+  <data name="ConnectEmailLabel" xml:space="preserve">
+    <value>Work email</value>
+  </data>
+  <data name="ConnectEmailPlaceholder" xml:space="preserve">
+    <value>you@company.com</value>
+  </data>
+  <data name="ConnectIdLabel" xml:space="preserve">
+    <value>Member ID</value>
+  </data>
+  <data name="ConnectIdPlaceholder" xml:space="preserve">
+    <value>ZM-XXXX-XXXX</value>
+  </data>
+  <data name="ConnectHint" xml:space="preserve">
+    <value>Both are in the invite email. Spaces, dashes and capitals don't matter.</value>
+  </data>
+  <data name="ConnectButton" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="Connecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="ConnectStillTrying" xml:space="preserve">
+    <value>Still trying to reach Zinwe… Check the internet if this takes long.</value>
+  </data>
+  <data name="ConnectNotRunning" xml:space="preserve">
+    <value>Zinwe isn't running yet. Restart the PC, then try again.</value>
+  </data>
+  <data name="ConnectRefusedFallback" xml:space="preserve">
+    <value>That didn't work. Check your email and Member ID and try again.</value>
+  </data>
+  <data name="StatusNotRunning" xml:space="preserve">
+    <value>Zinwe isn't running</value>
+  </data>
+  <data name="StatusNotRunningDetail" xml:space="preserve">
+    <value>Restart your PC. If this keeps happening, tell your admin.</value>
+  </data>
+  <data name="StatusConnectedTo" xml:space="preserve">
+    <value>Connected to {0}</value>
+    <comment>{0} company</comment>
+  </data>
+  <data name="StatusConnected" xml:space="preserve">
+    <value>Connected</value>
+  </data>
+  <data name="StatusConnectedDetail" xml:space="preserve">
+    <value>This PC is connected to your company's Zinwe.</value>
+  </data>
+  <data name="StatusOffline" xml:space="preserve">
+    <value>Offline — your times are saved and will sync</value>
+  </data>
+  <data name="StatusOfflineShort" xml:space="preserve">
+    <value>Offline — your times are saved</value>
+  </data>
+  <data name="StatusOfflineDetail" xml:space="preserve">
+    <value>They sync when the internet is back. Your company's rules stay on.</value>
+  </data>
+  <data name="StatusConnecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="StatusConnectingDetail" xml:space="preserve">
+    <value>Connecting this PC to your company's Zinwe.</value>
+  </data>
+  <data name="StatusNotConnectedYet" xml:space="preserve">
+    <value>Not connected yet</value>
+  </data>
+  <data name="StatusNotConnectedYetDetail" xml:space="preserve">
+    <value>Open Zinwe and enter your work email and Member ID.</value>
+  </data>
+  <data name="StatusRemovedFrom" xml:space="preserve">
+    <value>Removed from {0}</value>
+    <comment>{0} company</comment>
+  </data>
+  <data name="StatusRemoved" xml:space="preserve">
+    <value>Removed from Zinwe</value>
+  </data>
+  <data name="StatusRemovedDetail" xml:space="preserve">
+    <value>{0} removed this PC from Zinwe. Monitoring has stopped.</value>
+    <comment>{0} employer (sentence start)</comment>
+  </data>
+  <data name="StatusNotConnected" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="StatusUpdate" xml:space="preserve">
+    <value>Update needed — your times are saved</value>
+  </data>
+  <data name="StatusUpdateShort" xml:space="preserve">
+    <value>Zinwe needs an update</value>
+  </data>
+  <data name="StatusUpdateDetail" xml:space="preserve">
+    <value>Your times are saved and you can keep working. Open Zinwe and click Update now.</value>
+  </data>
+  <data name="StatusMonitoringOff" xml:space="preserve">
+    <value>monitoring off</value>
+  </data>
+  <data name="UpdateRequiredTitle" xml:space="preserve">
+    <value>Zinwe needs an update</value>
+  </data>
+  <data name="UpdateRequiredBody" xml:space="preserve">
+    <value>{0} is needed. Your times are saved and you can keep working. Click Update now — it takes about a minute and Zinwe reopens by itself.</value>
+    <comment>{0} version</comment>
+  </data>
+  <data name="UpdateOptionalTitle" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="UpdateOptionalBody" xml:space="preserve">
+    <value>{0} is ready. It installs in about a minute and Zinwe reopens by itself.</value>
+    <comment>{0} version</comment>
+  </data>
+  <data name="UpdateVersion" xml:space="preserve">
+    <value>Zinwe {0}</value>
+  </data>
+  <data name="UpdateNewVersion" xml:space="preserve">
+    <value>A new version of Zinwe</value>
+  </data>
+  <data name="UpdateNow" xml:space="preserve">
+    <value>Update now</value>
+  </data>
+  <data name="UpdateDownloading" xml:space="preserve">
+    <value>Downloading…</value>
+  </data>
+  <data name="UpdateDownloadingDetail" xml:space="preserve">
+    <value>Downloading the update…</value>
+  </data>
+  <data name="UpdateInstalling" xml:space="preserve">
+    <value>Installing…</value>
+  </data>
+  <data name="UpdateInstallingDetail" xml:space="preserve">
+    <value>Installing. Zinwe will reopen in a moment.</value>
+  </data>
+  <data name="UpdateDownloaded" xml:space="preserve">
+    <value>Downloaded</value>
+  </data>
+  <data name="UpdateTryAgain" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="UpdateFailed" xml:space="preserve">
+    <value>The update didn't work.</value>
+  </data>
+  <data name="UpdatePreparing" xml:space="preserve">
+    <value>Zinwe is preparing this update. There's nothing for you to do yet — keep working as usual.</value>
+  </data>
+  <data name="UpdateManual" xml:space="preserve">
+    <value>Open the download page</value>
+  </data>
+  <data name="UpdateWhatsNew" xml:space="preserve">
+    <value>What's new: {0}</value>
+  </data>
+  <data name="WorkTimeToday" xml:space="preserve">
+    <value>Work time today: {0}</value>
+    <comment>{0} e.g. 2 hours 5 minutes</comment>
+  </data>
+  <data name="BreakTimeNow" xml:space="preserve">
+    <value>Break time so far: {0}</value>
+  </data>
+  <data name="DurationHoursMinutes" xml:space="preserve">
+    <value>{0} h {1} min</value>
+  </data>
+  <data name="DurationMinutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="TrayOpen" xml:space="preserve">
+    <value>Open Zinwe</value>
+  </data>
+  <data name="TrayOpenChat" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="TrayRecords" xml:space="preserve">
+    <value>What Zinwe records on this PC</value>
+  </data>
+  <data name="ToastNewMessage" xml:space="preserve">
+    <value>New message from {0}</value>
+    <comment>{0} owner</comment>
+  </data>
+  <data name="ToastNewMessages" xml:space="preserve">
+    <value>{0} new messages from {1}</value>
+  </data>
+  <data name="ToastOpenChat" xml:space="preserve">
+    <value>Open the chat to read it.</value>
+  </data>
+  <data name="ToastConsentTitle" xml:space="preserve">
+    <value>Zinwe needs your answer</value>
+  </data>
+  <data name="ToastConsentBody" xml:space="preserve">
+    <value>Please read what Zinwe records on this PC, then choose I agree or I don't agree.</value>
+  </data>
+  <data name="ToastConnectTitle" xml:space="preserve">
+    <value>Zinwe isn't connected yet</value>
+  </data>
+  <data name="ToastConnectBody" xml:space="preserve">
+    <value>Open Zinwe and enter your work email and Member ID from the invite email.</value>
+  </data>
+  <data name="ToastStartDayTitle" xml:space="preserve">
+    <value>Good morning</value>
+  </data>
+  <data name="ToastStartDayBody" xml:space="preserve">
+    <value>Press Log in in Zinwe to start your day.</value>
+  </data>
+  <data name="ToastUpdateTitle" xml:space="preserve">
+    <value>Update available: Zinwe {0}</value>
+  </data>
+  <data name="ToastUpdateBody" xml:space="preserve">
+    <value>Open Zinwe and choose Update now. It takes about a minute.</value>
+  </data>
+  <data name="ChatBreakTitle" xml:space="preserve">
+    <value>About your {0} at {1}</value>
+    <comment>{0} e.g. Lunch break, {1} time</comment>
+  </data>
+  <data name="ChatBreakNote" xml:space="preserve">
+    <value>{0} marked this break as not approved and wrote: “{1}”</value>
+    <comment>{0} owner (sentence start), {1} note</comment>
+  </data>
+  <data name="ChatBreakNoNote" xml:space="preserve">
+    <value>{0} marked this break as not approved. If you'd like to explain, reply here — it's only a note, your time is already saved.</value>
+    <comment>{0} owner (sentence start)</comment>
+  </data>
+  <data name="ChatMessageOwner" xml:space="preserve">
+    <value>Message {0}</value>
+    <comment>{0} owner</comment>
+  </data>
+</root>

@@ -12,10 +12,11 @@ public enum AgentState
     Connected,
     /// <summary>Enrolled, but the backend is unreachable. Protection keeps running on cached policy.</summary>
     Offline,
-    /// <summary>The owner removed this PC (or the key was refused). Needs a new enrollment key.</summary>
+    /// <summary>The Member ID was refused, or the owner removed this PC (<see cref="AgentStatus.Removed"/>).
+    /// Waits for the member to connect again with a (new) Member ID.</summary>
     Rejected,
-    /// <summary>This agent is below the required version. Protection keeps running; the employee's work is
-    /// paused until they download and install the update (see <see cref="AgentStatus.DownloadUrl"/>).</summary>
+    /// <summary>This agent is below the required version. Protection and the work day keep running; the widget asks
+    /// the employee to install the update (one click, or <see cref="AgentStatus.DownloadUrl"/>).</summary>
     UpdateRequired,
 }
 
@@ -49,7 +50,19 @@ public sealed record AgentStatus(
     bool UpdateInstallable = false,
     /// <summary>What the owner's plan switches on (<see cref="Policy.PlanModules"/>), from the policy in force;
     /// null when unknown (no policy yet, or an older backend), which hides nothing.</summary>
-    IReadOnlyList<string>? Entitlements = null);
+    IReadOnlyList<string>? Entitlements = null,
+    /// <summary>The employer's name from the backend, when it sends one (also kept after a removal).</summary>
+    string? CompanyName = null,
+    /// <summary>The owner's name from the backend, when it sends one.</summary>
+    string? OwnerName = null,
+    /// <summary>With <see cref="AgentState.Rejected"/>: the owner removed this PC (rules cleared, monitoring stopped).</summary>
+    bool Removed = false,
+    /// <summary>The consent notice version in force (<see cref="Work.ConsentNotice.VersionFor"/>); null = the full notice.</summary>
+    string? NoticeVersion = null,
+    /// <summary>What can be recorded under the policy in force, for the consent screen; null = everything.</summary>
+    Work.MonitoringScope? Monitoring = null,
+    /// <summary>The backend's view of the member's consent ("pending" | "given" | "declined"); null = unknown.</summary>
+    string? ServerConsentState = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

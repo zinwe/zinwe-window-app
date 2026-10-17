@@ -1,6 +1,8 @@
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using Zinwe.Agent.Core.Messages;
+using Zinwe.Agent.Tray.Resources;
 
 namespace Zinwe.Agent.Tray.Widget;
 
@@ -21,6 +23,11 @@ public sealed class ChatRow
 
     /// <summary>A "Today" / "Yesterday" / "Mon, 13 Oct" divider row instead of a bubble.</summary>
     public bool IsSeparator { get; init; }
+
+    /// <summary>A "Message {owner}" button under the bubble (e.g. a break that wasn't approved: reply to explain).</summary>
+    public bool OffersReply { get; init; }
+    public string ReplyLabel { get; init; } = "";
+    public Visibility ReplyVisibility => OffersReply ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>The clock time under the bubble ("10:42 AM"); "Sending…" while queued.</summary>
     public string Stamp => IsPending ? "Sending…" : At.ToLocalTime().ToString("h:mm tt");
@@ -61,29 +68,34 @@ public sealed class ChatRow
 /// Builds the Chat window's conversation from the shared notifications file (chat lines only) plus the
 /// replies still waiting in the outbox. Pure: no file or UI access, so it's unit-tested.
 /// </summary>
-public static class ChatFeed
+public static partial class ChatFeed
 {
     /// <summary>
     /// Oldest first (chat order), with a day divider before each new day. Protection notices are left out;
     /// pending replies go last. <paramref name="now"/> (default: the clock) names "Today" / "Yesterday".
     /// </summary>
+    /// <param name="owner">The owner's name, when known ("Message Ravi").</param>
     public static IReadOnlyList<ChatRow> Build(
-        IEnumerable<NotificationItem> items, IEnumerable<OutboxReply> pending, DateTimeOffset? now = null)
+        IEnumerable<NotificationItem> items, IEnumerable<OutboxReply> pending, DateTimeOffset? now = null, string? owner = null)
     {
         var rows = items
             .Where(i => i.IsChat)
             .OrderBy(i => i.CreatedAtUtc)
             .Select(i =>
             {
-                var (title, text) = Content(i);
+                var (title, text) = Content(i, owner);
+                var breakDecision = IsBreakNotApproved(i);
                 return new ChatRow
                 {
                     Key = i.Id,
                     Title = title,
                     Text = text,
                     IsMine = !i.IsFromAdmin,
-                    Severity = (i.Severity ?? "info").ToLowerInvariant(),
+                    // A break that wasn't approved is a question, not a reprimand: no orange "Important".
+                    Severity = breakDecision ? "info" : (i.Severity ?? "info").ToLowerInvariant(),
                     At = i.CreatedAtUtc,
+                    OffersReply = breakDecision,
+                    ReplyLabel = breakDecision ? Strings.Format(Strings.ChatMessageOwner, ConsentText.Owner(owner)) : "",
                 };
             })
             .ToList();
@@ -129,10 +141,19 @@ public static class ChatFeed
     /// What a message shows. The dashboard sends a long chat note as a cut-down title ("…") plus the full
     /// text, so the title is dropped when the text already starts with it (same rule as the dashboard).
     /// </summary>
-    public static (string Title, string Text) Content(NotificationItem item)
+    public static (string Title, string Text) Content(NotificationItem item, string? owner = null)
     {
         var title = (item.Title ?? "").Trim();
         var body = (item.Body ?? "").Trim();
+        if (item.IsFromAdmin && BreakNotApproved().Match(title) is { Success: true } m)
+        {
+            // "Your Lunch break at 2:08 PM wasn't approved" (+ the owner's note): said kindly, with the note.
+            var who = ConsentText.Owner(owner, sentenceStart: true);
+            return (Strings.Format(Strings.ChatBreakTitle, m.Groups["what"].Value, m.Groups["when"].Value),
+                body.Length > 0
+                    ? Strings.Format(Strings.ChatBreakNote, who, body)
+                    : Strings.Format(Strings.ChatBreakNoNote, who));
+        }
         if (body.Length == 0)
         {
             return ("", title);
@@ -144,10 +165,17 @@ public static class ChatFeed
         return (title, body);
     }
 
+    /// <summary>The owner's "wasn't approved" note about one of the member's breaks.</summary>
+    public static bool IsBreakNotApproved(NotificationItem item) =>
+        item.IsFromAdmin && BreakNotApproved().IsMatch((item.Title ?? "").Trim());
+
+    [GeneratedRegex(@"^Your (?<what>.+) at (?<when>.+) wasn['’]t approved\.?$", RegexOptions.CultureInvariant)]
+    private static partial Regex BreakNotApproved();
+
     /// <summary>One line for a toast or the widget's chat card: heading and text joined, whitespace collapsed.</summary>
-    public static string Preview(NotificationItem item)
+    public static string Preview(NotificationItem item, string? owner = null)
     {
-        var (title, text) = Content(item);
+        var (title, text) = Content(item, owner);
         var line = title.Length > 0 ? $"{title} — {text}" : text;
         return string.Join(' ', line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }

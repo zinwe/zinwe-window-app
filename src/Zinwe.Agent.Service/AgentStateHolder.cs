@@ -3,6 +3,7 @@ using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Identity;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Policy;
+using Zinwe.Agent.Core.Work;
 
 namespace Zinwe.Agent.Service;
 
@@ -33,7 +34,8 @@ internal sealed class AgentStateHolder
         long? deviceId = null,
         DateTimeOffset? lastHeartbeatAt = null,
         string? message = null,
-        string? downloadUrl = null)
+        string? downloadUrl = null,
+        bool removed = false)
     {
         lock (_lock)
         {
@@ -41,14 +43,34 @@ internal sealed class AgentStateHolder
             Volatile.Write(ref _status, previous with
             {
                 State = state,
-                DeviceId = deviceId ?? (state == AgentState.NotEnrolled ? null : previous.DeviceId),
+                DeviceId = deviceId ?? (state == AgentState.NotEnrolled || removed ? null : previous.DeviceId),
                 LastHeartbeatAt = lastHeartbeatAt ?? previous.LastHeartbeatAt,
                 Message = message,
                 // Only meaningful for UpdateRequired; cleared on any other state so a stale link can't linger.
                 DownloadUrl = downloadUrl,
+                // Only with Rejected: the owner removed this PC. Any other state (a new connect) clears it.
+                Removed = removed && state == AgentState.Rejected,
+                ServerConsentState = removed ? null : previous.ServerConsentState,
             });
         }
     }
+
+    /// <summary>What the backend says about the company and the member's consent (each kept when not sent).</summary>
+    public void SetServerInfo(string? companyName, string? ownerName, string? consentState)
+    {
+        lock (_lock)
+        {
+            var previous = Current;
+            Volatile.Write(ref _status, previous with
+            {
+                CompanyName = Clean(companyName) ?? previous.CompanyName,
+                OwnerName = Clean(ownerName) ?? previous.OwnerName,
+                ServerConsentState = Clean(consentState) ?? previous.ServerConsentState,
+            });
+        }
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// The release the backend offers (null = up to date). A different version resets the one-click progress;
@@ -87,11 +109,18 @@ internal sealed class AgentStateHolder
     {
         lock (_lock)
         {
-            Volatile.Write(ref _status, Current with
+            var previous = Current;
+            var scope = MonitoringScope.From(policy);
+            Volatile.Write(ref _status, previous with
             {
                 PolicyVersion = policy?.Version,
                 UsbMode = policy?.Usb.Mode.ToWire(),
                 Entitlements = policy?.Entitlements,
+                // The consent screen lists exactly what this policy can record, and asks again when that grows.
+                Monitoring = policy is null ? null : scope,
+                NoticeVersion = ConsentNotice.VersionFor(scope),
+                CompanyName = Clean(policy?.CompanyName) ?? previous.CompanyName,
+                OwnerName = Clean(policy?.OwnerName) ?? previous.OwnerName,
             });
         }
     }

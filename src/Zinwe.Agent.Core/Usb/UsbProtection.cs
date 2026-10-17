@@ -42,6 +42,28 @@ public sealed class UsbProtection(IUsbEnforcer enforcer, EventQueue events, ILog
         return true;
     }
 
+    /// <summary>
+    /// Owner-requested restore: re-apply <paramref name="mode"/> (the policy's) even if it is already the last mode
+    /// applied - an over-limit lockdown writes read-only behind this class's back - and queue <c>usb.restored</c>.
+    /// The event confirms the owner's own action and holds nothing about the member, so it is sent even before
+    /// consent. Returns false when the setting could not be written.
+    /// </summary>
+    public bool Restore(UsbMode mode)
+    {
+        try
+        {
+            enforcer.Apply(mode);
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or SecurityException or IOException or InvalidOperationException)
+        {
+            logger.LogError(e, "Could not restore USB mode {Mode}", mode.ToWire());
+            return false;
+        }
+        Volatile.Write(ref _mode, (int)mode);
+        TryEnqueue(() => AgentEvents.UsbRestored(mode, enforcer.IsDryRun), always: true);
+        return true;
+    }
+
     /// <summary>Called by the watcher (any thread).</summary>
     public void OnDeviceArrived(UsbDeviceArrival device)
     {
@@ -52,11 +74,12 @@ public sealed class UsbProtection(IUsbEnforcer enforcer, EventQueue events, ILog
             : AgentEvents.UsbConnected(device));
     }
 
-    private void TryEnqueue(Func<AgentEvent> build)
+    private void TryEnqueue(Func<AgentEvent> build, bool always = false)
     {
         try
         {
-            var dropped = events.Enqueue(build());
+            var evt = build();
+            var dropped = always ? events.EnqueueAlways(evt) : events.Enqueue(evt);
             if (dropped > 0)
             {
                 logger.LogWarning("Event queue full ({Capacity}); dropped the {Dropped} oldest event(s)", events.Capacity, dropped);

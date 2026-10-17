@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Ipc;
 
 namespace Zinwe.Agent.Service;
@@ -90,13 +91,15 @@ internal sealed partial class PipeServer(
     /// <summary>Save the member-typed credential so the enrol loop uses it; the widget shows the result via status.</summary>
     private PipeProtocol.EnrollAck HandleEnroll(PipeProtocol.Request request)
     {
-        var email = request.Email?.Trim() ?? "";
-        var memberId = request.MemberId?.Trim() ?? "";
-        if (email.Length == 0 || memberId.Length == 0)
+        // Forgiving input (spaces, no dashes, lower case, a pasted label), plain errors; same rules as the widget.
+        var (email, memberId, problem) = MemberIdInput.Validate(request.Email, request.MemberId);
+        if (problem is not null)
         {
-            return new PipeProtocol.EnrollAck(false, "Enter both your email and your Member ID.");
+            return new PipeProtocol.EnrollAck(false, problem);
         }
         credentials.SubmitPending(email, memberId);
+        // Show "Connecting…" at once: a refusal of the previous attempt must not flash up again for this one.
+        state.Set(AgentState.Enrolling);
         return new PipeProtocol.EnrollAck(true, "Connecting this PC…");
     }
 

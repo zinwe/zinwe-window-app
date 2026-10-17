@@ -11,31 +11,75 @@
     HKLM\SOFTWARE\Zinwe\Agent           -> MemberEmail / MemberId / BackendBaseUrl (service deletes the credential after enrolling)
     ProgramData\Zinwe\Agent             -> service state (device.dat, policy.json, events.db); ACL = SYSTEM + Administrators only
     HKLM\SOFTWARE\Policies\...\RemovableStorageDevices\{53f5630d-...}  -> written by the service (USB rule); removed on uninstall
+    Start menu\Zinwe                    -> opens the widget (Zinwe.Agent.Tray.exe, show switch)
+
+  Double-click install (an employee): a short welcome that says what Zinwe is and that Windows will ask for an
+  administrator's permission, then Install, then the widget opens on "Connect this PC". Texts: Package.en-us.wxl.
+  Code signing: build.ps1 -CertThumbprint signs the exes, dlls and this MSI (needs a purchased OV/EV certificate
+  for a recognised publisher; until then Windows shows "Unknown publisher").
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="Zinwe Agent"
-           Manufacturer="SKYTECHNO"
+  <!-- Name and publisher as Settings ▸ Apps and the installer show them. -->
+  <Package Name="!(loc.ProductName)"
+           Manufacturer="!(loc.Publisher)"
            Version="$(ProductVersion)"
            UpgradeCode="380CF287-EB86-4E88-AAA7-BD86EDA0521E"
            Scope="perMachine">
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Zinwe Agent is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
     <MediaTemplate EmbedCab="yes" />
 
     <!--
-      Tamper resistance (best-effort, no kernel driver):
-        - ARPSYSTEMCOMPONENT hides Zinwe from Settings ▸ Apps and Control Panel ▸ Programs, so a member doesn't
-          even see an uninstall entry; ARPNOMODIFY/REMOVE/REPAIR disable those buttons if it is ever shown.
-        - perMachine install already means removal needs a local admin, and the service/state folders are
-          locked to SYSTEM + Administrators, so a standard (non-admin) member cannot remove Zinwe at all.
+      Visible, not hidden: Zinwe is listed in Settings ▸ Apps with a clear name, publisher, icon and help link, so
+      it never looks like hidden software. Tamper resistance (best-effort, no kernel driver) is kept by disabling
+      the entry's Uninstall / Modify / Repair buttons (ARPNOREMOVE/NOMODIFY/NOREPAIR), and a perMachine install
+      plus the SYSTEM + Administrators-only folders mean a standard (non-admin) member can't remove Zinwe.
       LIMIT: a determined LOCAL ADMIN can still force-remove via `msiexec /x` — fully preventing that needs a
       kernel driver / protected process (deliberately out of scope). See the service-DACL note on ServiceInstall.
     -->
-    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPNOREMOVE" Value="1" />
     <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPCOMMENTS" Value="!(loc.ArpComments)" />
+    <Property Id="ARPCONTACT" Value="hello@zinwe.io" />
+    <Property Id="ARPHELPLINK" Value="https://zinwe.io/download" />
+    <Property Id="ARPURLINFOABOUT" Value="https://zinwe.io" />
+    <Icon Id="ZinweIcon" SourceFile="..\src\Zinwe.Agent.Tray\Assets\zinwe.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ZinweIcon" />
+
+    <!--
+      The installer's screens: a welcome that explains what Zinwe is and that Windows will ask for an
+      administrator's permission, the Install step (with the UAC shield), progress, and a finish page that says the
+      Zinwe window opens next. The WixUI_Minimal set, with the welcome page in place of its licence page.
+      Silent installs (/qn: IT tools, the agent's own updates) show none of it.
+    -->
+    <UI Id="ZinweUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="WelcomeDlg" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Condition="Installed" />
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
 
     <!-- Hidden: keeps the member id out of the verbose MSI log. -->
     <Property Id="MEMBER_EMAIL" Secure="yes" />
@@ -59,7 +103,21 @@
       <ComponentGroupRef Id="ServiceFiles" />
       <ComponentGroupRef Id="TrayFiles" />
       <ComponentGroupRef Id="MachineConfig" />
+      <ComponentRef Id="StartMenuShortcut" />
     </Feature>
+
+    <!--
+      "Zinwe" in Start: opens the widget (or brings the running one to the front). HKCU key path: the shortcut sits
+      in the all-users Start menu, and Windows Installer wants a per-user key path for shortcut components.
+    -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="6D0B3E0B-7E27-4F3B-9C4C-2B4E4A9E7C11">
+        <Shortcut Id="ZinweStartMenuShortcut" Name="Zinwe" Description="!(loc.ShortcutDescription)"
+                  Target="[TRAYFOLDER]Zinwe.Agent.Tray.exe" Arguments="--show" WorkingDirectory="TRAYFOLDER"
+                  Icon="ZinweIcon" />
+        <RegistryValue Root="HKCU" Key="Software\Zinwe\Agent" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
 
     <!--
       Double-click install: open the widget the moment the install finishes, so the member sees "Connect this PC"
@@ -122,6 +180,7 @@
 
   <Fragment>
     <ComponentGroup Id="TrayFiles" Directory="TRAYFOLDER">
+      <!-- The widget starts at every sign-in (and opens itself until the day is started; see TrayIcon.OpenIfNeeded). -->
       <Component Id="TrayAutostart">
         <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
                        Name="ZinweTray" Type="string" Value="&quot;[TRAYFOLDER]Zinwe.Agent.Tray.exe&quot;" KeyPath="yes" />

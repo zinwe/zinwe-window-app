@@ -41,6 +41,7 @@ public sealed class Blocklist
             byDomain[domain] = rule with { Domain = domain };
         }
 
+        _byDomain = byDomain;
         Rules = byDomain.Values.OrderBy(r => r.Domain, StringComparer.Ordinal).ToList();
         Categories = Rules.Select(r => r.Category).Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(c => c, StringComparer.Ordinal).ToList();
@@ -70,6 +71,15 @@ public sealed class Blocklist
     public IReadOnlyList<string> Hostnames { get; }
 
     public bool IsEmpty => Rules.Count == 0;
+
+    private readonly Dictionary<string, BlockRule> _byDomain;
+
+    /// <summary>Nothing blocked: applying it clears whatever the agent added before.</summary>
+    public static Blocklist Empty { get; } = new([]);
+
+    /// <summary>The rule that blocks <paramref name="domain"/> (it or its "www." form), or null.</summary>
+    public BlockRule? Find(string? domain) =>
+        NormalizeDomain(domain) is { } host && _byDomain.TryGetValue(host, out var rule) ? rule : null;
 
     /// <summary>Builds the active blocklist from options: enabled built-in categories plus any custom domains.</summary>
     public static Blocklist FromOptions(WebFeatureOptions options)
