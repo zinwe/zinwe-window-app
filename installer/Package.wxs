@@ -80,6 +80,10 @@
       <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
     </UI>
     <UIRef Id="WixUI_Common" />
+    <!-- Brand artwork instead of WiX's stock images (made by design/make_installer_art.py from the logo):
+         the welcome/finish side panel (493x312) and the top banner of the other screens (493x58). -->
+    <WixVariable Id="WixUIDialogBmp" Value="art\dialog.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="art\banner.bmp" />
 
     <!-- Hidden: keeps the member id out of the verbose MSI log. -->
     <Property Id="MEMBER_EMAIL" Secure="yes" />
