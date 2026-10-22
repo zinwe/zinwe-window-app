@@ -10,7 +10,8 @@ namespace Zinwe.Agent.Core.Ipc;
 /// </summary>
 public static class PipeProtocol
 {
-    public const string PipeName = "Zinwe.Agent";
+    /// <summary>"Zinwe.Agent" for the installed agent; "Zinwe.Agent.dev" for the local dev run (<see cref="AgentInstance"/>).</summary>
+    public static string PipeName { get; } = AgentInstance.Suffixed("Zinwe.Agent", ".");
 
     /// <summary>A tray→service request. <see cref="Email"/>/<see cref="MemberId"/> are set only for "enroll".</summary>
     public sealed record Request(string Type, string? Email = null, string? MemberId = null);

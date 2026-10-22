@@ -61,7 +61,8 @@ internal sealed partial class TrayIcon : IDisposable
     {
         _glyph = CreateGlyph();
         _icon.Icon = _glyph;
-        _icon.Text = "Zinwe";
+        // The local dev widget says so, so it's never mistaken for the installed one.
+        _icon.Text = Zinwe.Agent.Core.AgentInstance.IsDefault ? "Zinwe" : $"Zinwe ({Zinwe.Agent.Core.AgentInstance.Name})";
         // One click opens Zinwe (a double click is two clicks: same result).
         _icon.MouseClick += (_, e) =>
         {

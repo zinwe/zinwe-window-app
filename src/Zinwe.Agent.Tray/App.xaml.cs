@@ -9,9 +9,10 @@ namespace Zinwe.Agent.Tray;
 public partial class App : Application
 {
     // Per-session ("Local\") so every signed-in user on a shared PC gets their own tray.
-    private const string SingleInstanceMutexName = @"Local\Zinwe.Agent.Tray";
+    // One widget per user and per instance: the local dev widget (ZINWE_INSTANCE=dev) runs next to the installed one.
+    private static readonly string SingleInstanceMutexName = Zinwe.Agent.Core.AgentInstance.Suffixed(@"Local\Zinwe.Agent.Tray", ".");
     // A second start ("Zinwe" in Start, the installer's last step) asks the running tray to open the widget.
-    private const string ShowSignalName = @"Local\Zinwe.Agent.Tray.Show";
+    private static readonly string ShowSignalName = Zinwe.Agent.Core.AgentInstance.Suffixed(@"Local\Zinwe.Agent.Tray.Show", ".");
 
     private Mutex? _singleInstance;
     private EventWaitHandle? _showSignal;

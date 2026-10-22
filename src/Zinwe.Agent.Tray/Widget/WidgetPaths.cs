@@ -11,7 +11,8 @@ public static class WidgetPaths
 {
     /// <summary>%LOCALAPPDATA%\Zinwe</summary>
     public static string Directory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Zinwe");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Zinwe.Agent.Core.Messages.LocalWidgetFolder.WidgetFolderName);
 
     /// <summary>Current-day work-timing snapshot (JSON object).</summary>
     public static string WorkTiming => Path.Combine(Directory, "work-timing.json");

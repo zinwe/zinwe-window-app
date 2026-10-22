@@ -19,8 +19,11 @@ public interface IWidgetFolder
 /// <summary>The current process user's own folder: the tray, the agent run as a console app (dev), and tests.</summary>
 public sealed class LocalWidgetFolder(string? directory = null) : IWidgetFolder
 {
+    /// <summary>"Zinwe", or "Zinwe-dev" for the local dev run (<see cref="AgentInstance"/>). Declared first: statics initialise in order.</summary>
+    public static string WidgetFolderName { get; } = AgentInstance.Suffixed("Zinwe", "-");
+
     public static string DefaultDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Zinwe");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), WidgetFolderName);
 
     public string Directory { get; } = directory ?? DefaultDirectory;
 

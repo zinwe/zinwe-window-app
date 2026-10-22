@@ -40,7 +40,7 @@ internal sealed partial class SignedInUserWidgetFolder(ILogger<SignedInUserWidge
         {
             return whenNobody;
         }
-        var folder = Path.Combine(appData, "Zinwe");
+        var folder = Path.Combine(appData, LocalWidgetFolder.WidgetFolderName);
         if (!string.Equals(folder, _lastFolder, StringComparison.OrdinalIgnoreCase))
         {
             _lastFolder = folder;
