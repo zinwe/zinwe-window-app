@@ -5,6 +5,12 @@ public static class NetworkMetrics
 {
     /// <summary>Bytes UPLOADED per destination domain (host), e.g. "drive.google.com". Sizes only, never content.</summary>
     public const string Upload = "net.upload";
+
+    /// <summary>Internet data used (bytes sent + received) per app/process, e.g. "whatsapp" (FR-04).</summary>
+    public const string AppData = "web.data.app";
+
+    /// <summary>Internet data used per site (registrable domain), e.g. "chatgpt.com", when known via DNS (FR-04).</summary>
+    public const string SiteData = "web.data.site";
 }
 
 /// <summary>Event types the network feature emits.</summary>
@@ -30,6 +36,9 @@ public readonly record struct DnsAnswer(string Host, string IpAddress);
 /// <summary>Bytes a process sent to a remote IP (one ETW network event). Upload direction only.</summary>
 public readonly record struct UploadSample(string? ProcessName, string RemoteIpAddress, long BytesSent);
 
+/// <summary>Bytes a process sent OR received over the network (one ETW event) — for data-used totals (FR-04).</summary>
+public readonly record struct TrafficSample(string? ProcessName, string? RemoteIpAddress, long Bytes, bool Outbound);
+
 /// <summary>
 /// Streams the two signals the collector correlates: DNS answers (to learn which host an IP belongs to) and
 /// per-connection SEND byte counts. The service implements this with user-mode ETW (no driver, no TLS inspection);
@@ -40,6 +49,9 @@ public interface INetworkTraceSource : IDisposable
     event EventHandler<DnsAnswer>? DnsAnswered;
     event EventHandler<UploadSample>? BytesSent;
 
+    /// <summary>Every send and receive (both directions), for data-used totals per app and site.</summary>
+    event EventHandler<TrafficSample>? Traffic;
+
     /// <summary>Begin tracing. A failure to start (e.g. not elevated) is swallowed; the source just emits nothing.</summary>
     void Start();
 }
@@ -49,6 +61,7 @@ public sealed class NullNetworkTraceSource : INetworkTraceSource
 {
     public event EventHandler<DnsAnswer>? DnsAnswered { add { } remove { } }
     public event EventHandler<UploadSample>? BytesSent { add { } remove { } }
+    public event EventHandler<TrafficSample>? Traffic { add { } remove { } }
 
     public void Start() { }
 

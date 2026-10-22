@@ -10,6 +10,7 @@ namespace Zinwe.Agent.Core.Features.Network;
 public sealed class NetworkFeatureModule(
     INetworkTraceSource source,
     NetworkUploadCollector collector,
+    NetworkUsageCollector usage,
     NetworkFeatureOptions options,
     ILogger<NetworkFeatureModule> logger) : IFeatureModule
 {
@@ -22,17 +23,18 @@ public sealed class NetworkFeatureModule(
     {
         if (!options.Enabled)
         {
-            logger.LogInformation("network (upload monitoring) is disabled by config");
+            logger.LogInformation("network (data used + upload monitoring) is off: Online protection isn't on for this PC");
             return Task.CompletedTask;
         }
         try
         {
             source.DnsAnswered += OnDns;
             source.BytesSent += OnUpload;
+            source.Traffic += OnTraffic;
             source.Start();
             _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _flushLoop = Task.Run(() => FlushLoopAsync(_cts.Token), CancellationToken.None);
-            logger.LogInformation("network watching uploads by destination domain (sizes only)");
+            logger.LogInformation("network measuring data used per app and site, and uploads by destination (sizes only)");
         }
         catch (Exception e)
         {
@@ -47,6 +49,7 @@ public sealed class NetworkFeatureModule(
         {
             source.DnsAnswered -= OnDns;
             source.BytesSent -= OnUpload;
+            source.Traffic -= OnTraffic;
         }
         catch (Exception e)
         {
@@ -75,6 +78,7 @@ public sealed class NetworkFeatureModule(
         {
             source.Dispose();
             collector.Flush(); // don't lose the last window
+            usage.Flush();
         }
         catch (Exception e)
         {
@@ -82,7 +86,13 @@ public sealed class NetworkFeatureModule(
         }
     }
 
-    private void OnDns(object? sender, DnsAnswer answer) => collector.OnDnsAnswer(answer);
+    private void OnDns(object? sender, DnsAnswer answer)
+    {
+        collector.OnDnsAnswer(answer);
+        usage.OnDnsAnswer(answer);
+    }
+
+    private void OnTraffic(object? sender, TrafficSample sample) => usage.OnTraffic(sample);
 
     private void OnUpload(object? sender, UploadSample sample) => collector.OnUpload(sample);
 
@@ -95,6 +105,7 @@ public sealed class NetworkFeatureModule(
             while (await timer.WaitForNextTickAsync(ct))
             {
                 collector.Flush();
+                usage.Flush();
             }
         }
         catch (OperationCanceledException)

@@ -17,14 +17,18 @@ public sealed class NetworkFeatureRegistration : IFeatureRegistration
 {
     public void Register(IServiceCollection services, IConfiguration config)
     {
-        var options = config.GetSection(NetworkFeatureOptions.Section).Get<NetworkFeatureOptions>()
+        var defaults = config.GetSection(NetworkFeatureOptions.Section).Get<NetworkFeatureOptions>()
             ?? new NetworkFeatureOptions();
 
-        services.AddScoped(_ => options);
+        // On whenever the owner's Online protection (policy "web" block) is on for this PC — it's off when the plan
+        // lacks it or the member declined consent — or when config forces it (FR-04: it used to be config-only and
+        // off, so no PC measured anything). A new policy rebuilds the scope.
+        services.AddScoped(sp => NetworkPolicyMap.FromPolicy(defaults, sp.GetRequiredService<FeaturePolicyState>().Current?.Web));
         services.AddScoped<NetworkUploadCollector>();
+        services.AddScoped<NetworkUsageCollector>();
 
         services.AddScoped<INetworkTraceSource>(sp =>
-            options.Enabled && UsbEnforcerSelector.IsRunningAsSystem()
+            sp.GetRequiredService<NetworkFeatureOptions>().Enabled && UsbEnforcerSelector.IsRunningAsSystem()
                 ? new EtwNetworkTraceSource(sp.GetRequiredService<ILogger<EtwNetworkTraceSource>>())
                 : new NullNetworkTraceSource());
 

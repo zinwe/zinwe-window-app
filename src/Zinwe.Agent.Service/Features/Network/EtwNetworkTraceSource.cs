@@ -28,18 +28,25 @@ internal sealed partial class EtwNetworkTraceSource(ILogger<EtwNetworkTraceSourc
 
     public event EventHandler<DnsAnswer>? DnsAnswered;
     public event EventHandler<UploadSample>? BytesSent;
+    public event EventHandler<TrafficSample>? Traffic;
 
     public void Start()
     {
         try
         {
             _session = new TraceEventSession(SessionName) { StopOnDispose = true };
-            _session.EnableKernelProvider(KernelTraceEventParser.Keywords.NetworkTCPIP);
+            // Process: names for the network events (without it ProcessName can come back empty and every
+            // sample was dropped as "not a tracked app").
+            _session.EnableKernelProvider(KernelTraceEventParser.Keywords.NetworkTCPIP | KernelTraceEventParser.Keywords.Process);
             _session.EnableProvider(DnsProvider);
 
-            _session.Source.Kernel.TcpIpSend += d => RaiseUpload(d.ProcessName, d.daddr, d.size);
-            _session.Source.Kernel.TcpIpSendIPV6 += d => RaiseUpload(d.ProcessName, d.daddr, d.size);
-            _session.Source.Kernel.UdpIpSend += d => RaiseUpload(d.ProcessName, d.daddr, d.size);
+            _session.Source.Kernel.TcpIpSend += d => RaiseUpload(NameOf(d.ProcessName, d.ProcessID), d.daddr, d.size);
+            _session.Source.Kernel.TcpIpSendIPV6 += d => RaiseUpload(NameOf(d.ProcessName, d.ProcessID), d.daddr, d.size);
+            _session.Source.Kernel.UdpIpSend += d => RaiseUpload(NameOf(d.ProcessName, d.ProcessID), d.daddr, d.size);
+            // Received data too, for data-used totals (FR-04).
+            _session.Source.Kernel.TcpIpRecv += d => RaiseTraffic(NameOf(d.ProcessName, d.ProcessID), d.saddr, d.size, false);
+            _session.Source.Kernel.TcpIpRecvIPV6 += d => RaiseTraffic(NameOf(d.ProcessName, d.ProcessID), d.saddr, d.size, false);
+            _session.Source.Kernel.UdpIpRecv += d => RaiseTraffic(NameOf(d.ProcessName, d.ProcessID), d.saddr, d.size, false);
             _session.Source.Dynamic.All += OnDynamic;
 
             _thread = new Thread(ProcessLoop) { IsBackground = true, Name = "zinwe-etw-net" };
@@ -73,6 +80,51 @@ internal sealed partial class EtwNetworkTraceSource(ILogger<EtwNetworkTraceSourc
         }
         var proc = StripExe(processName);
         BytesSent?.Invoke(this, new UploadSample(proc, dest.ToString(), size));
+        Traffic?.Invoke(this, new TrafficSample(proc, dest.ToString(), size, true));
+    }
+
+    private void RaiseTraffic(string? processName, IPAddress? remote, int size, bool outbound)
+    {
+        if (size <= 0)
+        {
+            return;
+        }
+        Traffic?.Invoke(this, new TrafficSample(StripExe(processName), remote?.ToString(), size, outbound));
+    }
+
+    // ETW names a process only once it has seen it start; for one already running, look it up once by id.
+    private readonly Dictionary<int, string?> _pidNames = [];
+
+    private string? NameOf(string? etwName, int pid)
+    {
+        if (!string.IsNullOrWhiteSpace(etwName))
+        {
+            return etwName;
+        }
+        if (pid <= 4)
+        {
+            return pid <= 0 ? null : "system";
+        }
+        if (_pidNames.TryGetValue(pid, out var cached))
+        {
+            return cached;
+        }
+        string? name;
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            name = p.ProcessName;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            name = null; // already gone
+        }
+        if (_pidNames.Count > 4096)
+        {
+            _pidNames.Clear(); // pids are reused; a small cache is plenty
+        }
+        _pidNames[pid] = name;
+        return name;
     }
 
     private void OnDynamic(TraceEvent data)
