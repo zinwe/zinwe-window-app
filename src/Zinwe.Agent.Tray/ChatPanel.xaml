@@ -1,6 +1,7 @@
 <UserControl x:Class="Zinwe.Agent.Tray.ChatPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:w="clr-namespace:Zinwe.Agent.Tray.Widget">
     <!--
         The chat with the admin, built into the widget. Closed it's one compact bar (unread count + the latest line);
         a click on the bar opens the conversation and the composer below it, another click closes it.
@@ -90,7 +91,8 @@
                                                                    Visibility="{Binding ImportanceVisibility}" />
                                                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
                                                                    TextWrapping="Wrap" Visibility="{Binding TitleVisibility}" />
-                                                        <TextBlock Text="{Binding Text}" FontSize="13" TextWrapping="Wrap" LineHeight="18"
+                                                        <!-- FR-12: links and emails open on click, phone numbers copy; right-click copies any of them. -->
+                                                        <TextBlock w:ChatLinks.Text="{Binding Text}" FontSize="13" TextWrapping="Wrap" LineHeight="18"
                                                                    Visibility="{Binding TextVisibility}" />
                                                     </StackPanel>
                                                 </Border>
