@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Zinwe.Agent.Core.Features.Web;
 
 namespace Zinwe.Agent.Core.Ipc;
 
@@ -13,8 +14,11 @@ public static class PipeProtocol
     /// <summary>"Zinwe.Agent" for the installed agent; "Zinwe.Agent.dev" for the local dev run (<see cref="AgentInstance"/>).</summary>
     public static string PipeName { get; } = AgentInstance.Suffixed("Zinwe.Agent", ".");
 
-    /// <summary>A tray→service request. <see cref="Email"/>/<see cref="MemberId"/> are set only for "enroll".</summary>
-    public sealed record Request(string Type, string? Email = null, string? MemberId = null);
+    /// <summary>
+    /// A tray→service request. <see cref="Email"/>/<see cref="MemberId"/> are set only for "enroll";
+    /// <see cref="Usage"/> only for "usage".
+    /// </summary>
+    public sealed record Request(string Type, string? Email = null, string? MemberId = null, IReadOnlyList<ForegroundReport>? Usage = null);
 
     /// <summary>Reply to an "enroll" or "update" request: whether the service took it on, and what to tell the member.</summary>
     public sealed record EnrollAck(bool Accepted, string Message);
@@ -26,6 +30,11 @@ public static class PipeProtocol
         public const string Enroll = "enroll";
         /// <summary>Member pressed "Update now": download, verify and install the offered release.</summary>
         public const string Update = "update";
+        /// <summary>
+        /// The tray's readings of what was in front of the member (app, and website domain when a browser was in
+        /// front): the service in Session 0 can't see the desktop, so the tray, in the member's session, reads it.
+        /// </summary>
+        public const string Usage = "usage";
     }
 
     internal static string Serialize(Request request) => JsonSerializer.Serialize(request, PipeJsonContext.Default.Request);
@@ -44,7 +53,7 @@ public static class PipeProtocol
     public static async Task<Request?> ReadRequestAsync(StreamReader reader, CancellationToken ct)
     {
         var line = await reader.ReadLineAsync(ct);
-        if (string.IsNullOrWhiteSpace(line) || line.Length > 4096)
+        if (string.IsNullOrWhiteSpace(line) || line.Length > 32_768)
         {
             return null;
         }
@@ -89,6 +98,10 @@ public static class AgentPipeClient
     public static Task<PipeProtocol.EnrollAck?> RequestUpdateAsync(TimeSpan timeout, CancellationToken ct = default) =>
         SendAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Update), timeout, ct);
 
+    /// <summary>Send the tray's foreground readings. Returns null if the service isn't reachable (the caller keeps them).</summary>
+    public static Task<PipeProtocol.EnrollAck?> ReportUsageAsync(IReadOnlyList<ForegroundReport> usage, TimeSpan timeout, CancellationToken ct = default) =>
+        SendAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Usage, Usage: usage), timeout, ct);
+
     /// <summary>Hand the member-typed email + id to the service to enrol with. Returns null if the service isn't reachable.</summary>
     public static Task<PipeProtocol.EnrollAck?> SubmitEnrollmentAsync(string email, string memberId, TimeSpan timeout, CancellationToken ct = default) =>
         SendAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Enroll, email, memberId), timeout, ct);
@@ -119,6 +132,8 @@ public static class AgentPipeClient
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(PipeProtocol.Request))]
+[JsonSerializable(typeof(ForegroundReport))]
+[JsonSerializable(typeof(List<ForegroundReport>))]
 [JsonSerializable(typeof(PipeProtocol.EnrollAck))]
 [JsonSerializable(typeof(AgentStatus))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;

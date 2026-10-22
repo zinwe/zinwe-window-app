@@ -57,7 +57,7 @@ public sealed class PipeProtocolTests
     [Fact]
     public async Task Oversized_request_is_rejected()
     {
-        var line = "{\"type\":\"" + new string('x', 5000) + "\"}";
+        var line = "{\"type\":\"" + new string('x', 40_000) + "\"}"; // over the 32 KB limit
         using var reader = new StreamReader(new MemoryStream(Encoding.UTF8.GetBytes(line + "\n")));
 
         Assert.Null(await PipeProtocol.ReadRequestAsync(reader, CancellationToken.None));

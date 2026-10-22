@@ -38,6 +38,9 @@ public sealed class WebFeatureRegistration : IFeatureRegistration
         // Program.cs singleton targeting the signed-in member's widget folder). One throttle for the service's life.
         services.AddScoped<IWebBlockNotices>(sp => new WidgetWebBlockNotices(sp.GetRequiredService<Zinwe.Agent.Core.Messages.NotificationWriter>()));
         services.AddSingleton<BlockedSiteThrottle>(_ => new BlockedSiteThrottle());
+        // The tray's foreground readings (it runs in the member's session; this service, in Session 0, can't see
+        // the desktop). The pipe server posts, the web module drains on each tick.
+        services.AddSingleton<ForegroundInbox>();
         services.AddScoped<ForegroundUsageSampler>();
         services.AddScoped<WebFeatureModule>();
         services.AddScoped<IFeatureModule>(sp => sp.GetRequiredService<WebFeatureModule>());

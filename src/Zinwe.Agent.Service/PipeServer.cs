@@ -12,7 +12,8 @@ namespace Zinwe.Agent.Service;
 /// Pipes are never reachable from the network because the ACL denies the NETWORK logon SID.
 /// </summary>
 internal sealed partial class PipeServer(
-    AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger)
+    AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger,
+    Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
     : BackgroundService
 {
     private const int MaxInstances = 8;
@@ -70,6 +71,12 @@ internal sealed partial class PipeServer(
                 else if (request?.Type == PipeProtocol.RequestTypes.Enroll)
                 {
                     await writer.WriteLineAsync(PipeProtocol.Serialize(HandleEnroll(request)).AsMemory(), cts.Token);
+                }
+                else if (request?.Type == PipeProtocol.RequestTypes.Usage)
+                {
+                    // The tray's foreground readings; the web feature records them under the owner's settings.
+                    var accepted = inbox?.Post(request.Usage) ?? 0;
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(new PipeProtocol.EnrollAck(inbox is not null, $"{accepted}")).AsMemory(), cts.Token);
                 }
                 else if (request?.Type == PipeProtocol.RequestTypes.Update)
                 {

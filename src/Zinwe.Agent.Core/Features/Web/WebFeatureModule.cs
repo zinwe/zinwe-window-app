@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Zinwe.Agent.Core.Metrics;
 
 namespace Zinwe.Agent.Core.Features.Web;
 
@@ -16,8 +17,13 @@ public sealed class WebFeatureModule(
     WebFeatureOptions options,
     ILogger<WebFeatureModule> logger,
     IWebBlockNotices? notices = null,
-    BlockedSiteThrottle? throttle = null) : IFeatureModule
+    BlockedSiteThrottle? throttle = null,
+    ForegroundInbox? inbox = null,
+    MetricsStore? metrics = null) : IFeatureModule
 {
+    /// <summary>While the tray reports this recently, the service doesn't sample the foreground itself.</summary>
+    internal static readonly TimeSpan TrayWindow = TimeSpan.FromMinutes(2);
+
     private readonly IWebBlockNotices _notices = notices ?? new NullWebBlockNotices();
     private readonly BlockedSiteThrottle _throttle = throttle ?? new BlockedSiteThrottle();
     private CancellationTokenSource? _cts;
@@ -139,6 +145,14 @@ public sealed class WebFeatureModule(
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
+                // The tray (in the member's session) reports what was in front; record it under the current settings.
+                RecordTrayReports();
+                if (inbox?.TrayActive(TrayWindow) == true)
+                {
+                    continue; // the tray is reporting: sampling here too would count the same time twice
+                }
+                // No tray reports (dev run in the member's session, or an older tray): sample here. In Session 0
+                // (the installed service) these reads find no desktop and record nothing.
                 // One foreground reading per tick feeds both metrics: app time always, and — when a browser is
                 // in front — that tab's domain. The domain read (UI Automation) is skipped for non-browsers.
                 var sample = sampler.Collect(seconds);
@@ -151,6 +165,37 @@ public sealed class WebFeatureModule(
         catch (OperationCanceledException)
         {
             // shutting down
+        }
+    }
+
+    /// <summary>
+    /// Record the tray's foreground readings: app time (<see cref="WebMetrics.ForegroundApp"/>) and, when a browser
+    /// was in front and website collection is on, the domain (<see cref="WebMetrics.WebDomain"/>). Never throws.
+    /// </summary>
+    internal void RecordTrayReports(DateTimeOffset? at = null)
+    {
+        if (inbox is null || metrics is null)
+        {
+            return;
+        }
+        foreach (var r in inbox.Drain())
+        {
+            try
+            {
+                if (options.CollectForegroundUsage)
+                {
+                    metrics.Add(WebMetrics.ForegroundApp, r.App, count: r.Samples, seconds: r.Seconds, at: at);
+                }
+                if (options.CollectWebDomains && r.Domain is { Length: > 0 } domain && BrowserApps.IsBrowser(r.App))
+                {
+                    metrics.Add(WebMetrics.WebDomain, domain, count: r.Samples, seconds: r.Seconds, at: at);
+                    NoticeIfBlocked(domain);
+                }
+            }
+            catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or IOException or ArgumentException or InvalidOperationException)
+            {
+                logger.LogError(e, "Could not record the tray's foreground usage");
+            }
         }
     }
 }

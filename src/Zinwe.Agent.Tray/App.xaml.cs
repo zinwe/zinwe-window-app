@@ -18,6 +18,7 @@ public partial class App : Application
     private EventWaitHandle? _showSignal;
     private RegisteredWaitHandle? _showWait;
     private TrayIcon? _tray;
+    private ForegroundReporter? _foreground;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -44,6 +45,11 @@ public partial class App : Application
         _tray = new TrayIcon();
         _tray.Start();
 
+        // What's in front of the member (app, website domain) for app time and website usage: only readable from
+        // the member's session, so the tray reads it and hands it to the service.
+        _foreground = new ForegroundReporter();
+        _foreground.Start();
+
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal,
             (_, _) => Dispatcher.BeginInvoke(() => _tray?.ShowStatus()), null, Timeout.Infinite, executeOnlyOnce: false);
@@ -57,6 +63,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _foreground?.Dispose();
         _showWait?.Unregister(null);
         _showSignal?.Dispose();
         _tray?.Dispose();
