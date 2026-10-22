@@ -919,6 +919,26 @@ public partial class WidgetWindow : Window
     {
         _timerStore.Save(_timer);
         _review = null;
-        Hide();
+        if (!SystemParameters.MinimizeAnimation || WindowState == WindowState.Minimized)
+        {
+            Hide();
+            return;
+        }
+        // FR-13: the X used to make the window vanish at once. Windows' own minimize animation plays first (it
+        // follows the user's "Animation effects" setting), then the window is hidden and set back to normal size
+        // for next time (TrayIcon.ShowStatus restores it with the matching animation).
+        WindowState = WindowState.Minimized;
+        var after = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(280) };
+        after.Tick += (_, _) =>
+        {
+            after.Stop();
+            if (WindowState != WindowState.Minimized)
+            {
+                return; // shown again meanwhile
+            }
+            Hide();
+            WindowState = WindowState.Normal;
+        };
+        after.Start();
     }
 }

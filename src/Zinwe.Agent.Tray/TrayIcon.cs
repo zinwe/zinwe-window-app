@@ -323,6 +323,12 @@ internal sealed partial class TrayIcon : IDisposable
         }
         else if (!_window.IsVisible)
         {
+            // FR-13: back from the tray with Windows' restore animation (minimized, shown, then normal), the mirror
+            // of how the X tucks it away.
+            if (System.Windows.SystemParameters.MinimizeAnimation)
+            {
+                _window.WindowState = System.Windows.WindowState.Minimized;
+            }
             _window.Show();
         }
         if (_window.WindowState == System.Windows.WindowState.Minimized)
