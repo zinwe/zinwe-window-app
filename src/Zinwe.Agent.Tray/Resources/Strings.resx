@@ -40,10 +40,10 @@
     <comment>{0} employer</comment>
   </data>
   <data name="ConsentSeesApps" xml:space="preserve">
-    <value>Which apps you use and for how long</value>
+    <value>Which apps you use, for how long, and how much internet data each one uses</value>
   </data>
   <data name="ConsentSeesWebsites" xml:space="preserve">
-    <value>Website names you visit (never full addresses or what you search for)</value>
+    <value>Website names you visit, for how long, and how much data (never full addresses, page contents or what you search for)</value>
   </data>
   <data name="ConsentSeesTransfers" xml:space="preserve">
     <value>Copies to USB drives, shared folders and email attachments: how big they are, not what's in them</value>

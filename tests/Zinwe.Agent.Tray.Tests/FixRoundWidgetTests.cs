@@ -66,7 +66,7 @@ public sealed class FixRoundWidgetTests : IDisposable
         Assert.DoesNotContain("AcceptedAt\": \"", File.ReadAllText(Path.Combine(_dir, "consent.json")));
 
         store.Accept(ConsentNotice.FullVersion, DateTimeOffset.Now);
-        Assert.Equal(ConsentState.Given, store.State("2026-10-17.atrw"));
+        Assert.Equal(ConsentState.Given, store.State(ConsentNotice.BaseVersion + ".atrw"));
         Assert.Equal(ConsentState.Pending, store.State("2026-11-01.a")); // new wording: asked again
 
         store.Clear();

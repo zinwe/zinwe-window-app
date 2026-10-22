@@ -7,7 +7,8 @@ namespace Zinwe.Agent.Core.Work;
 /// switched on. The widget lists only these, and the notice version is derived from them, so turning something
 /// new on asks the member again (turning things off never does).
 /// </summary>
-/// <param name="AppsAndWebsites">Which apps are used and for how long, and website names (the web module).</param>
+/// <param name="AppsAndWebsites">Which apps are used and websites visited, for how long, and how much internet data
+/// each uses (the web module; data used since v1.1).</param>
 /// <param name="Transfers">Copies to USB drives, shared folders and email attachments: sizes and counts.</param>
 /// <param name="TransferDetails">The owner's "include file names" switch: file names and email subjects too.</param>
 /// <param name="RemoteAndInstalls">Remote-access tools and newly installed software.</param>
@@ -48,7 +49,7 @@ public sealed record MonitoringScope(
 
 /// <summary>
 /// The consent notice's version: <see cref="BaseVersion"/> (the wording) plus one letter per thing switched on,
-/// e.g. "2026-10-17.atrw". At most 16 characters (the backend keeps 20).
+/// e.g. "2026-10-22.atrw". At most 16 characters (the backend keeps 20).
 /// <para>An agreement covers the current notice when the wording is the same and everything switched on now was
 /// switched on when they agreed (<see cref="Covers"/>). So a new wording, or the owner turning on something new
 /// (like file names), asks again; switching something off doesn't.</para>
@@ -57,8 +58,10 @@ public static class ConsentNotice
 {
     /// <summary>The notice wording. Bump it only when the text of the notice changes.</summary>
     // 2026-10-17: names the employer, lists only what is switched on (file names / email subjects when the owner
-    // enables details), and offers "I don't agree". New wording, so everyone is asked once more.
-    public const string BaseVersion = "2026-10-17";
+    // enables details), and offers "I don't agree".
+    // 2026-10-22 (v1.1, FR-18): apps and websites now also say how much internet data each uses, and websites how
+    // long they're open. New wording, so everyone is asked once more.
+    public const string BaseVersion = "2026-10-22";
 
     /// <summary>The version of the full notice (everything listed): covers any policy with this wording.</summary>
     public const string FullVersion = BaseVersion + "." + AllFlags;

@@ -29,7 +29,7 @@ public sealed class ConsentNoticeTests : IDisposable
         var scope = MonitoringScope.From(Policy(web: false, details: true, remote: false, entitlements: ["usb_control"]));
 
         Assert.Equal(new MonitoringScope(false, true, true, false, false), scope);
-        Assert.Equal("2026-10-17.td", ConsentNotice.VersionFor(scope));
+        Assert.Equal("2026-10-22.td", ConsentNotice.VersionFor(scope));
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class ConsentNoticeTests : IDisposable
     public void Nothing_switched_on_still_has_a_version_within_the_backend_limit()
     {
         var version = ConsentNotice.VersionFor(new MonitoringScope(false, false, false, false, false));
-        Assert.Equal("2026-10-17.0", version);
+        Assert.Equal("2026-10-22.0", version);
         Assert.True(ConsentNotice.FullVersion.Length <= 20);
     }
 
@@ -61,6 +61,7 @@ public sealed class ConsentNoticeTests : IDisposable
     [InlineData("2026-10-17.w", "2026-10-17.aw", false)]
     [InlineData("2026-10-17.0", "2026-10-17.0", true)]
     [InlineData("2026-10-15", "2026-10-17.atrw", false)]        // the old wording: ask again
+    [InlineData("2026-10-17.atdrw", "2026-10-22.atrw", false)]  // v1.1 (FR-18): data used is new, ask again
     [InlineData(null, "2026-10-17.atrw", false)]
     public void An_agreement_covers_the_same_wording_with_nothing_new_switched_on(string? agreed, string current, bool covers)
     {
@@ -103,12 +104,12 @@ public sealed class ConsentNoticeTests : IDisposable
     [Fact]
     public void An_agreement_is_reported_as_given()
     {
-        Write("""{"Version":"2026-10-17.atdrw","AcceptedAt":"2026-10-17T09:30:00+05:30","State":"given","DecidedAt":"2026-10-17T09:30:00+05:30"}""");
+        Write("""{"Version":"2026-10-22.atdrw","AcceptedAt":"2026-10-22T09:30:00+05:30","State":"given","DecidedAt":"2026-10-22T09:30:00+05:30"}""");
         var gate = new ConsentGate(new ConsentReader(_dir));
 
         Assert.True(gate.IsGranted());
         var report = gate.ForHeartbeat();
-        Assert.Equal(("given", "2026-10-17.atdrw"), (report!.State, report.Version));
+        Assert.Equal(("given", "2026-10-22.atdrw"), (report!.State, report.Version));
     }
 
     [Fact]
