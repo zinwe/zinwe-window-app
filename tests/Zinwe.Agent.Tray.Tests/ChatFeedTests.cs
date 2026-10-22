@@ -121,4 +121,17 @@ public sealed class ChatFeedTests
     {
         Assert.Equal("Line one line two", ChatFeed.Preview(Chat("1", 0, "", "Line one\r\n  line two")));
     }
+
+    [Theory]
+    [InlineData("About your Lunch break at 2:08 PM", true)]
+    [InlineData("About your log-out at 6:10 PM", true)]                 // FR-16
+    [InlineData("Your Lunch break at 2:08 PM wasn't approved", true)]   // older backends
+    [InlineData("Your log-out at 6:10 PM was approved", false)]
+    [InlineData("About your leave next week", false)]
+    public void A_questioned_break_or_log_out_offers_a_reply(string title, bool offers)
+    {
+        var row = ChatFeed.Build([Chat("1", 0, title, "Ravi would like a word. You can reply here.")], [])
+            .Single(r => !r.IsSeparator);
+        Assert.Equal(offers, row.OffersReply);
+    }
 }

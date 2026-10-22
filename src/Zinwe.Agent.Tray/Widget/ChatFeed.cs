@@ -166,11 +166,19 @@ public static partial class ChatFeed
     }
 
     /// <summary>The owner's "wasn't approved" note about one of the member's breaks.</summary>
-    public static bool IsBreakNotApproved(NotificationItem item) =>
-        item.IsFromAdmin && BreakNotApproved().IsMatch((item.Title ?? "").Trim());
+    public static bool IsBreakNotApproved(NotificationItem item)
+    {
+        var title = (item.Title ?? "").Trim();
+        // Older backends: "Your Lunch break at 2:08 PM wasn't approved". Current ones word it as a conversation:
+        // "About your Lunch break at 2:08 PM", and since FR-16 also "About your log-out at 6:10 PM".
+        return item.IsFromAdmin && (BreakNotApproved().IsMatch(title) || AboutYour().IsMatch(title));
+    }
 
     [GeneratedRegex(@"^Your (?<what>.+) at (?<when>.+) wasn['’]t approved\.?$", RegexOptions.CultureInvariant)]
     private static partial Regex BreakNotApproved();
+
+    [GeneratedRegex(@"^About your (?<what>.+) at (?<when>\d{1,2}:\d{2}\s?[AP]M)$", RegexOptions.CultureInvariant)]
+    private static partial Regex AboutYour();
 
     /// <summary>One line for a toast or the widget's chat card: heading and text joined, whitespace collapsed.</summary>
     public static string Preview(NotificationItem item, string? owner = null)
