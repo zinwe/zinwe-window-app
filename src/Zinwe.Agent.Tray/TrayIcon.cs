@@ -30,6 +30,8 @@ internal sealed partial class TrayIcon : IDisposable
 
     private Drawing.Icon? _glyph;
     private WidgetWindow? _window;
+    // Ctrl+Alt+Z opens or closes the widget from anywhere (null/unregistered when another app holds it).
+    private GlobalHotkey? _hotkey;
     private AgentState? _lastState;
 
     // Tooltip parts: the protection headline (status poll) + unread chat count (file poll).
@@ -83,10 +85,19 @@ internal sealed partial class TrayIcon : IDisposable
             }
         };
 
+        _hotkey = new GlobalHotkey(System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Alt,
+            System.Windows.Input.Key.Z, ToggleWidget);
+
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add(Strings.TrayOpen, null, (_, _) => ShowStatus());
+        var open = new Forms.ToolStripMenuItem(Strings.TrayOpen, null, (_, _) => ShowStatus());
+        if (_hotkey.IsRegistered)
+        {
+            open.ShortcutKeyDisplayString = Strings.Shortcut;
+        }
+        menu.Items.Add(open);
         menu.Items.Add(Strings.TrayOpenChat, null, (_, _) => ShowChat());
         menu.Items.Add(Strings.TrayRecords, null, (_, _) => ShowRecords());
+        menu.Items.Add(Strings.TrayFeedback, null, (_, _) => ShowFeedback());
 #if DEBUG
         menu.Items.Add("Send test chat message (debug)", null, (_, _) => SeedTestChatMessage());
         menu.Items.Add("Send test notice (debug)", null, (_, _) => SeedTestMessage());
@@ -306,6 +317,27 @@ internal sealed partial class TrayIcon : IDisposable
         _window?.ShowRecords();
     }
 
+    /// <summary>Opens the widget at the feedback form.</summary>
+    public void ShowFeedback()
+    {
+        ShowStatus();
+        _window?.ShowFeedback();
+    }
+
+    /// <summary>
+    /// Ctrl+Alt+Z: the widget in front → tuck it away; hidden, minimized or behind other windows → bring it up.
+    /// (Windows lets the app that receives a hotkey take the foreground, so Activate works here.)
+    /// </summary>
+    public void ToggleWidget()
+    {
+        if (_window is { IsVisible: true, IsActive: true } window && window.WindowState != System.Windows.WindowState.Minimized)
+        {
+            window.TuckAway();
+            return;
+        }
+        ShowStatus();
+    }
+
     /// <summary>Opens the widget at its chat (the chat is built into it).</summary>
     public void ShowChat()
     {
@@ -317,7 +349,10 @@ internal sealed partial class TrayIcon : IDisposable
     {
         if (_window is null)
         {
-            _window = new WidgetWindow(_noteStore, _watcher, StartUpdateAsync);
+            _window = new WidgetWindow(_noteStore, _watcher, StartUpdateAsync)
+            {
+                Shortcut = _hotkey?.IsRegistered == true ? Strings.Shortcut : null,
+            };
             _window.Closed += (_, _) => _window = null;
             _window.Show();
         }
@@ -435,6 +470,7 @@ internal sealed partial class TrayIcon : IDisposable
     {
         _timer.Stop();
         _updateWatch.Stop();
+        _hotkey?.Dispose();
         _watcher.NewItems -= OnNewNotifications;
         _watcher.Refreshed -= OnNotificationsRefreshed;
         _watcher.Dispose();

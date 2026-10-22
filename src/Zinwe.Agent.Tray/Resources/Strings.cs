@@ -142,4 +142,14 @@ public static class Strings
     public static string ChatBreakNote => Get(nameof(ChatBreakNote));
     public static string ChatBreakNoNote => Get(nameof(ChatBreakNoNote));
     public static string ChatMessageOwner => Get(nameof(ChatMessageOwner));
+    public static string Shortcut => Get(nameof(Shortcut));
+    public static string ShortcutHint => Get(nameof(ShortcutHint));
+    public static string MenuMore => Get(nameof(MenuMore));
+    public static string MenuVersion => Get(nameof(MenuVersion));
+    public static string MenuUpToDate => Get(nameof(MenuUpToDate));
+    public static string MenuUpdateReady => Get(nameof(MenuUpdateReady));
+    public static string MenuFeedback => Get(nameof(MenuFeedback));
+    public static string MenuPoliciesHeading => Get(nameof(MenuPoliciesHeading));
+    public static string MenuHide => Get(nameof(MenuHide));
+    public static string TrayFeedback => Get(nameof(TrayFeedback));
 }

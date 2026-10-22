@@ -164,10 +164,10 @@
     <value>You're all set</value>
   </data>
   <data name="WelcomeBodyWork" xml:space="preserve">
-    <value>Each morning, open Zinwe (click the Z in the taskbar corner, or find Zinwe in Start) and press Log in.</value>
+    <value>Each morning, press Ctrl + Alt + Z (or click the Z in the taskbar corner) and press Log in.</value>
   </data>
   <data name="WelcomeBodyNoWork" xml:space="preserve">
-    <value>Zinwe now runs quietly. Find it any time in Start, or click the Z in the taskbar corner.</value>
+    <value>Zinwe now runs quietly. Press Ctrl + Alt + Z, or click the Z in the taskbar corner, to open it any time.</value>
   </data>
   <data name="WelcomeDismiss" xml:space="preserve">
     <value>Got it</value>
@@ -415,5 +415,38 @@
   <data name="ChatMessageOwner" xml:space="preserve">
     <value>Message {0}</value>
     <comment>{0} owner</comment>
+  </data>
+  <data name="Shortcut" xml:space="preserve">
+    <value>Ctrl+Alt+Z</value>
+  </data>
+  <data name="ShortcutHint" xml:space="preserve">
+    <value>Ctrl + Alt + Z opens or closes Zinwe from anywhere</value>
+  </data>
+  <data name="MenuMore" xml:space="preserve">
+    <value>More: version, feedback and policies</value>
+    <comment>the ⋯ button's accessible name</comment>
+  </data>
+  <data name="MenuVersion" xml:space="preserve">
+    <value>Zinwe {0}</value>
+    <comment>{0} version</comment>
+  </data>
+  <data name="MenuUpToDate" xml:space="preserve">
+    <value>Up to date</value>
+  </data>
+  <data name="MenuUpdateReady" xml:space="preserve">
+    <value>Version {0} is ready to install</value>
+    <comment>{0} version</comment>
+  </data>
+  <data name="MenuFeedback" xml:space="preserve">
+    <value>Send feedback</value>
+  </data>
+  <data name="MenuPoliciesHeading" xml:space="preserve">
+    <value>Policies</value>
+  </data>
+  <data name="MenuHide" xml:space="preserve">
+    <value>Hide Zinwe</value>
+  </data>
+  <data name="TrayFeedback" xml:space="preserve">
+    <value>Send feedback</value>
   </data>
 </root>

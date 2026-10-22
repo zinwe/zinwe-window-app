@@ -8,6 +8,7 @@
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True"
         UseLayoutRounding="True"
+        PreviewKeyDown="OnWindowKeyDown"
         Background="{DynamicResource Zinwe.Paper}"
         FontFamily="{StaticResource Zinwe.Font}"
         Foreground="{DynamicResource Zinwe.Ink}">
@@ -26,22 +27,40 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Header: the wordmark and the connection status, in words (not only a tooltip). -->
-        <StackPanel Margin="2,2,0,10">
-            <Image x:Name="Logo" Source="pack://application:,,,/Assets/zinwe-logo.png" Height="20"
-                   HorizontalAlignment="Left" VerticalAlignment="Center" AutomationProperties.Name="Zinwe"
-                   RenderOptions.BitmapScalingMode="HighQuality" />
-            <Border x:Name="StatusChip" Focusable="True" Margin="0,6,0,0" HorizontalAlignment="Left"
-                    FocusVisualStyle="{StaticResource Zinwe.FocusRing}" KeyboardNavigation.IsTabStop="True"
-                    AutomationProperties.LiveSetting="Polite">
-                <StackPanel Orientation="Horizontal">
-                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center"
-                             Fill="{DynamicResource Zinwe.Muted}" />
-                    <TextBlock x:Name="StatusLineText" Text="Checking…" FontSize="12" VerticalAlignment="Center"
-                               Foreground="{DynamicResource Zinwe.Muted}" TextWrapping="Wrap" MaxWidth="340" />
-                </StackPanel>
-            </Border>
-        </StackPanel>
+        <!-- Header: the wordmark and the connection status, in words (not only a tooltip); on the right the ⋯
+             menu (version, feedback, what Zinwe records, the policies, hide). -->
+        <Grid Margin="2,2,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <Image x:Name="Logo" Source="pack://application:,,,/Assets/zinwe-logo.png" Height="20"
+                       HorizontalAlignment="Left" VerticalAlignment="Center" AutomationProperties.Name="Zinwe"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <Border x:Name="StatusChip" Focusable="True" Margin="0,6,0,0" HorizontalAlignment="Left"
+                        FocusVisualStyle="{StaticResource Zinwe.FocusRing}" KeyboardNavigation.IsTabStop="True"
+                        AutomationProperties.LiveSetting="Polite">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center"
+                                 Fill="{DynamicResource Zinwe.Muted}" />
+                        <TextBlock x:Name="StatusLineText" Text="Checking…" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Zinwe.Muted}" TextWrapping="Wrap" MaxWidth="310" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            <Grid Grid.Column="1" VerticalAlignment="Top" Margin="0,-2,-4,0">
+                <Button x:Name="MoreButton" Style="{StaticResource Zinwe.HeaderButton}" Width="34" Height="34" Padding="0"
+                        Click="OnMore" ContextMenuService.IsEnabled="False">
+                    <TextBlock Text="&#xE712;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                </Button>
+                <!-- A dot on the ⋯ when an update waits, so the version line is worth opening. -->
+                <Ellipse x:Name="MoreBadge" Width="7" Height="7" Fill="{DynamicResource Zinwe.Orange}"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" IsHitTestVisible="False"
+                         Visibility="Collapsed" />
+            </Grid>
+        </Grid>
 
         <!-- Banners: update, "isn't running", "monitoring is off", "you're all set". -->
         <StackPanel Grid.Row="1">
@@ -329,15 +348,13 @@
                 </StackPanel>
             </Border>
 
-            <!-- Re-read what is recorded (and withdraw), any time; and tell the Zinwe team what you think (FR-14). -->
-            <StackPanel Grid.Row="3" Margin="0,10,0,0">
-                <StackPanel Orientation="Horizontal">
-                    <Button x:Name="RecordsButton" Style="{StaticResource Zinwe.HeaderButton}" Height="30"
-                            Content="What Zinwe records on this PC" Click="OnShowRecords" />
-                    <Button x:Name="FeedbackButton" Style="{StaticResource Zinwe.HeaderButton}" Height="30" Margin="6,0,0,0"
-                            Content="Send feedback" Click="OnFeedback" />
-                </StackPanel>
-                <tray:FeedbackPanel x:Name="Feedback" Margin="0,8,0,0" Visibility="Collapsed" />
+            <!-- Feedback for the Zinwe team (FR-14), opened from the ⋯ menu; then the shortcut, said once, quietly.
+                 "What Zinwe records" and the policies moved into the ⋯ menu (and stay in the tray menu). -->
+            <StackPanel Grid.Row="3">
+                <tray:FeedbackPanel x:Name="Feedback" Margin="0,10,0,0" Visibility="Collapsed" />
+                <TextBlock x:Name="ShortcutHint" Text="" FontSize="11.5" Margin="0,10,0,0" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource Zinwe.Muted}" TextWrapping="Wrap" TextAlignment="Center"
+                           Visibility="Collapsed" />
             </StackPanel>
         </Grid>
     </Grid>

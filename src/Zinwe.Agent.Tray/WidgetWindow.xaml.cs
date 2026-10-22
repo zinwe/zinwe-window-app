@@ -140,8 +140,137 @@ public partial class WidgetWindow : Window
         WelcomeTitle.Text = Strings.WelcomeTitle;
         WelcomeDismiss.Content = Strings.WelcomeDismiss;
         RemovedBody.Text = Strings.RemovedBody;
-        RecordsButton.Content = Strings.RecordsLink;
+        AutomationProperties.SetName(MoreButton, Strings.MenuMore);
+        MoreButton.ToolTip = Strings.MenuMore;
     }
+
+    /// <summary>
+    /// Set by the tray once Ctrl+Alt+Z is registered (null when another app holds it): the footer then says it once,
+    /// and the ⋯ menu shows it next to "Hide Zinwe".
+    /// </summary>
+    public string? Shortcut
+    {
+        get => _shortcut;
+        set
+        {
+            _shortcut = value;
+            ShortcutHint.Text = value is null ? "" : Strings.ShortcutHint;
+            ShortcutHint.Visibility = value is null ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    private string? _shortcut;
+
+    // ---- The ⋯ menu: version, feedback, what Zinwe records, policies, hide ------------
+
+    private void OnMore(object sender, RoutedEventArgs e)
+    {
+        var model = MoreMenu.From(_status, AgentInfo.Version, _lastScreen ?? WidgetScreen.None,
+            _consent.State(_status?.NoticeVersion));
+        var menu = new ContextMenu
+        {
+            PlacementTarget = MoreButton,
+            // Under the ⋯, right edges aligned, so the menu stays over the widget instead of running off it.
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Custom,
+            CustomPopupPlacementCallback = (popup, target, _) =>
+            [
+                new System.Windows.Controls.Primitives.CustomPopupPlacement(
+                    new Point(target.Width - popup.Width, target.Height + 4),
+                    System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal),
+            ],
+            MinWidth = 236,
+            FontFamily = (FontFamily)FindResource("Zinwe.Font"),
+        };
+
+        // Which version this PC runs; with an update waiting, it takes the member to the Update card.
+        var versionHeader = new StackPanel();
+        versionHeader.Children.Add(new TextBlock { Text = model.Version, FontWeight = FontWeights.SemiBold, FontSize = 13 });
+        if (model.VersionDetail is { } detail)
+        {
+            versionHeader.Children.Add(new TextBlock
+            {
+                Text = detail, FontSize = 12, Margin = new Thickness(0, 1, 0, 0),
+                Foreground = (Brush)FindResource(model.UpdateWaiting ? "Zinwe.OrangeText" : "Zinwe.Ok"),
+            });
+        }
+        var version = new MenuItem { Header = versionHeader };
+        AutomationProperties.SetName(version, model.VersionDetail is null ? model.Version : $"{model.Version}, {model.VersionDetail}");
+        if (model.UpdateWaiting)
+        {
+            version.Click += (_, _) => FocusUpdate();
+        }
+        else
+        {
+            version.Focusable = false;
+            version.IsHitTestVisible = false;
+        }
+        menu.Items.Add(version);
+        menu.Items.Add(new Separator());
+
+        menu.Items.Add(Item(Strings.MenuFeedback, model.FeedbackEnabled, ShowFeedback));
+        menu.Items.Add(Item(Strings.RecordsLink, model.RecordsEnabled, ShowRecords));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem
+        {
+            Header = Strings.MenuPoliciesHeading, FontSize = 11.5, FontWeight = FontWeights.SemiBold,
+            Foreground = Muted, Focusable = false, IsHitTestVisible = false,
+        });
+        menu.Items.Add(Item(Strings.ConsentPrivacyPolicy, true, () => OpenLink("https://zinwe.io/legal/privacy")));
+        menu.Items.Add(Item(Strings.ConsentAcceptableUse, true, () => OpenLink("https://zinwe.io/legal/acceptable-use")));
+        menu.Items.Add(new Separator());
+        var hide = Item(Strings.MenuHide, true, TuckAway);
+        hide.InputGestureText = Shortcut ?? "Esc";
+        menu.Items.Add(hide);
+
+        menu.Closed += (_, _) => MoreButton.Focus();
+        menu.IsOpen = true;
+
+        static MenuItem Item(string text, bool enabled, Action action)
+        {
+            var item = new MenuItem { Header = text, IsEnabled = enabled, FontSize = 13 };
+            item.Click += (_, _) => action();
+            return item;
+        }
+    }
+
+    /// <summary>The ⋯ menu's version line when an update waits: show the Update card and put focus on its button.</summary>
+    private void FocusUpdate()
+    {
+        UpdatePanel.BringIntoView();
+        (UpdateButton.IsVisible ? UpdateButton : (UIElement)ManualDownloadButton).Focus();
+    }
+
+    /// <summary>Esc tucks the widget away (first closing whatever is open in it: the break / log-out view,
+    /// feedback, the re-opened notice). Ctrl+Alt+Z does the same from anywhere.</summary>
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || e.Handled)
+        {
+            return;
+        }
+        e.Handled = true;
+        if (_prompt is not null)
+        {
+            ClosePrompt();
+            (LogInButton.IsVisible ? LogInButton : BreakButton).Focus();
+        }
+        else if (Feedback.Visibility == Visibility.Visible)
+        {
+            OnFeedbackClosed(this, EventArgs.Empty);
+        }
+        else if (_review is not null && _consent.State(_status?.NoticeVersion) != ConsentState.Pending)
+        {
+            _review = null;
+            Render();
+        }
+        else
+        {
+            TuckAway();
+        }
+    }
+
+    /// <summary>Hide the widget (the X, Esc, Ctrl+Alt+Z, "Hide Zinwe"). Zinwe keeps running.</summary>
+    public void TuckAway() => HideToBackground();
 
     // ---- Work: log in / break / log out --------------------------------------
 
@@ -500,6 +629,7 @@ public partial class WidgetWindow : Window
 
     private void RenderStatusLine(AgentStatus? status, ConsentState consent)
     {
+        MoreBadge.Visibility = status?.UpdateVersion is null ? Visibility.Collapsed : Visibility.Visible;
         var line = StatusText.Line(status);
         if (WidgetLayout.IsEnrolled(status) && consent == ConsentState.Declined)
         {
@@ -716,25 +846,29 @@ public partial class WidgetWindow : Window
         }
     }
 
-    private void OnShowRecords(object sender, RoutedEventArgs e) => ShowRecords();
-
-    /// <summary>FR-14: open (or close) the feedback form under the buttons.</summary>
-    private void OnFeedback(object sender, RoutedEventArgs e)
+    /// <summary>FR-14: open the feedback form at the bottom of the main view (⋯ menu, tray menu).</summary>
+    public void ShowFeedback()
     {
-        if (Feedback.Visibility == Visibility.Visible)
+        if (ConnectedContent.Visibility != Visibility.Visible)
         {
-            Feedback.Visibility = Visibility.Collapsed;
             return;
         }
-        Feedback.Reset();
-        Feedback.Visibility = Visibility.Visible;
-        Feedback.BringIntoView();
+        if (Feedback.Visibility != Visibility.Visible)
+        {
+            Feedback.Reset();
+            Feedback.Visibility = Visibility.Visible;
+        }
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            Feedback.BringIntoView();
+            Feedback.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+        });
     }
 
     private void OnFeedbackClosed(object? sender, EventArgs e)
     {
         Feedback.Visibility = Visibility.Collapsed;
-        FeedbackButton.Focus();
+        MoreButton.Focus();
     }
 
     private void OnReadAndAgree(object sender, RoutedEventArgs e)
