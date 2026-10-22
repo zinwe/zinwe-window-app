@@ -53,34 +53,79 @@ public sealed class UsbEnforcementTests
             RemovableStoragePolicy.KeyPath);
     }
 
-    [Theory]
-    [InlineData(UsbMode.Allow, new string[0], "delete Deny_Read,delete Deny_Write")]
-    [InlineData(UsbMode.ReadOnly, new[] { "Deny_Write=1" }, "set Deny_Write=1,delete Deny_Read")]
-    [InlineData(UsbMode.Block, new[] { "Deny_Read=1", "Deny_Write=1" }, "set Deny_Read=1,set Deny_Write=1")]
-    public void Registry_values_map_from_mode(UsbMode mode, string[] expectedValues, string expectedOps)
-    {
-        var registry = new FakeRegistryWriter();
-        // Start from the opposite state so every mode has something to change.
-        registry.Values["Deny_Read"] = 1;
-        registry.Values["Deny_Write"] = 1;
-        var enforcer = new RegistryUsbEnforcer(registry, NullLogger<RegistryUsbEnforcer>.Instance);
-
-        enforcer.Apply(mode);
-
-        Assert.False(enforcer.IsDryRun);
-        Assert.Equal(expectedValues.Order(), registry.Values.Select(kv => $"{kv.Key}={kv.Value}").Order());
-        Assert.Equal(expectedOps, string.Join(",", registry.Operations));
-    }
+    private static readonly string[] Classes = ["53f5630d", "53f56308", "6AC27878", "F33FDC04"];
 
     [Fact]
-    public void Read_only_from_allow_never_sets_deny_read()
+    public void Read_only_denies_writes_on_every_storage_class_and_write_protects_usb()
     {
         var registry = new FakeRegistryWriter();
         var enforcer = new RegistryUsbEnforcer(registry, NullLogger<RegistryUsbEnforcer>.Instance);
 
         enforcer.Apply(UsbMode.ReadOnly);
 
-        Assert.Equal(new Dictionary<string, int> { ["Deny_Write"] = 1 }, registry.Values);
+        var expected = Classes.Select(c => $"{c}/Deny_Write=1").Append("StorageDevicePolicies/WriteProtect=1");
+        Assert.Equal(expected.Order(), registry.Values.Select(kv => $"{kv.Key}={kv.Value}").Order());
+        Assert.DoesNotContain(registry.Values.Keys, k => k.EndsWith("Deny_Read", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Block_denies_reads_and_writes_everywhere()
+    {
+        var registry = new FakeRegistryWriter();
+        new RegistryUsbEnforcer(registry, NullLogger<RegistryUsbEnforcer>.Instance).Apply(UsbMode.Block);
+
+        foreach (var c in Classes)
+        {
+            Assert.Equal(1, registry.Values[$"{c}/Deny_Read"]);
+            Assert.Equal(1, registry.Values[$"{c}/Deny_Write"]);
+        }
+        Assert.Equal(1, registry.Values["StorageDevicePolicies/WriteProtect"]);
+    }
+
+    [Fact]
+    public void Allow_removes_everything_it_set()
+    {
+        var registry = new FakeRegistryWriter();
+        var enforcer = new RegistryUsbEnforcer(registry, NullLogger<RegistryUsbEnforcer>.Instance);
+        enforcer.Apply(UsbMode.Block);
+
+        enforcer.Apply(UsbMode.Allow);
+
+        Assert.Empty(registry.Values);
+    }
+
+    [Fact]
+    public void Block_to_read_only_never_loosens_writes_on_the_way()
+    {
+        var registry = new FakeRegistryWriter();
+        var enforcer = new RegistryUsbEnforcer(registry, NullLogger<RegistryUsbEnforcer>.Instance);
+        enforcer.Apply(UsbMode.Block);
+        registry.Operations.Clear();
+
+        enforcer.Apply(UsbMode.ReadOnly);
+
+        // Writes stay denied throughout: only read-denies are removed.
+        Assert.All(registry.Operations, op => Assert.StartsWith("delete", op));
+        Assert.All(registry.Operations, op => Assert.EndsWith("Deny_Read", op));
+    }
+
+    [Fact]
+    public void Connected_drives_restart_only_when_the_rule_changes()
+    {
+        var registry = new FakeRegistryWriter();
+        var refresher = new FakeRefresher();
+        var enforcer = new RegistryUsbEnforcer(registry, NullLogger<RegistryUsbEnforcer>.Instance, refresher);
+
+        enforcer.Apply(UsbMode.ReadOnly);
+        Assert.Equal(1, refresher.Calls);
+
+        registry.Operations.Clear();
+        enforcer.Apply(UsbMode.ReadOnly); // every policy sync / restart re-applies the same rule
+        Assert.Equal(1, refresher.Calls);
+        Assert.Empty(registry.Operations);
+
+        enforcer.Apply(UsbMode.Allow);
+        Assert.Equal(2, refresher.Calls); // back to writable: restarted so it takes effect too
     }
 
     [Fact]
@@ -95,6 +140,7 @@ public sealed class UsbEnforcementTests
         var line = Assert.Single(loggers.Entries).Message;
         Assert.Contains("set Deny_Read=1", line);
         Assert.Contains("set Deny_Write=1", line);
+        Assert.Contains("set WriteProtect=1", line);
     }
 
     [Theory]

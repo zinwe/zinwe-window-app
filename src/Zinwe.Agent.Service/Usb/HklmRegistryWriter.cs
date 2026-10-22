@@ -9,6 +9,12 @@ namespace Zinwe.Agent.Service.Usb;
 /// </summary>
 internal sealed class HklmRegistryWriter : IRegistryWriter
 {
+    public int? ReadDword(string keyPath, string valueName)
+    {
+        using var key = Hklm().OpenSubKey(keyPath, writable: false);
+        return key?.GetValue(valueName) is int value ? value : null;
+    }
+
     public void SetDword(string keyPath, string valueName, int value)
     {
         using var key = Hklm().CreateSubKey(keyPath, writable: true);

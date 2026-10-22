@@ -174,6 +174,15 @@
         -->
         <RemoveRegistryKey Id="RemoveUsbPolicy" Root="HKLM" Action="removeOnUninstall"
                            Key="SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f5630d-b6bf-11d0-94f2-00a0c91efb8b}" />
+        <!-- FR-01: read-only / block also cover CD/DVD, phones (WPD, both classes) and USB write-protect. -->
+        <RemoveRegistryKey Id="RemoveUsbPolicyCdDvd" Root="HKLM" Action="removeOnUninstall"
+                           Key="SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f56308-b6bf-11d0-94f2-00a0c91efb8b}" />
+        <RemoveRegistryKey Id="RemoveUsbPolicyWpd" Root="HKLM" Action="removeOnUninstall"
+                           Key="SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{6AC27878-A6FA-4155-BA85-F98F491D4F33}" />
+        <RemoveRegistryKey Id="RemoveUsbPolicyWpd2" Root="HKLM" Action="removeOnUninstall"
+                           Key="SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{F33FDC04-D1AC-4E8E-9A30-19BBD4B108AE}" />
+        <RemoveRegistryKey Id="RemoveUsbWriteProtect" Root="HKLM" Action="removeOnUninstall"
+                           Key="SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" />
       </Component>
 
       <Files Include="$(ServiceDir)\**">

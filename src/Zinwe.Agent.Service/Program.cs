@@ -74,7 +74,9 @@ builder.Services.AddSingleton(sp => new MemberCredentialSource(
 builder.Services.AddSingleton<IUsbEnforcer>(sp => UsbEnforcerSelector.Select(
     UsbEnforcerSelector.IsRunningAsSystem(),
     sp.GetRequiredService<IOptions<AgentOptions>>().Value.Enforcement.DryRun,
-    () => new RegistryUsbEnforcer(new HklmRegistryWriter(), sp.GetRequiredService<ILogger<RegistryUsbEnforcer>>()),
+    // FR-01: every storage class + USB write-protect, and connected drives restarted when the rule changes.
+    () => new RegistryUsbEnforcer(new HklmRegistryWriter(), sp.GetRequiredService<ILogger<RegistryUsbEnforcer>>(),
+        new PnpUsbStorageRefresher(sp.GetRequiredService<ILogger<PnpUsbStorageRefresher>>())),
     sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<UsbProtection>();
 builder.Services.AddSingleton<IUsbDeviceWatcher, WmiUsbDeviceWatcher>();

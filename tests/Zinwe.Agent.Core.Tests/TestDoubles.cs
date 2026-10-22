@@ -37,24 +37,46 @@ internal sealed class FakeBackend : HttpMessageHandler
     }
 }
 
-/// <summary>Records registry edits instead of making them. Tests never touch the real HKLM policies key.</summary>
+/// <summary>Records registry edits instead of making them. Tests never touch the real HKLM keys.</summary>
 internal sealed class FakeRegistryWriter : IRegistryWriter
 {
+    /// <summary>"&lt;short key&gt;/&lt;value&gt;" → DWORD, e.g. "53f5630d/Deny_Write" → 1.</summary>
     public Dictionary<string, int> Values { get; } = [];
     public List<string> Operations { get; } = [];
 
+    private static readonly HashSet<string> KnownKeys =
+        [.. RemovableStoragePolicy.ClassKeys, RemovableStoragePolicy.WriteProtectKeyPath];
+
+    private static string Id(string keyPath, string valueName)
+    {
+        Assert.Contains(keyPath, KnownKeys); // never anything but the USB policy keys
+        return $"{RemovableStoragePolicy.ShortName(keyPath)}/{valueName}";
+    }
+
+    public int? ReadDword(string keyPath, string valueName) =>
+        Values.TryGetValue(Id(keyPath, valueName), out var v) ? v : null;
+
     public void SetDword(string keyPath, string valueName, int value)
     {
-        Assert.Equal(RemovableStoragePolicy.KeyPath, keyPath);
-        Values[valueName] = value;
-        Operations.Add($"set {valueName}={value}");
+        Values[Id(keyPath, valueName)] = value;
+        Operations.Add($"set {Id(keyPath, valueName)}={value}");
     }
 
     public void DeleteValue(string keyPath, string valueName)
     {
-        Assert.Equal(RemovableStoragePolicy.KeyPath, keyPath);
-        Values.Remove(valueName);
-        Operations.Add($"delete {valueName}");
+        Values.Remove(Id(keyPath, valueName));
+        Operations.Add($"delete {Id(keyPath, valueName)}");
+    }
+}
+
+internal sealed class FakeRefresher : IUsbStorageRefresher
+{
+    public int Calls { get; private set; }
+
+    public int RefreshConnectedDrives()
+    {
+        Calls++;
+        return 1;
     }
 }
 
