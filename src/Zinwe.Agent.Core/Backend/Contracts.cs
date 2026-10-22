@@ -105,6 +105,9 @@ public sealed record AgentMessage(
 /// <summary>POST /api/devices/messages/ — the member replies in the thread.</summary>
 public sealed record MemberReplyRequest(string Body);
 
+/// <summary>POST /api/devices/feedback/ — the member's feedback on Zinwe from the Zinwe window (FR-14).</summary>
+public sealed record MemberFeedbackRequest(int Rating, string Message);
+
 /// <summary><see cref="Accepted"/> = newly stored; <see cref="Duplicates"/> = ids the backend already had (a retry).</summary>
 public sealed record EventUploadResponse(int Accepted, int Duplicates);
 
@@ -118,6 +121,7 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(EventUploadResponse))]
 [JsonSerializable(typeof(AgentMessage[]))]
 [JsonSerializable(typeof(MemberReplyRequest))]
+[JsonSerializable(typeof(MemberFeedbackRequest))]
 [JsonSerializable(typeof(MetricUploadRequest))]
 [JsonSerializable(typeof(MetricUploadResponse))]
 [JsonSerializable(typeof(Dictionary<string, string[]>))]

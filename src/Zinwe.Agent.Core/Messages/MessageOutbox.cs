@@ -2,8 +2,17 @@ using System.Text.Json;
 
 namespace Zinwe.Agent.Core.Messages;
 
-/// <summary>One pending member reply waiting to be posted. Id is a client guid (for removal after posting).</summary>
-public sealed record OutboxReply(string Id, string Body, DateTimeOffset CreatedAtUtc);
+/// <summary>
+/// One pending item waiting to be posted. Id is a client guid (for removal after posting). <see cref="Kind"/> is
+/// "reply" (a chat line to the admin) or "feedback" (FR-14: the member's rating of Zinwe, 1-10, for the Zinwe team).
+/// </summary>
+public sealed record OutboxReply(string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null)
+{
+    public const string ReplyKind = "reply";
+    public const string FeedbackKind = "feedback";
+
+    public bool IsFeedback => string.Equals(Kind, FeedbackKind, StringComparison.Ordinal);
+}
 
 /// <summary>
 /// The member's outbound replies, written by the WIDGET and drained by the AGENT via a shared per-user file
@@ -36,9 +45,14 @@ public sealed class MessageOutbox
     }
 
     /// <summary>Queue a reply to be posted by the agent. Returns the new item's id.</summary>
-    public string Append(string body)
+    public string Append(string body) => Add(new OutboxReply(Guid.NewGuid().ToString("N"), body, DateTimeOffset.UtcNow));
+
+    /// <summary>Queue the member's feedback on Zinwe (FR-14; rating 1-10, clamped). Returns the new item's id.</summary>
+    public string AppendFeedback(int rating, string message) => Add(new OutboxReply(
+        Guid.NewGuid().ToString("N"), message, DateTimeOffset.UtcNow, OutboxReply.FeedbackKind, Math.Clamp(rating, 1, 10)));
+
+    private string Add(OutboxReply reply)
     {
-        var reply = new OutboxReply(Guid.NewGuid().ToString("N"), body, DateTimeOffset.UtcNow);
         lock (_lock)
         {
             _folder.Use(dir =>
@@ -53,8 +67,14 @@ public sealed class MessageOutbox
         return reply.Id;
     }
 
-    /// <summary>Replies still waiting to be posted, oldest first.</summary>
-    public IReadOnlyList<OutboxReply> Pending()
+    /// <summary>Chat replies still waiting to be posted, oldest first (feedback is not part of the chat).</summary>
+    public IReadOnlyList<OutboxReply> Pending() => [.. All().Where(i => !i.IsFeedback)];
+
+    /// <summary>Feedback still waiting to be posted, oldest first.</summary>
+    public IReadOnlyList<OutboxReply> PendingFeedback() => [.. All().Where(i => i.IsFeedback)];
+
+    /// <summary>Everything waiting, oldest first.</summary>
+    public IReadOnlyList<OutboxReply> All()
     {
         lock (_lock)
         {

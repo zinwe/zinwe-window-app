@@ -85,6 +85,7 @@ public partial class WidgetWindow : Window
         _startUpdate = startUpdate;
         InitializeComponent();
         ApplyStaticText();
+        Feedback.Closed += OnFeedbackClosed;
         // Never taller than the screen (refined to the actual monitor once shown).
         MaxHeight = WindowFit.MaxHeight(SystemParameters.WorkArea.Height);
 
@@ -716,6 +717,25 @@ public partial class WidgetWindow : Window
     }
 
     private void OnShowRecords(object sender, RoutedEventArgs e) => ShowRecords();
+
+    /// <summary>FR-14: open (or close) the feedback form under the buttons.</summary>
+    private void OnFeedback(object sender, RoutedEventArgs e)
+    {
+        if (Feedback.Visibility == Visibility.Visible)
+        {
+            Feedback.Visibility = Visibility.Collapsed;
+            return;
+        }
+        Feedback.Reset();
+        Feedback.Visibility = Visibility.Visible;
+        Feedback.BringIntoView();
+    }
+
+    private void OnFeedbackClosed(object? sender, EventArgs e)
+    {
+        Feedback.Visibility = Visibility.Collapsed;
+        FeedbackButton.Focus();
+    }
 
     private void OnReadAndAgree(object sender, RoutedEventArgs e)
     {

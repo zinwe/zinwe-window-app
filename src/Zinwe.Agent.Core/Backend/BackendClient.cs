@@ -88,6 +88,25 @@ public sealed class BackendClient
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Post the member's feedback (FR-14). True when it's stored, or when the backend refused it for good (a 4xx
+    /// other than 429: an older backend without the endpoint, a bad rating): either way, don't send it again.
+    /// Throws on network errors, 429 and 5xx so it's retried.
+    /// </summary>
+    public async Task<bool> SendFeedbackAsync(string deviceToken, int rating, string message, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(
+            HttpMethod.Post, "api/devices/feedback/", deviceToken,
+            JsonBody(new MemberFeedbackRequest(rating, message), BackendJsonContext.Default.MemberFeedbackRequest), ct);
+        var code = (int)response.StatusCode;
+        if (code is >= 400 and < 500 and not 429)
+        {
+            return false;
+        }
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     /// <summary>Mark the admin's messages to this member as seen on the PC. Best-effort (ignored on failure).</summary>
     public async Task MarkMessagesReadAsync(string deviceToken, CancellationToken ct)
     {

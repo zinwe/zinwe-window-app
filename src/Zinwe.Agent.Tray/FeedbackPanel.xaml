@@ -1,0 +1,36 @@
+<UserControl x:Class="Zinwe.Agent.Tray.FeedbackPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        FR-14: the member tells the Zinwe team what they think of Zinwe. A five-step rating, an optional note, Send.
+        It goes to the Zinwe team (not to their company) through the agent, like a chat reply.
+    -->
+    <Border Style="{StaticResource Zinwe.Card}" Padding="14,12">
+        <Grid>
+            <StackPanel x:Name="Form">
+                <TextBlock Text="How is Zinwe for you?" FontWeight="SemiBold" FontSize="13.5" />
+                <TextBlock Text="This goes to the Zinwe team, not to your company." FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Zinwe.Muted}" Margin="0,2,0,8" />
+                <UniformGrid x:Name="Scale" Rows="1" AutomationProperties.Name="Your rating" />
+                <TextBlock Text="Anything we should fix or add? (optional)" FontSize="12" Margin="0,10,0,4"
+                           Foreground="{DynamicResource Zinwe.Muted}" />
+                <TextBox x:Name="Message" Style="{StaticResource Zinwe.Input}" MinHeight="54" MaxHeight="110"
+                         MaxLength="2000" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="Anything we should fix or add" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                    <Button Content="Cancel" Style="{StaticResource Zinwe.HeaderButton}" Height="30" Padding="10,0"
+                            Click="OnCancel" />
+                    <Button x:Name="SendButton" Content="Send" Style="{StaticResource Zinwe.PrimaryButton}" Height="30"
+                            MinWidth="80" Margin="6,0,0,0" IsEnabled="False" Click="OnSend" />
+                </StackPanel>
+            </StackPanel>
+            <StackPanel x:Name="Thanks" Visibility="Collapsed">
+                <TextBlock Text="Thank you!" FontWeight="SemiBold" FontSize="13.5" />
+                <TextBlock FontSize="12.5" TextWrapping="Wrap" Margin="0,2,0,8" Foreground="{DynamicResource Zinwe.Muted}"
+                           Text="Zinwe sends it to our team within a few seconds. We read every one." />
+                <Button Content="Close" Style="{StaticResource Zinwe.HeaderButton}" Height="30" Padding="10,0"
+                        HorizontalAlignment="Left" Click="OnCancel" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

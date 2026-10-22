@@ -12,8 +12,8 @@ namespace Zinwe.Agent.Core.Messages;
 /// </summary>
 public sealed class MessageSync(BackendClient backend, NotificationWriter writer, MessageOutbox outbox, ILogger<MessageSync> logger)
 {
-    /// <summary>True while the member has typed a reply the agent hasn't posted yet (sync right away).</summary>
-    public bool HasPendingReplies => outbox.Pending().Count > 0;
+    /// <summary>True while the member has typed a reply (or feedback) the agent hasn't posted yet (sync right away).</summary>
+    public bool HasPendingReplies => outbox.All().Count > 0;
 
     public async Task SyncAsync(string deviceToken, CancellationToken ct)
     {
@@ -25,6 +25,9 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
         }
         try
         {
+            // 0) Feedback for the Zinwe team first: it doesn't depend on the plan having chat.
+            await DrainFeedbackAsync(deviceToken, ct);
+
             // 1) Push any replies the member typed in the widget, so they reach the admin...
             await DrainOutboxAsync(deviceToken, ct);
 
@@ -55,6 +58,30 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             logger.LogError(e, "Could not write delivered messages to the widget file");
+        }
+    }
+
+    private async Task DrainFeedbackAsync(string deviceToken, CancellationToken ct)
+    {
+        var done = new List<string>();
+        try
+        {
+            foreach (var item in outbox.PendingFeedback())
+            {
+                if (!await backend.SendFeedbackAsync(deviceToken, item.Rating ?? 5, item.Body, ct))
+                {
+                    logger.LogWarning("The backend refused the member's feedback; dropping it");
+                }
+                done.Add(item.Id);
+            }
+        }
+        finally
+        {
+            outbox.Remove(done);
+            if (done.Count > 0)
+            {
+                logger.LogInformation("Sent {Count} feedback item(s) to the Zinwe team", done.Count);
+            }
         }
     }
 

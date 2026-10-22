@@ -329,10 +329,16 @@
                 </StackPanel>
             </Border>
 
-            <!-- Re-read what is recorded (and withdraw), any time. -->
-            <Button x:Name="RecordsButton" Grid.Row="3" Style="{StaticResource Zinwe.HeaderButton}" Height="30"
-                    HorizontalAlignment="Left" Margin="0,10,0,0" Content="What Zinwe records on this PC"
-                    Click="OnShowRecords" />
+            <!-- Re-read what is recorded (and withdraw), any time; and tell the Zinwe team what you think (FR-14). -->
+            <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="RecordsButton" Style="{StaticResource Zinwe.HeaderButton}" Height="30"
+                            Content="What Zinwe records on this PC" Click="OnShowRecords" />
+                    <Button x:Name="FeedbackButton" Style="{StaticResource Zinwe.HeaderButton}" Height="30" Margin="6,0,0,0"
+                            Content="Send feedback" Click="OnFeedback" />
+                </StackPanel>
+                <tray:FeedbackPanel x:Name="Feedback" Margin="0,8,0,0" Visibility="Collapsed" />
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>
