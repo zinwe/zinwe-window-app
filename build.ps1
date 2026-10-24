@@ -3,16 +3,21 @@
   Test, publish and package the Zinwe Windows agent.
 
 .EXAMPLE
-  .\build.ps1                    # tests + publish + artifacts\installer\ZinweAgent.msi
-  .\build.ps1 -Version 0.2.0
+  .\build.ps1                    # tests + publish + artifacts\installer\ZinweAgent.msi (unsigned, prod backend)
+  .\build.ps1 -Version 1.2.0
   .\build.ps1 -SkipInstaller     # publish only
   .\build.ps1 -Version 1.0.0 -BackendUrl https://dev.backend.zinwe.io   # a dev-server build
   .\build.ps1 -Version 1.0.2 -BackendUrl https://dev.backend.zinwe.io -CertThumbprint 6FFAC695...   # signed
 
+.PARAMETER Version
+  Product + file version. Default: <Version> in Directory.Build.props (the single source of the version line).
+  An MSI only upgrades an installed agent when its version is higher.
+
 .PARAMETER BackendUrl
   Bakes this backend into the service's appsettings.json, so a plain double-click install (and every
   one-click update) talks to it with no BACKEND_URL property. Default: appsettings.json as committed
-  (production). Must be https.
+  (https://prod.backend.zinwe.io). Must be https. REQUIRED with -CertThumbprint: a signed build is a release
+  candidate, and a release must say which server (dev or prod) it is for.
 
 .PARAMETER CertThumbprint
   Authenticode-signs our own binaries (Zinwe.*.exe / Zinwe.*.dll, before they go into the MSI) and then the
@@ -24,7 +29,7 @@
   RFC 3161 timestamp server, so signatures stay valid after the certificate expires.
 #>
 param(
-    [string]$Version = "0.1.0",
+    [string]$Version = "",
     [string]$BackendUrl = "",
     [string]$CertThumbprint = "",
     [string]$TimestampUrl = "http://timestamp.digicert.com",
@@ -34,6 +39,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
+
+# FIX-017: one version line. Directory.Build.props holds it; -Version overrides it for this build only.
+if (-not $Version) {
+    [xml]$props = Get-Content (Join-Path $PSScriptRoot "Directory.Build.props") -Raw
+    $Version = @($props.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ })[0]
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw "Version '$Version' must look like 1.2.0." }
+# FIX-017: a signed build is a release candidate - it must name its server, never fall back to a default.
+if ($CertThumbprint -and -not $BackendUrl) {
+    throw "A signed build needs -BackendUrl (https://dev.backend.zinwe.io or https://prod.backend.zinwe.io): one MSI per flavour."
+}
+Write-Host "==> Zinwe agent $Version" -ForegroundColor Cyan
 
 function Invoke-Step([string]$Name, [scriptblock]$Body) {
     Write-Host "==> $Name" -ForegroundColor Cyan
@@ -93,6 +110,9 @@ if ($BackendUrl) {
     $json.Agent.BackendBaseUrl = $BackendUrl.TrimEnd("/")
     [IO.File]::WriteAllText($settings, ($json | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding $false))
     Write-Host "==> Backend baked in: $($json.Agent.BackendBaseUrl)" -ForegroundColor Cyan
+} else {
+    $committed = (Get-Content (Join-Path $publish "service\appsettings.json") -Raw | ConvertFrom-Json).Agent.BackendBaseUrl
+    Write-Host "==> Backend (committed default): $committed" -ForegroundColor Cyan
 }
 Invoke-Step "Publish tray" {
     dotnet publish src\Zinwe.Agent.Tray -c Release -p:Version=$Version -o "$publish\tray"

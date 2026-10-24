@@ -6,9 +6,9 @@
  Employee session (per user)            Session 0 (LocalSystem)                         Cloud
 ┌──────────────────────────┐   pipe   ┌───────────────────────────────────┐  HTTPS   ┌──────────────────────┐
 │ Zinwe.Agent.Tray (WPF)   │◄────────►│ Zinwe.Agent.Service               │◄────────►│ Django z_devices     │
-│ tray icon, status card   │ "Zinwe.  │  AgentWorker: enroll→beat→policy  │ Device   │ enroll / heartbeat   │
-│ (USB rule row),          │  Agent"  │  EventUploader (30s, outbox)      │ token    │ policy/current       │
-│ (later) consent + alerts │          │  UsbWatcherService (WMI)          │          │ events/upload        │
+│ widget: connect, consent,│ "Zinwe.  │  AgentWorker: enroll→beat→policy  │ Device   │ enroll / heartbeat   │
+│ work card, chat, notices,│  Agent"  │  EventUploader (30s, outbox)      │ token    │ policy/current       │
+│ update card              │          │  UsbWatcherService (WMI)          │          │ events/upload        │
 └──────────────────────────┘          │  PipeServer                       │          └──────────────────────┘
                                       │        │                          │
                                       │        ▼                          │
@@ -24,11 +24,12 @@
 
 ## Enrollment & identity
 
-1. The owner copies their enrollment key (`ZNW-XXXX-XXXX-XXXX`, reusable, rotatable) from the dashboard.
-2. The admin installs `msiexec … ENROLLMENT_KEY=…`. The MSI writes it to `HKLM\SOFTWARE\Zinwe\Agent`.
-3. The service posts `machine_id` (Windows `MachineGuid`) and the key, and gets a **device token**. The backend stores only its SHA-256.
-4. The token is saved DPAPI-encrypted (`device.dat`, LocalSystem scope) in a ProgramData folder locked to SYSTEM and Administrators. The registry key is deleted.
+1. The owner adds a member in the dashboard; the member gets an email with their **Member ID** (`ZM-XXXX-XXXX`) and the download link.
+2. The member installs the MSI (double-click) and types their email + Member ID in the widget's **Connect this PC**. The widget hands them to the service over the pipe (`enroll`), and the service saves them as `pending-credential.json` in its data folder. IT tools can instead install silently with `msiexec … MEMBER_EMAIL=… MEMBER_ID=… /qn`, which writes them to `HKLM\SOFTWARE\Zinwe\Agent`.
+3. The service posts `email`, `member_id`, `machine_id` (Windows `MachineGuid`), hostname, OS and agent version to `POST /api/devices/enroll/`, and gets a **device token**. The backend stores only its SHA-256.
+4. The token is saved DPAPI-encrypted (`device.dat`, LocalSystem scope) in a ProgramData folder locked to SYSTEM and Administrators. The pending file and the registry copy of the credential are deleted.
 5. A reinstall on the same PC re-uses the same `Device` row (unique on owner + machine_id) and rotates the token.
+6. The member then reads the monitoring notice and agrees or declines (see the consent rule below); nothing is recorded before "I agree".
 
 The device token works **only** on device endpoints (`DeviceTokenAuthentication` is not in DRF's default auth classes). A token stolen from a PC can't read the owner's account.
 
@@ -37,7 +38,7 @@ The device token works **only** on device endpoints (`DeviceTokenAuthentication`
 ```
  service start ──► apply cached policy.json (no network) ──► enrollment loop
                                                                 │
-   NotEnrolled ──key found──► Enrolling ──ok──► Connected ◄──► Offline (network errors, backoff)
+   NotEnrolled ──ID typed──► Enrolling ──ok──► Connected ◄──► Offline (network errors, backoff)
         ▲                         │ refused        │  │ 401
         └── new Member ID ◄── Rejected ◄───────────┼──┘  (401 = removed: company rules cleared)
                                                    │ each successful heartbeat:
@@ -47,8 +48,8 @@ The device token works **only** on device endpoints (`DeviceTokenAuthentication`
 
 | State | Meaning | Leaves when |
 |---|---|---|
-| NotEnrolled | no identity, no usable key | a key appears (checked every 30s) |
-| Enrolling | POST /enroll in flight | 2xx → Connected; 400 on key → Rejected; network → NotEnrolled |
+| NotEnrolled | no identity, no usable Member ID | the member connects in the widget (or a silent-install credential appears) |
+| Enrolling | POST /enroll in flight | 2xx → Connected; 400 on email / Member ID → Rejected; network → NotEnrolled |
 | Connected | last heartbeat ok; policy synced after each beat | network error → Offline; 401 (heartbeat *or* policy fetch) → Rejected |
 | Offline | backend unreachable; exponential backoff ≤ 5 min | next success |
 | Rejected | Member ID refused, or the PC was removed by its owner (`removed`); identity wiped | the member connects with a (new) Member ID |
@@ -61,7 +62,21 @@ Rule: **consent is the member's choice.** The widget writes the member's answer 
 
 Rule: **losing the backend never turns protection off.** `PolicySync.ApplyCached()` runs before the first network call. A failed policy fetch keeps the current policy and is retried on the next heartbeat. A failed apply (registry error) is retried on the next heartbeat too, without a refetch.
 
-Rule: **a used or refused key is never reused.** On successful enroll, on refusal, and whenever the agent starts already enrolled, any key lying around is consumed: deleted from the registry and remembered in memory. Without this, a PC the owner removed would silently re-join on its next 401. A live test caught exactly that bug.
+Rule: **a used or refused Member ID is never reused.** On successful enroll, on refusal, and whenever the agent starts already enrolled, any credential lying around is consumed: the pending file and registry values are deleted and the Member ID is remembered in memory. Without this, a PC the owner removed would silently re-join on its next 401. A live test caught exactly that bug. A Member ID the member types again after a refusal gets a fresh attempt.
+
+## The pipe (tray ↔ service, FIX-015)
+
+One JSON line in, one JSON line out (`PipeProtocol`): `status`, `enroll`, `update`, `usage`. The pipe carries enrolment and "install this update", so both ends check who is on the other side (`Core/Ipc/PipePeers.cs`):
+
+| Check | Rule |
+|---|---|
+| Pipe ACL (`PipeServer.CreateSecurity`) | SYSTEM full control; **INTERACTIVE** read/write only (no creating instances, no ACL changes); **NETWORK denied** (never reachable from another PC). A dev service under `dotnet run` also gives its own account full control of its dev pipe |
+| Service → client | `GetNamedPipeClientProcessId` → the process image must be `<install folder>\tray\Zinwe.Agent.Tray.exe` (the sibling of the service's `service\` folder). Anything else is closed without a reply, for every request type, and logged once per program per 10 minutes |
+| `enroll` | also refused while the PC is Connected / Offline / UpdateRequired ("This PC is already connected to Zinwe."), so a connected PC can't be re-pointed at another member |
+| Client → service | `GetNamedPipeServerProcessId` must equal the process id the Service Control Manager reports for `ZinweAgent` (`QueryServiceStatusEx`). A program that took the pipe name while the service was stopped - even the real service exe started by a user - is treated as "Zinwe isn't running" and is never sent the email + Member ID |
+| Dev builds (FR-05) | a copy running from a source tree (`…\src\Zinwe.Agent.Service\bin\…`) and its tray (`…\src\Zinwe.Agent.Tray\bin\…`) trust each other when they're in the **same** tree. The installed service runs from Program Files, so this never applies to it |
+
+Mixed versions during an update: an older tray still running from the same install folder passes (same path); an older service started by the SCM passes the new tray's check (same rule); a refused client only sees the pipe close, which every tray build already shows as "Zinwe isn't running". Limit: a program running as the same Windows user can still inject code into that user's real tray; the check stops scripts, look-alike programs and pipe squatting, not a determined local attacker. `PipeProtocolTests` that touch the real pipe stay safe: the test process is neither the tray nor the service, so it is refused and never sends anything.
 
 ## Policy & USB enforcement
 
@@ -113,6 +128,20 @@ Writes are ordered so a transition never passes through a looser state than eith
 | `policy.json` | last policy (`version`, `usb.mode`) | folder ACL (no secrets) |
 | `events.db` | unsent events | folder ACL |
 
+## Updates (FIX-016)
+
+The heartbeat offers `update {version, notes, required, download_url, sha256, size}`. On **Update now**, `AgentUpdater` (LocalSystem, enforcement on) downloads to `updates\ZinweAgent-<v>.msi.part` in the SYSTEM-only data folder and installs only if all of these pass, else it deletes the file, reports "failed" on the status and logs the reason:
+
+1. size (when given) and **SHA-256** match the heartbeat;
+2. **Authenticode** (`AuthenticodeSignatureCheck`, after the move to the final `.msi` name): `WinVerifyTrust` (GENERIC_VERIFY_V2, no UI, no revocation, cache-only chain building) must return `S_OK`, `CERT_E_UNTRUSTEDROOT` or `CERT_E_CHAINING`. Those results come only from the last (chain) step, which runs only after the file hash and the signer's signature were verified, so in all three the signature is intact. A changed file gives `TRUST_E_BAD_DIGEST`, no signature `TRUST_E_NOSIGNATURE`; those and every other result (explicitly distrusted, revoked, expired without timestamp, wrong usage) are refused;
+3. the signer certificate that `WinVerifyTrust` verified (read from its own state data) has a SHA-1 thumbprint on `ZinweSigners.Thumbprints` - today the self-signed *Zinwe Dev (SKYTECHNO)* `6FFAC69585F869B2FEF41581A8AA78DF7BD418E2`. Pinning is what makes an untrusted chain acceptable: anyone can make a certificate called "Zinwe", nobody else can sign with ours.
+
+Then `msiexec /i … /qn BACKEND_URL=<current>` runs as SYSTEM. Dev / dry-run agents download and verify (both checks) but never install. A new signing certificate must be added to the pin list in a release signed with an already-pinned one first.
+
+## Build defaults (FIX-017)
+
+`Directory.Build.props` `<Version>` is the version line (1.1.2); `build.ps1` uses it when `-Version` is not passed. The committed backend is `https://prod.backend.zinwe.io` (a live host); a signed build must name its server with `-BackendUrl`, so release MSIs never rely on the default.
+
 ## Gotchas already hit
 
 - `JsonContent` streams with chunked encoding (no `Content-Length`). Django's WSGI server reads that as an **empty body**. `BackendClient` buffers every body (`JsonBody`), and tests pin it for enroll and for event upload.
@@ -123,9 +152,9 @@ Writes are ordered so a transition never passes through a looser state than eith
 
 ## Not done yet (in rough order)
 
-1. Run the full loop live against the new backend endpoints (policy + events), then on a test VM as the installed service to confirm real enforcement and the uninstall cleanup.
-2. More modules on the same pattern: software installs (AppLocker/WDAC), remote-access tools, network.
-3. Tray: verify the pipe server's process is the real service (anti pipe-squatting), consent screen, alert toasts ("USB drive blocked by your company").
-4. Tamper protection: service ACL, uninstall password, and detecting someone deleting the Deny_* values (re-apply on a timer or on a registry change notification).
-5. Self-update (signed MSI download).
-6. Code signing + Defender submission (launch blocker).
+Done since the first version of this list: the live loop, the data-transfer / remote-software / web / network modules, the consent screen and notices, one-click self-update (SHA-256 + pinned Authenticode), dev-certificate signing, and pipe peer checks on both ends.
+
+1. OV/IV code-signing certificate (cloud HSM/token) + Microsoft Defender submission (launch blocker). Ship its thumbprint in `ZinweSigners` in a dev-cert-signed release before the first OV-only release.
+2. Tamper protection: service DACL (no `sc stop` / `sc delete` for Administrators), uninstall password, and detecting someone deleting the Deny_* values (re-apply on a timer or on a registry change notification).
+3. Software-install control beyond detection (AppLocker/WDAC).
+4. Revocation checking for the OV certificate once it exists (today: no revocation check; the pin list is the control).

@@ -25,24 +25,26 @@ window-app/
 
 ## Run it locally (no install, no admin)
 
-1. Get an enrollment key for a local owner account:
+The easy way is `run-zinwe.ps1 run` (it creates a dev member and starts everything). By hand:
+
+1. Add a member under a local owner account in the dashboard and note the member's email + **Member ID**
+   (`ZM-XXXX-XXXX`).
+
+2. Run the service as a console app (dev settings → `http://127.0.0.1:8000`, state in `%LOCALAPPDATA%\Zinwe-dev\Agent`).
+   `ZINWE_INSTANCE=dev` gives it its own pipe (`Zinwe.Agent.dev`), folders and registry key, so it runs next to an
+   installed agent (FR-05):
 
    ```powershell
-   cd ..\backend\zinwe-backend
-   .venv\Scripts\python.exe -c "import os,django; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); django.setup(); from z_auth.models import User; from z_devices.services import get_active_key; u,_=User.objects.get_or_create(email='agent-dev@zinwe.local'); print(get_active_key(u).key)"
-   ```
-
-2. Run the service as a console app (dev settings → `http://127.0.0.1:8000`, state in `%LOCALAPPDATA%\Zinwe\Agent-dev`):
-
-   ```powershell
-   $env:DOTNET_ENVIRONMENT = "Development"
-   $env:ZINWE_Agent__EnrollmentKey = "ZNW-XXXX-XXXX-XXXX"
+   $env:DOTNET_ENVIRONMENT = "Development"; $env:ZINWE_INSTANCE = "dev"
+   $env:ZINWE_Agent__MemberEmail = "member@example.in"; $env:ZINWE_Agent__MemberId = "ZM-XXXX-XXXX"
    dotnet run --project src\Zinwe.Agent.Service
    ```
 
-3. Run the tray (`--show` opens the status card straight away):
+3. Run the tray from the same source tree (`--show` opens the widget straight away). The dev service only answers a
+   tray built in its own tree, and the tray only talks to that service (FIX-015):
 
    ```powershell
+   $env:DOTNET_ENVIRONMENT = "Development"; $env:ZINWE_INSTANCE = "dev"
    dotnet run --project src\Zinwe.Agent.Tray -- --show
    ```
 
@@ -61,18 +63,20 @@ Real enforcement can only be tested with the installed service on a **test VM** 
 ## Test & build
 
 ```powershell
-dotnet test Zinwe.Agent.slnx     # unit tests
-.\build.ps1                      # tests + publish + artifacts\installer\ZinweAgent.msi
-.\build.ps1 -Version 0.2.0
+.\build.ps1                      # tests (one project at a time) + publish + artifacts\installer\ZinweAgent.msi
+.\build.ps1 -Version 1.2.0 -BackendUrl https://dev.backend.zinwe.io -CertThumbprint <thumbprint>   # a signed release
 ```
 
-Warnings are errors (`Directory.Build.props`).
+Don't `dotnet test` the whole `.slnx` (it races the WPF build); `dotnet test tests\<project>` is fine. Warnings are
+errors (`Directory.Build.props`). The version line lives in `Directory.Build.props` (`<Version>`); `-Version`
+overrides it for one build. Without `-BackendUrl` the build uses the committed `https://prod.backend.zinwe.io`; a
+signed build (`-CertThumbprint`) refuses to run without `-BackendUrl`, so every release names its server.
 
 ## Install (test VM first; needs admin)
 
 ```powershell
-msiexec /i artifacts\installer\ZinweAgent.msi ENROLLMENT_KEY=ZNW-XXXX-XXXX-XXXX /qn /l*v install.log
-# optional: BACKEND_URL=https://staging.example   (production default is in appsettings.json)
+msiexec /i artifacts\installer\ZinweAgent.msi MEMBER_EMAIL=member@example.in MEMBER_ID=ZM-XXXX-XXXX /qn /l*v install.log
+# optional: BACKEND_URL=https://dev.backend.zinwe.io   (the build's baked-in backend is the default)
 sc query ZinweAgent
 msiexec /x artifacts\installer\ZinweAgent.msi /qn
 ```
@@ -92,7 +96,7 @@ Uninstall also deletes the USB policy key (`HKLM\SOFTWARE\Policies\Microsoft\Win
 | Setting | Where | Notes |
 |---|---|---|
 | `Agent:BackendBaseUrl` | `appsettings.json` → registry `BackendBaseUrl` → env `ZINWE_Agent__BackendBaseUrl` | Must be `https`, except loopback |
-| Enrollment key | registry `HKLM\SOFTWARE\Zinwe\Agent\EnrollmentKey` (MSI), or `Agent:EnrollmentKey` (dev) | Deleted by the service after use |
+| Member email + Member ID | typed in the widget's "Connect this PC" (pipe → `pending-credential.json`), or registry `HKLM\SOFTWARE\Zinwe\Agent\MemberEmail` / `MemberId` (silent MSI), or `Agent:MemberEmail` / `Agent:MemberId` (dev) | Deleted by the service after use or refusal |
 | `Agent:HeartbeatSeconds` | config | Initial cadence only; the backend's `next_heartbeat_seconds` wins |
 | `Agent:DataDirectory` | config | Default `%ProgramData%\Zinwe\Agent`: `device.dat` (DPAPI), `policy.json`, `events.db` |
 | `Agent:Enforcement:DryRun` | `appsettings.json` (false) / `appsettings.Development.json` (true) | true = log USB changes, never write them. Real enforcement **also** requires running as LocalSystem |
@@ -101,7 +105,7 @@ Uninstall also deletes the USB policy key (`HKLM\SOFTWARE\Policies\Microsoft\Win
 
 | Call | Auth | Result |
 |---|---|---|
-| `POST /api/devices/enroll/` `{enrollment_key, machine_id, hostname, os_version, agent_version, platform}` | none (throttled 60/h/IP) | 201 new / 200 re-enrolled → `{device_id, device_token, re_enrolled}`; 400 `enrollment_key` = refused |
+| `POST /api/devices/enroll/` `{email, member_id, machine_id, hostname, os_version, agent_version}` | none (throttled) | 201 new / 200 re-enrolled → `{device_id, device_token, re_enrolled}`; 400 on `email` / `member_id` = refused |
 | `POST /api/devices/heartbeat/` (+ `consent: {state: given\|declined, version}` once the member answered) | `Authorization: Device <token>` | `{device_id, server_time, next_heartbeat_seconds, policy_version}` + optional `consent_state`, `usb_restore` (restore USB to the policy, send `usb.restored`), `company_name`, `owner_name`; 401 = removed (rules cleared) |
 | `GET /api/devices/policy/current/` | `Device` | `{version, usb: {mode: allow\|read_only\|block}}`; fetched when `policy_version` changes |
 | `POST /api/devices/events/upload/` `{events: [{id, type, occurred_at, severity, data}]}` | `Device` | 1..100 per call, idempotent on `id` → `{accepted, duplicates}`; 400 = content refused |
@@ -109,4 +113,15 @@ Uninstall also deletes the USB policy key (`HKLM\SOFTWARE\Policies\Microsoft\Win
 
 ## Code signing (launch blocker)
 
-The MSI and both exes are **unsigned**. Before any customer install you need an OV code-signing certificate (or Azure Trusted Signing, if eligible in India) and a Microsoft Defender false-positive submission. An unsigned "monitoring agent" will be flagged by SmartScreen/Defender.
+`build.ps1 -CertThumbprint` signs our exes/dlls and the MSI. Today that is the self-signed **Zinwe Dev (SKYTECHNO)**
+certificate (`6FFAC69585F869B2FEF41581A8AA78DF7BD418E2`), trusted only where its `.cer` was imported. Before any
+customer install you need an OV code-signing certificate (or Azure Trusted Signing, if eligible in India) and a
+Microsoft Defender false-positive submission. An unsigned "monitoring agent" will be flagged by SmartScreen/Defender.
+
+**One-click updates check the signature (FIX-016).** Besides the SHA-256, the service installs an update only if
+the MSI has an intact Authenticode signature whose signer thumbprint is on `ZinweSigners.Thumbprints`
+(`src/Zinwe.Agent.Core/Update/InstallerSignature.cs`). The chain may be untrusted (the self-signed certificate on a
+PC that never imported it); the pinned thumbprint is what proves it is ours. **Switching certificates:** first ship a
+release, signed with a certificate already on the list, that adds the new thumbprint; only then sign releases with
+the new certificate alone. An MSI signed with a certificate the installed agents don't know is refused by every one
+of them ("This update isn't signed by Zinwe") and has to be installed by hand.

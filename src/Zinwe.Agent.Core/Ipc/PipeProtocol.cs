@@ -37,6 +37,13 @@ public static class PipeProtocol
         public const string Usage = "usage";
     }
 
+    /// <summary>
+    /// FIX-015: the service takes an "enroll" only while this PC isn't connected (the widget shows Connect only then).
+    /// A connected PC can't be quietly re-pointed at another member over the pipe.
+    /// </summary>
+    public static bool AcceptsEnrollment(AgentState state) =>
+        state is AgentState.NotEnrolled or AgentState.Enrolling or AgentState.Rejected;
+
     internal static string Serialize(Request request) => JsonSerializer.Serialize(request, PipeJsonContext.Default.Request);
 
     internal static Request? DeserializeRequest(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.Request);
@@ -68,27 +75,22 @@ public static class PipeProtocol
     }
 }
 
-/// <summary>Client used by the tray app. Never throws for "service not running" -- returns null instead.</summary>
+/// <summary>
+/// Client used by the tray app. Never throws for "service not running" -- returns null instead.
+/// FIX-015: before anything is sent, the pipe's server process must be the real Zinwe service
+/// (<see cref="PipePeers.IsTrustedService"/>); an impostor holding the pipe name is treated as "not running", so
+/// it never receives the member's email + Member ID.
+/// </summary>
 public static class AgentPipeClient
 {
     public static async Task<AgentStatus?> GetStatusAsync(TimeSpan timeout, CancellationToken ct = default)
     {
+        var line = await ExchangeAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Status), timeout, ct);
         try
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(timeout);
-
-            await using var pipe = new NamedPipeClientStream(".", PipeProtocol.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            await pipe.ConnectAsync(cts.Token);
-
-            using var reader = new StreamReader(pipe, leaveOpen: true);
-            await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync(PipeProtocol.Serialize(new PipeProtocol.Request(PipeProtocol.RequestTypes.Status)).AsMemory(), cts.Token);
-
-            var line = await reader.ReadLineAsync(cts.Token);
             return line is null ? null : PipeProtocol.DeserializeStatus(line);
         }
-        catch (Exception e) when (e is OperationCanceledException or IOException or TimeoutException or JsonException or UnauthorizedAccessException)
+        catch (JsonException)
         {
             return null;
         }
@@ -108,22 +110,46 @@ public static class AgentPipeClient
 
     private static async Task<PipeProtocol.EnrollAck?> SendAsync(PipeProtocol.Request request, TimeSpan timeout, CancellationToken ct)
     {
+        var line = await ExchangeAsync(request, timeout, ct);
+        try
+        {
+            return line is null ? null : PipeProtocol.DeserializeAck(line);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// One request line out, one reply line back -- only after the server proved to be the Zinwe service. Null when
+    /// nothing is listening, the server isn't ours, or the service refused this client (it then closes without a reply).
+    /// </summary>
+    private static Task<string?> ExchangeAsync(PipeProtocol.Request request, TimeSpan timeout, CancellationToken ct) =>
+        ExchangeAsync(PipeProtocol.PipeName, request, timeout, ct);
+
+    /// <summary>As above on any pipe name (tests use a private one).</summary>
+    internal static async Task<string?> ExchangeAsync(string pipeName, PipeProtocol.Request request, TimeSpan timeout, CancellationToken ct)
+    {
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeout);
 
-            await using var pipe = new NamedPipeClientStream(".", PipeProtocol.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             await pipe.ConnectAsync(cts.Token);
+            if (!PipePeers.IsTrustedService(pipe, AppContext.BaseDirectory))
+            {
+                return null; // not the Zinwe service: say nothing to it
+            }
 
             using var reader = new StreamReader(pipe, leaveOpen: true);
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
             await writer.WriteLineAsync(PipeProtocol.Serialize(request).AsMemory(), cts.Token);
 
-            var line = await reader.ReadLineAsync(cts.Token);
-            return line is null ? null : PipeProtocol.DeserializeAck(line);
+            return await reader.ReadLineAsync(cts.Token);
         }
-        catch (Exception e) when (e is OperationCanceledException or IOException or TimeoutException or JsonException or UnauthorizedAccessException)
+        catch (Exception e) when (e is OperationCanceledException or IOException or TimeoutException or UnauthorizedAccessException)
         {
             return null;
         }

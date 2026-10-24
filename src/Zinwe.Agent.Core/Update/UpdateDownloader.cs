@@ -4,15 +4,22 @@ using Zinwe.Agent.Core.Backend;
 
 namespace Zinwe.Agent.Core.Update;
 
-/// <summary>The update can't go ahead; <see cref="Exception.Message"/> is shown to the member as is.</summary>
-public sealed class UpdateException(string message) : Exception(message);
+/// <summary>
+/// The update can't go ahead; <see cref="Exception.Message"/> is shown to the member as is, <see cref="Detail"/>
+/// (when set) is the technical reason for the service log.
+/// </summary>
+public sealed class UpdateException(string message, string? detail = null) : Exception(message)
+{
+    public string? Detail { get; } = detail;
+}
 
 /// <summary>
 /// Downloads a release's installer and proves it is the one the Zinwe team published: the size (when given) and
-/// the SHA-256 from the heartbeat must match, or the file is deleted and nothing is installed. Downloads to a
-/// ".part" file first, so a half-finished download is never mistaken for a good installer.
+/// the SHA-256 from the heartbeat must match, AND (FIX-016) the file must carry a valid Authenticode signature by a
+/// pinned Zinwe certificate (<see cref="AuthenticodeSignatureCheck"/>) - or the file is deleted and nothing is
+/// installed. Downloads to a ".part" file first, so a half-finished download is never mistaken for a good installer.
 /// </summary>
-public sealed partial class UpdateDownloader(BackendClient backend)
+public sealed partial class UpdateDownloader(BackendClient backend, IInstallerSignatureCheck signature)
 {
     /// <summary>The installer is ready to run when this returns; its full path.</summary>
     public async Task<string> DownloadAsync(AgentUpdate update, string deviceToken, string directory, CancellationToken ct)
@@ -37,7 +44,6 @@ public sealed partial class UpdateDownloader(BackendClient backend)
             }
             await VerifyAsync(partial, update, ct);
             File.Move(partial, target, overwrite: true);
-            return target;
         }
         catch (Exception e) when (e is HttpRequestException or IOException or TaskCanceledException && !ct.IsCancellationRequested)
         {
@@ -49,6 +55,18 @@ public sealed partial class UpdateDownloader(BackendClient backend)
             TryDelete(partial);
             throw;
         }
+
+        // The signature is checked under the final .msi name: Windows picks the signature format (MSI) from the file.
+        try
+        {
+            signature.Verify(target);
+        }
+        catch
+        {
+            TryDelete(target);
+            throw;
+        }
+        return target;
     }
 
     private static async Task VerifyAsync(string path, AgentUpdate update, CancellationToken ct)

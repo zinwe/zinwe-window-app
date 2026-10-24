@@ -1,7 +1,11 @@
 <Project>
   <!-- Shared by every C# project under window-app/. The WiX installer does not import C# props. -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
+    <!--
+      FIX-017: the agent's version line - the single source. build.ps1 uses it for the binaries AND the MSI when no
+      -Version is passed; a release bumps it here (or passes a higher -Version). Must be above the last release.
+    -->
+    <Version>1.1.2</Version>
     <Company>SKYTECHNO</Company>
     <Product>Zinwe Agent</Product>
     <Copyright>© SKYTECHNO</Copyright>

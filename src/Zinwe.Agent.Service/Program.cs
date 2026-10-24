@@ -101,6 +101,8 @@ builder.AddFeatureModules();
 
 builder.Services.AddHostedService<AgentWorker>();
 // One-click update: download + verify the release the backend offers, then install it (LocalSystem only).
+// FIX-016: the installer must also be Authenticode-signed by a pinned Zinwe certificate (ZinweSigners).
+builder.Services.AddSingleton<IInstallerSignatureCheck>(_ => new AuthenticodeSignatureCheck());
 builder.Services.AddSingleton<UpdateDownloader>();
 builder.Services.AddSingleton<AgentUpdater>();
 builder.Services.AddHostedService<PostUpdateRelauncher>();

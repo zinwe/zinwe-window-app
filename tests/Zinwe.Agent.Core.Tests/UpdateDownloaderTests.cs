@@ -21,8 +21,50 @@ public sealed class UpdateDownloaderTests : IDisposable
     private static AgentUpdate Offer(string? url = "/api/devices/releases/7/download/", string? sha = null, long? size = null) =>
         new("0.3.0", "Faster chat", true, url, sha ?? MsiHash, size ?? Msi.Length);
 
+    private readonly FakeSignature _signature = new();
+
     private Task<string> Download(AgentUpdate offer) =>
-        new UpdateDownloader(_backend.Client()).DownloadAsync(offer, "tok", _dir.Path, CancellationToken.None);
+        new UpdateDownloader(_backend.Client(), _signature).DownloadAsync(offer, "tok", _dir.Path, CancellationToken.None);
+
+    /// <summary>Stands in for the Authenticode check (that one is tested on real signed files in InstallerSignatureTests).</summary>
+    private sealed class FakeSignature : IInstallerSignatureCheck
+    {
+        public string? Refuse { get; set; }
+        public List<string> Checked { get; } = [];
+
+        public void Verify(string path)
+        {
+            Checked.Add(path);
+            if (Refuse is not null)
+            {
+                throw new UpdateException("This update isn't signed by Zinwe, so it wasn't installed. Please tell your admin.", Refuse);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task The_signature_is_checked_on_the_final_msi_after_the_hash()
+    {
+        var path = await Download(Offer());
+        Assert.Equal([path], _signature.Checked);
+    }
+
+    [Fact]
+    public async Task An_installer_not_signed_by_zinwe_is_refused_and_deleted()
+    {
+        _signature.Refuse = "Signature check failed (0x800B0100): the installer has no digital signature.";
+        var e = await Assert.ThrowsAsync<UpdateException>(() => Download(Offer()));
+        Assert.Contains("isn't signed by Zinwe", e.Message);
+        Assert.Contains("0x800B0100", e.Detail);
+        Assert.Empty(Directory.GetFiles(_dir.Path)); // the refused .msi is not left for anyone to run
+    }
+
+    [Fact]
+    public async Task A_bad_hash_is_refused_before_the_signature_is_looked_at()
+    {
+        await Assert.ThrowsAsync<UpdateException>(() => Download(Offer(sha: new string('a', 64))));
+        Assert.Empty(_signature.Checked);
+    }
 
     [Fact]
     public async Task A_matching_installer_is_saved_and_fetched_with_the_device_token()

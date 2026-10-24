@@ -74,7 +74,8 @@ public sealed record HeartbeatResponse(
 /// <summary>
 /// A newer Windows agent release the PC should install. <paramref name="DownloadUrl"/> is either a path on our own
 /// backend ("/api/devices/releases/5/download/", fetched with this PC's device token) or an external https URL;
-/// the agent installs it only if the file's SHA-256 (and size, when given) match. Empty URL/hash = no installer
+/// the agent installs it only if the file's SHA-256 (and size, when given) match and it is Authenticode-signed by a
+/// pinned Zinwe certificate (FIX-016). Empty URL/hash = no installer
 /// published (only a minimum version is set): the member updates manually.
 /// </summary>
 public sealed record AgentUpdate(

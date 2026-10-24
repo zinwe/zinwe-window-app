@@ -8,7 +8,7 @@ public sealed class AgentOptions
 {
     public const string Section = "Agent";
 
-    /// <summary>Django backend root, e.g. https://api.zinwe.io (no /api suffix).</summary>
+    /// <summary>Django backend root, e.g. https://prod.backend.zinwe.io (no /api suffix).</summary>
     public string BackendBaseUrl { get; set; } = "";
 
     /// <summary>Member email for enrollment. Dev/test only; production comes from the MSI via the registry.</summary>

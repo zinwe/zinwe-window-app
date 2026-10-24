@@ -67,7 +67,7 @@ public sealed record AgentStatus(
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages
 {
-    /// <summary>Downloading the installer and checking its SHA-256.</summary>
+    /// <summary>Downloading the installer and checking its SHA-256 and Zinwe signature.</summary>
     public const string Downloading = "downloading";
     /// <summary>msiexec is running: the tray closes itself so its files can be replaced; the new service reopens it.</summary>
     public const string Installing = "installing";

@@ -13,7 +13,8 @@ namespace Zinwe.Agent.Service.Update;
 /// <summary>
 /// The one-click update the member starts from the widget ("Update now"):
 /// <list type="number">
-/// <item>download the release's MSI and verify its SHA-256 (<see cref="UpdateDownloader"/>);</item>
+/// <item>download the release's MSI and verify its SHA-256 and its Authenticode signature by a pinned Zinwe
+///       certificate (<see cref="UpdateDownloader"/>, <see cref="AuthenticodeSignatureCheck"/>);</item>
 /// <item>leave a marker so the NEXT service start reopens the tray (<see cref="PostUpdateRelauncher"/>);</item>
 /// <item>say "installing" - the tray closes itself so its files can be replaced (stragglers are closed after
 ///       a grace period);</item>
@@ -85,7 +86,7 @@ internal sealed partial class AgentUpdater(
         catch (UpdateException e)
         {
             state.SetUpdateStage(UpdateStages.Failed, e.Message);
-            LogFailed(e.Message);
+            LogFailed(e.Detail is null ? e.Message : $"{e.Message} {e.Detail}");
         }
         catch (Exception e)
         {
