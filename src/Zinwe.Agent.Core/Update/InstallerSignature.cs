@@ -21,6 +21,10 @@ public static class ZinweSigners
     [
         // "CN=Zinwe Dev (SKYTECHNO), O=SKYTECHNO, C=IN" - self-signed, valid 2026-10-17 .. 2028-10-17 (13-release-process.md).
         "6FFAC69585F869B2FEF41581A8AA78DF7BD418E2",
+        // "CN=Zinwe Signing (SKYTECHNO), O=SKYTECHNO, C=IN" - self-signed, valid 2026-10-25 .. 2029-10-25. The backup
+        // signer: unlike the dev certificate (non-exportable, home PC only) its key is exportable, kept as a PFX in
+        // .claude/secrets/codesign/, so releases can be signed from another PC. Pinned from 1.2.1 (signed with the dev cert).
+        "9A8A1A5E85B26CE9C55D4CA0ADAC5AA4F3D164CB",
         // The OV/IV code-signing certificate goes here once bought (see 13-release-process.md, "Signing").
     ];
 }

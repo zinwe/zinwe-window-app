@@ -64,6 +64,10 @@ public sealed class InstallerSignatureTests : IDisposable
     [Fact]
     public void The_dev_certificate_is_pinned() => Assert.Contains(DevCert, ZinweSigners.Thumbprints);
 
+    [Fact]
+    public void The_backup_signing_certificate_is_pinned_too() =>
+        Assert.Contains("9A8A1A5E85B26CE9C55D4CA0ADAC5AA4F3D164CB", ZinweSigners.Thumbprints);
+
     // ------------------------------------------------------------- real files through WinVerifyTrust
 
     private static string MicrosoftSignedFile => typeof(object).Assembly.Location; // System.Private.CoreLib.dll
