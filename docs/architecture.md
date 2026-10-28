@@ -148,6 +148,11 @@ Then `msiexec /i … /qn BACKEND_URL=<current>` runs as SYSTEM. Dev / dry-run ag
 - The host's content root defaults to the working directory, and the SCM starts services in `System32`. `Program.cs` pins it to `AppContext.BaseDirectory`.
 - WinForms (for `NotifyIcon`) and WPF both define `Application`, `MessageBox`, etc. The tray csproj removes the WinForms/Drawing implicit usings and aliases them.
 - `e_sqlite3.dll` has a file version but no language, which fails WiX's ICE60. WiX also refuses a made-up `DefaultLanguage` for it (WIX1101), so the wixproj suppresses ICE60.
+- WPF markup compile: when a XAML file references a type from the tray's own assembly (`xmlns:v="clr-namespace:…"`),
+  a second pass compiles a temporary `*_wpftmp.csproj` that intermittently failed with CS2001 ("*.g.cs could not be
+  found"). The tray v2 views are therefore created in code and placed into `ContentControl`/`Grid` hosts; keep XAML
+  free of local types. Selection controls (radios, chips, switches, tabs) handle `Checked`, not `Click`: keyboard and
+  UI Automation change them without a click.
 - A `BackgroundService` that throws stops the whole host (.NET 8+ default). The uploader and the USB watcher catch everything, because losing either must never take enforcement down.
 
 ## Not done yet (in rough order)
