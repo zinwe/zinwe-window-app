@@ -29,7 +29,11 @@ internal sealed partial class TrayIcon : IDisposable
     private readonly NotificationWatcher _watcher;
 
     private Drawing.Icon? _glyph;
+    private string _glyphKey = "";
     private WidgetWindow? _window;
+    private TrayModel? _model;
+    // The tray's own notice behind the last toast (task, reminder, consent), so clicking it goes to the right place.
+    private NoticeEntry? _lastToastEntry;
     // Ctrl+Alt+Z opens or closes the widget from anywhere (null/unregistered when another app holds it).
     private GlobalHotkey? _hotkey;
     private AgentState? _lastState;
@@ -75,7 +79,12 @@ internal sealed partial class TrayIcon : IDisposable
         };
         _icon.BalloonTipClicked += (_, _) =>
         {
-            if (_lastToastWasChat)
+            if (_lastToastEntry is { } entry && _model is { } model)
+            {
+                ShowStatus();
+                model.OpenNotice(entry);
+            }
+            else if (_lastToastWasChat)
             {
                 ShowChat();
             }
@@ -108,6 +117,13 @@ internal sealed partial class TrayIcon : IDisposable
         _icon.ContextMenuStrip = menu;
         _icon.Visible = true;
 
+        // Tray v2: one model for the window, the reminders and the icon's dots (it outlives the window).
+        _model = new TrayModel(_noteStore, _watcher, StartUpdateAsync);
+        _model.Toast += OnModelToast;
+        _model.OpenRequested += ShowStatus;
+        _model.Changed += UpdateGlyph;
+        _model.Start();
+
         // Toast for any message that arrives, regardless of whether the widget is open.
         _watcher.NewItems += OnNewNotifications;
         _watcher.Refreshed += OnNotificationsRefreshed;
@@ -119,11 +135,29 @@ internal sealed partial class TrayIcon : IDisposable
         _ = RefreshAsync();
     }
 
+    /// <summary>A tray notice (task, reminder, consent question): a toast unless the window is in front.</summary>
+    private void OnModelToast(NoticeEntry entry, string action)
+    {
+        if (_window is { IsVisible: true, IsActive: true })
+        {
+            return;
+        }
+        _lastToastEntry = entry;
+        _lastToastWasChat = false;
+        _icon.ShowBalloonTip(10_000, entry.Title, entry.Body.Length > 0 ? entry.Body : action, Forms.ToolTipIcon.Info);
+    }
+
     private void OnNewNotifications(IReadOnlyList<NotificationItem> items)
     {
+        // Settings › Pop-up notifications off, or paused for an hour: they still collect in Me › Notifications.
+        if (_model?.ToastsAllowed == false)
+        {
+            return;
+        }
         // Protection notices: one toast each (newest first), as before.
         foreach (var item in items.Where(i => !i.IsChat))
         {
+            _lastToastEntry = null;
             _lastToastWasChat = false;
             var noticeTitle = item.Title.StartsWith("Zinwe", StringComparison.Ordinal) ? item.Title : "Zinwe: " + item.Title;
             _icon.ShowBalloonTip(10_000, noticeTitle, item.Body ?? "", Tone(item));
@@ -146,6 +180,7 @@ internal sealed partial class TrayIcon : IDisposable
         {
             text = text[..(ToastTextMax - 1)] + "…";
         }
+        _lastToastEntry = null;
         _lastToastWasChat = true;
         // A break that wasn't approved is a question, not an alarm: an info toast.
         var tone = ChatFeed.IsBreakNotApproved(latest) ? Forms.ToolTipIcon.Info : Tone(latest);
@@ -265,6 +300,7 @@ internal sealed partial class TrayIcon : IDisposable
 
     private void Toast(string title, string text)
     {
+        _lastToastEntry = null;
         _lastToastWasChat = false;
         _icon.ShowBalloonTip(10_000, title, text, Forms.ToolTipIcon.Info);
     }
@@ -347,9 +383,13 @@ internal sealed partial class TrayIcon : IDisposable
 
     public void ShowStatus()
     {
+        if (_model is null)
+        {
+            return;
+        }
         if (_window is null)
         {
-            _window = new WidgetWindow(_noteStore, _watcher, StartUpdateAsync)
+            _window = new WidgetWindow(_model)
             {
                 Shortcut = _hotkey?.IsRegistered == true ? Strings.Shortcut : null,
             };
@@ -411,7 +451,7 @@ internal sealed partial class TrayIcon : IDisposable
     /// The notification-area icon: the real Zinwe mark (Assets/zinwe-mark.png, already transparent - see
     /// design/make_tray_brand.py), scaled to 32px. Falls back to a drawn orange "Z" if the asset can't be loaded.
     /// </summary>
-    private static Drawing.Icon CreateGlyph()
+    private static Drawing.Icon CreateGlyph(int status = 0, bool badge = false)
     {
         const int size = 32;
         using var bitmap = new Drawing.Bitmap(size, size);
@@ -423,6 +463,25 @@ internal sealed partial class TrayIcon : IDisposable
             if (!TryDrawMark(g, size))
             {
                 DrawFallbackZ(g, size);
+            }
+            using var ring = new Drawing.Pen(Drawing.Color.FromArgb(0x1C, 0x20, 0x26), 2.5f);
+            if (status > 0)
+            {
+                var fill = status switch
+                {
+                    1 => Drawing.Color.FromArgb(0x2F, 0xBF, 0x6A),
+                    2 => Drawing.Color.FromArgb(0xE0, 0xA0, 0x30),
+                    _ => Drawing.Color.FromArgb(0xB9, 0xB0, 0xA2),
+                };
+                using var dot = new Drawing.SolidBrush(fill);
+                g.FillEllipse(dot, 20, 20, 11, 11);
+                g.DrawEllipse(ring, 20, 20, 11, 11);
+            }
+            if (badge)
+            {
+                using var red = new Drawing.SolidBrush(Drawing.Color.FromArgb(0xD2, 0x36, 0x1F));
+                g.FillEllipse(red, 20, 1, 11, 11);
+                g.DrawEllipse(ring, 20, 1, 11, 11);
             }
         }
         var handle = bitmap.GetHicon();
@@ -466,8 +525,39 @@ internal sealed partial class TrayIcon : IDisposable
         g.DrawString("Z", font, orange, new Drawing.RectangleF(0, 0, size, size), format);
     }
 
+    /// <summary>
+    /// The taskbar icon carries the board's two dots: the work state bottom right (green working, amber on a break,
+    /// grey otherwise) and a red dot top right while something is unread, an update waits, or setup isn't finished.
+    /// </summary>
+    private void UpdateGlyph()
+    {
+        if (_model is not { } m)
+        {
+            return;
+        }
+        var inApp = m.Stage == Stage.App;
+        var status = !inApp || !m.WorkHoursOn ? 0 : m.Timer.State switch
+        {
+            WorkState.Working => 1,
+            WorkState.OnBreak => 2,
+            _ => 3,
+        };
+        var badge = m.Unread.All > 0 || m.Status?.UpdateVersion is not null || (m.StatusKnown && !inApp);
+        var key = $"{status}{badge}";
+        if (key == _glyphKey)
+        {
+            return;
+        }
+        _glyphKey = key;
+        var old = _glyph;
+        _glyph = CreateGlyph(status, badge);
+        _icon.Icon = _glyph;
+        old?.Dispose();
+    }
+
     public void Dispose()
     {
+        _model?.Dispose();
         _timer.Stop();
         _updateWatch.Stop();
         _hotkey?.Dispose();

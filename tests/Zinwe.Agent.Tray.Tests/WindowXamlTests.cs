@@ -25,8 +25,9 @@ public sealed class WindowXamlTests
 
                 var store = new NotificationStore();
                 using var watcher = new NotificationWatcher(store, TimeSpan.FromMinutes(5));
-                // The widget hosts the chat (ChatPanel), so this parses both.
-                Assert.NotNull(new WidgetWindow(store, watcher, () => Task.FromResult<string?>(null)));
+                // The v2 window hosts every view (Views/*), so this parses all of them with the app's styles.
+                using var model = new TrayModel(store, watcher, () => Task.FromResult<string?>(null));
+                Assert.NotNull(new WidgetWindow(model));
             }
             catch (Exception e)
             {

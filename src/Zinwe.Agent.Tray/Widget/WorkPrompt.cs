@@ -13,19 +13,39 @@ public sealed class WorkPrompt
 {
     public const string Other = "Other";
 
+    // Tray v2 (prototype board): the bottom sheet behind Take a break / End day.
     public static readonly WorkPrompt Break = new(
         title: "Taking a break",
-        reasons: ["Lunch", "Tea / coffee", "Meeting", "Personal", Other],
+        reasons: ["Lunch", "Meeting", "Personal", Other],
         confirm: "Start break",
-        note: "Add a note (optional)",
+        note: "Back by 2 (optional)",
         otherNote: "What's the break for?");
 
     public static readonly WorkPrompt LogOut = new(
-        title: "Logging out",
+        title: "Ending your day",
         reasons: ["Done for today", "Leaving early", "Half day", "Not feeling well", Other],
-        confirm: "Log out",
-        note: "What did you work on today? (optional)",
-        otherNote: "Why are you logging out?");
+        confirm: "End day",
+        note: "What I worked on today (optional)",
+        otherNote: "Why are you ending your day?");
+
+    /// <summary>
+    /// The reason the sheet picks for the member (they can change it): Lunch around midday when there was no lunch
+    /// break yet, "Done for today" from 5 PM.
+    /// </summary>
+    public string? Likely(DateTimeOffset now, bool hadLunch)
+    {
+        var local = now.ToLocalTime().TimeOfDay;
+        if (this == Break)
+        {
+            return local >= TimeSpan.FromHours(12) && local < TimeSpan.FromHours(14.5) && !hadLunch ? "Lunch" : null;
+        }
+        return local >= TimeSpan.FromHours(17) ? "Done for today" : null;
+    }
+
+    /// <summary>The line under the sheet's title.</summary>
+    public string Hint(int openTasks) => this == LogOut && openTasks > 0
+        ? $"Pick a reason. Your {openTasks} open tasks stay in Tasks for tomorrow."
+        : "Pick a reason.";
 
     private readonly string _note;
     private readonly string _otherNote;

@@ -28,7 +28,7 @@
     <value>Before Zinwe starts on this PC</value>
   </data>
   <data name="ConsentIntro" xml:space="preserve">
-    <value>{0} uses Zinwe to protect company data on this work PC. Here is exactly what it can see. Until you choose, {1} only sees that this PC is connected and online — nothing about what you do.</value>
+    <value>{0} uses Zinwe to protect company data on this work PC. Here is exactly what it can see. Until you choose, {1} only sees that this PC is connected and online.</value>
     <comment>{0} employer (sentence start), {1} employer (mid-sentence)</comment>
   </data>
   <data name="ConsentIntroReview" xml:space="preserve">
@@ -43,20 +43,20 @@
     <value>Which apps you use, for how long, and how much internet data each one uses</value>
   </data>
   <data name="ConsentSeesWebsites" xml:space="preserve">
-    <value>Website names you visit, for how long, and how much data (never full addresses, page contents or what you search for)</value>
+    <value>Website names you visit, for how long (never full addresses, page contents or searches)</value>
   </data>
   <data name="ConsentSeesTransfers" xml:space="preserve">
-    <value>Copies to USB drives, shared folders and email attachments: how big they are, not what's in them</value>
+    <value>Copies to USB drives, shared folders and email attachments: how big, not what's in them</value>
   </data>
   <data name="ConsentSeesDetails" xml:space="preserve">
     <value>The names of the files you copy, and the subjects of emails with attachments ({0} switched this on)</value>
     <comment>{0} employer</comment>
   </data>
   <data name="ConsentSeesRemote" xml:space="preserve">
-    <value>Remote-access tools (like AnyDesk) and newly installed software</value>
+    <value>Remote-control apps (like AnyDesk) and newly installed software</value>
   </data>
   <data name="ConsentSeesWork" xml:space="preserve">
-    <value>When you log in, take breaks (with the reason you pick) and log out</value>
+    <value>When you start your day, take a break (with the reason you pick) and end your day</value>
   </data>
   <data name="ConsentSeesNothing" xml:space="preserve">
     <value>Nothing about your activity is switched on right now.</value>
@@ -84,11 +84,11 @@
     <value>If you don't agree</value>
   </data>
   <data name="ConsentDeclineBody" xml:space="preserve">
-    <value>Nothing about what you do is recorded on this PC, and your company's monitoring stays off here. {0} will see that you didn't agree. You can change your mind any time in the Zinwe window.</value>
+    <value>Monitoring stays off on this PC and {0} sees that you didn't agree.</value>
     <comment>{0} employer (sentence start)</comment>
   </data>
   <data name="ConsentDeclineWork" xml:space="preserve">
-    <value>You can still log in, take breaks, log out and message {0}. Those times are shared only when you press the buttons.</value>
+    <value>You can still start and end your day, take breaks, get tasks and message {0}. You can change your mind any time.</value>
     <comment>{0} owner</comment>
   </data>
   <data name="ConsentDeclineChat" xml:space="preserve">

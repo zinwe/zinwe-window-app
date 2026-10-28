@@ -1,0 +1,91 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Tray app v2 design tokens, copied from the approved prototype board (WinApp, :root custom properties).
+        Every brush is used as a DynamicResource, so ThemeManager can swap them for dark mode (Settings > Look)
+        and for Windows High Contrast without touching a view.
+
+        Brand rules: orange #F26A0A is a FILL and always carries ink text #141210 (never white on orange).
+        Orange as text uses Z.Link (#A84505). Focus rings are 2 px orange.
+    -->
+
+    <!-- Surfaces and lines -->
+    <SolidColorBrush x:Key="Z.Bg" Color="#F6F4EF" />
+    <SolidColorBrush x:Key="Z.Surface" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Z.Surface2" Color="#FBFAF7" />
+    <SolidColorBrush x:Key="Z.Fill" Color="#EFECE5" />
+    <SolidColorBrush x:Key="Z.Line" Color="#E6E0D5" />
+    <SolidColorBrush x:Key="Z.LineSoft" Color="#F0EDE6" />
+    <SolidColorBrush x:Key="Z.Line2" Color="#D6CFC2" />
+    <SolidColorBrush x:Key="Z.Hover" Color="#FBFAF7" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="Z.Ink" Color="#141210" />
+    <SolidColorBrush x:Key="Z.Ink2" Color="#3A352E" />
+    <SolidColorBrush x:Key="Z.Ink3" Color="#4A443C" />
+    <SolidColorBrush x:Key="Z.Muted" Color="#6B6459" />
+    <SolidColorBrush x:Key="Z.Link" Color="#A84505" />
+    <SolidColorBrush x:Key="Z.Inv" Color="#141210" />
+    <SolidColorBrush x:Key="Z.OnInv" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Z.WarnText" Color="#8A5300" />
+    <SolidColorBrush x:Key="Z.RedText" Color="#C0331C" />
+
+    <!-- Task state text (cards) -->
+    <SolidColorBrush x:Key="Z.StDoing" Color="#8A3A04" />
+    <SolidColorBrush x:Key="Z.StWait" Color="#1B4FB0" />
+    <SolidColorBrush x:Key="Z.StDone" Color="#17663F" />
+
+    <!-- Soft panels -->
+    <SolidColorBrush x:Key="Z.AccentSoft" Color="#FFF6EE" />
+    <SolidColorBrush x:Key="Z.AccentLine" Color="#F3CFAE" />
+    <SolidColorBrush x:Key="Z.WarnSoft" Color="#FFF8EC" />
+    <SolidColorBrush x:Key="Z.WarnLine" Color="#F1DDB4" />
+    <SolidColorBrush x:Key="Z.Snack" Color="#141210" />
+    <SolidColorBrush x:Key="Z.TabOn" Color="#FDEBDC" />
+
+    <!-- Fixed brand fills (the board uses these hex values inline, in light and dark alike) -->
+    <SolidColorBrush x:Key="Z.Orange" Color="#F26A0A" />
+    <SolidColorBrush x:Key="Z.Focus" Color="#F26A0A" />
+    <SolidColorBrush x:Key="Z.OnOrange" Color="#141210" />
+    <SolidColorBrush x:Key="Z.OkTint" Color="#E3F4EA" />
+    <SolidColorBrush x:Key="Z.Ok" Color="#17663F" />
+    <SolidColorBrush x:Key="Z.OkFill" Color="#1F8A4C" />
+    <SolidColorBrush x:Key="Z.WarnTint" Color="#FBF0D9" />
+    <SolidColorBrush x:Key="Z.Warn" Color="#8A5300" />
+    <SolidColorBrush x:Key="Z.WarnInk" Color="#6A4100" />
+    <SolidColorBrush x:Key="Z.InfoTint" Color="#E6EEFB" />
+    <SolidColorBrush x:Key="Z.Info" Color="#1B4FB0" />
+    <SolidColorBrush x:Key="Z.InfoInk" Color="#1B3A80" />
+    <SolidColorBrush x:Key="Z.OrangeTint" Color="#FDEBDC" />
+    <SolidColorBrush x:Key="Z.OrangeInk" Color="#A84505" />
+    <SolidColorBrush x:Key="Z.SoonTint" Color="#FFF1E6" />
+    <SolidColorBrush x:Key="Z.RedTint" Color="#FCE8E4" />
+    <SolidColorBrush x:Key="Z.RedInk" Color="#8A1F0E" />
+    <SolidColorBrush x:Key="Z.Off" Color="#C9C1B3" />
+    <SolidColorBrush x:Key="Z.Dim" Color="#5917140F" />
+    <SolidColorBrush x:Key="Z.SnackAction" Color="#FF9A55" />
+
+    <!-- Legacy keys (v1 widget, FeedbackPanel, ChatRow / NotificationRow): mapped onto the v2 palette. -->
+    <SolidColorBrush x:Key="Zinwe.White" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Zinwe.Paper" Color="#F6F4EF" />
+    <SolidColorBrush x:Key="Zinwe.Ink" Color="#141210" />
+    <SolidColorBrush x:Key="Zinwe.Muted" Color="#6B6459" />
+    <SolidColorBrush x:Key="Zinwe.Line" Color="#E6E0D5" />
+    <SolidColorBrush x:Key="Zinwe.LineStrong" Color="#D6CFC2" />
+    <SolidColorBrush x:Key="Zinwe.Orange" Color="#F26A0A" />
+    <SolidColorBrush x:Key="Zinwe.OrangeDeep" Color="#E35F04" />
+    <SolidColorBrush x:Key="Zinwe.OrangeStrong" Color="#F26A0A" />
+    <SolidColorBrush x:Key="Zinwe.OrangeText" Color="#A84505" />
+    <SolidColorBrush x:Key="Zinwe.OrangeTint" Color="#FDEBDC" />
+    <SolidColorBrush x:Key="Zinwe.OrangeInk" Color="#8A3A04" />
+    <SolidColorBrush x:Key="Zinwe.Ok" Color="#17663F" />
+    <SolidColorBrush x:Key="Zinwe.OkTint" Color="#E3F4EA" />
+    <SolidColorBrush x:Key="Zinwe.Warn" Color="#8A5300" />
+    <SolidColorBrush x:Key="Zinwe.WarnTint" Color="#FBF0D9" />
+    <SolidColorBrush x:Key="Zinwe.Bad" Color="#C0331C" />
+    <SolidColorBrush x:Key="Zinwe.BadTint" Color="#FCE8E4" />
+
+    <FontFamily x:Key="Zinwe.Font">pack://application:,,,/Zinwe.Agent.Tray;component/Assets/Fonts/#Geist</FontFamily>
+    <!-- Times, IDs and versions. The board uses Geist Mono; Windows 11 ships Cascadia Mono, so no extra font file. -->
+    <FontFamily x:Key="Z.Mono">Cascadia Mono, Consolas</FontFamily>
+</ResourceDictionary>

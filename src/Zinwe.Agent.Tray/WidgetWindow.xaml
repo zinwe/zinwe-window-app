@@ -1,361 +1,301 @@
 <Window x:Class="Zinwe.Agent.Tray.WidgetWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:tray="clr-namespace:Zinwe.Agent.Tray"
         Title="Zinwe"
-        Width="400" SizeToContent="Height"
-        ResizeMode="CanMinimize"
-        WindowStartupLocation="CenterScreen"
+        Width="380" Height="720"
+        WindowStyle="None" ResizeMode="CanMinimize"
+        WindowStartupLocation="Manual"
         ShowInTaskbar="True"
         UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal"
         PreviewKeyDown="OnWindowKeyDown"
-        Background="{DynamicResource Zinwe.Paper}"
-        FontFamily="{StaticResource Zinwe.Font}"
-        Foreground="{DynamicResource Zinwe.Ink}">
+        Background="{DynamicResource Z.Bg}"
+        BorderBrush="{DynamicResource Z.Line2}" BorderThickness="1"
+        FontFamily="{DynamicResource Zinwe.Font}" FontSize="13.5"
+        Foreground="{DynamicResource Z.Ink}">
 
     <!--
-        The member's Zinwe, in one compact view: who this PC is connected to (always visible), then their day
-        (log in / take a break / log out) and the chat with their admin. Before that: Connect, then the consent
-        notice. The window is capped to the screen it's on (code-behind): long views scroll inside, and the
-        buttons that matter (I agree / I don't agree) sit outside the scroll area so they're always on screen.
-        Text comes from code (Resources/Strings.resx) wherever it changes with the state.
+        Zinwe for Windows, tray app v2 (prototype board "WinApp"): a phone-width window that opens above the taskbar,
+        bottom right, and minimizes to its taskbar icon. Bottom tabs Home · Chat · Tasks · Me; pushed screens
+        (My time, Policies & terms, Settings, Notifications, Help) with a Back arrow; reasons, task questions and the
+        profile photo as bottom sheets. The views (Views/*) render from one TrayModel.
     -->
-    <Grid Margin="14,12,14,14">
+    <Window.Resources>
+        <Style x:Key="BadgeStyle" TargetType="Border">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Margin" Value="30,5,0,0" />
+            <Setter Property="MinWidth" Value="17" />
+            <Setter Property="Height" Value="17" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="Background" Value="{DynamicResource Z.Orange}" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Visibility" Value="Collapsed" />
+        </Style>
+    </Window.Resources>
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1"
+                      CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid x:Name="Root">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="32" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Header: the wordmark and the connection status, in words (not only a tooltip); on the right the ⋯
-             menu (version, feedback, what Zinwe records, the policies, hide). -->
-        <Grid Margin="2,2,0,10">
+        <!-- Title bar: Z · Zinwe, minimize and close (both keep Zinwe running in the taskbar). -->
+        <Grid Background="{DynamicResource Z.Fill}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <Image x:Name="Logo" Source="pack://application:,,,/Assets/zinwe-logo.png" Height="20"
-                       HorizontalAlignment="Left" VerticalAlignment="Center" AutomationProperties.Name="Zinwe"
-                       RenderOptions.BitmapScalingMode="HighQuality" />
-                <Border x:Name="StatusChip" Focusable="True" Margin="0,6,0,0" HorizontalAlignment="Left"
-                        FocusVisualStyle="{StaticResource Zinwe.FocusRing}" KeyboardNavigation.IsTabStop="True"
-                        AutomationProperties.LiveSetting="Polite">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center"
-                                 Fill="{DynamicResource Zinwe.Muted}" />
-                        <TextBlock x:Name="StatusLineText" Text="Checking…" FontSize="12" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource Zinwe.Muted}" TextWrapping="Wrap" MaxWidth="310" />
-                    </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                <Border Width="16" Height="16" CornerRadius="4" Background="{DynamicResource Z.Orange}">
+                    <TextBlock Text="Z" FontSize="10" FontWeight="ExtraBold" Foreground="{DynamicResource Z.OnOrange}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
+                <TextBlock x:Name="TitleText" Text="Zinwe" FontSize="12" Margin="8,0,0,0" Foreground="{DynamicResource Z.Ink2}"
+                           VerticalAlignment="Center" />
             </StackPanel>
-            <Grid Grid.Column="1" VerticalAlignment="Top" Margin="0,-2,-4,0">
-                <Button x:Name="MoreButton" Style="{StaticResource Zinwe.HeaderButton}" Width="34" Height="34" Padding="0"
-                        Click="OnMore" ContextMenuService.IsEnabled="False">
-                    <TextBlock Text="&#xE712;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
-                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                </Button>
-                <!-- A dot on the ⋯ when an update waits, so the version line is worth opening. -->
-                <Ellipse x:Name="MoreBadge" Width="7" Height="7" Fill="{DynamicResource Zinwe.Orange}"
-                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" IsHitTestVisible="False"
-                         Visibility="Collapsed" />
-            </Grid>
+            <Button Grid.Column="1" Style="{StaticResource Z.WinCtl}" WindowChrome.IsHitTestVisibleInChrome="True"
+                    AutomationProperties.Name="Minimize" ToolTip="Minimize" Click="OnTuck">
+                <Path Data="M0,5 H10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"
+                      Width="10" Height="10" />
+            </Button>
+            <Button Grid.Column="2" Style="{StaticResource Z.WinClose}" WindowChrome.IsHitTestVisibleInChrome="True"
+                    AutomationProperties.Name="Close" ToolTip="Close (Zinwe keeps running in the taskbar)" Click="OnTuck">
+                <Path Data="M0,0 L10,10 M10,0 L0,10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1" Width="10" Height="10" />
+            </Button>
         </Grid>
 
-        <!-- Banners: update, "isn't running", "monitoring is off", "you're all set". -->
-        <StackPanel Grid.Row="1">
-            <!-- Update (required = orange; work carries on). One click downloads, verifies and installs. -->
-            <Border x:Name="UpdatePanel" Style="{StaticResource Zinwe.Card}" Visibility="Collapsed"
-                    Margin="0,0,0,10" Padding="14,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border x:Name="UpdateIcon" Width="28" Height="28" CornerRadius="8" VerticalAlignment="Top"
-                            Background="{DynamicResource Zinwe.White}">
-                        <Path Width="12" Height="13" Stretch="Uniform" Stroke="{DynamicResource Zinwe.OrangeText}"
-                              StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                              Data="M7,1 V11 M3,7 L7,11 L11,7 M1,14 H13" />
-                    </Border>
-                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                        <TextBlock x:Name="UpdateTitle" Text="Update available" FontWeight="SemiBold" FontSize="13.5" />
-                        <TextBlock x:Name="UpdateBody" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,2,0,0"
-                                   Foreground="{DynamicResource Zinwe.Muted}" />
-                        <TextBlock x:Name="UpdateNotes" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   MaxHeight="52" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
-                        <TextBlock x:Name="UpdateProgress" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
-                        <WrapPanel Margin="0,10,0,0">
-                            <Button x:Name="UpdateButton" Style="{StaticResource Zinwe.PrimaryButton}" Content="Update now"
-                                    Height="34" MinWidth="116" Margin="0,0,6,0" Click="OnUpdateNow" />
-                            <Button x:Name="ManualDownloadButton" Style="{StaticResource Zinwe.HeaderButton}" Height="34"
-                                    Content="Open the download page" Visibility="Collapsed" Click="OnDownloadUpdate" />
-                        </WrapPanel>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- The service isn't running: say so plainly, and what to do. -->
-            <Border x:Name="NotRunningPanel" Style="{StaticResource Zinwe.Card}" Visibility="Collapsed"
-                    Margin="0,0,0,10" Padding="16,14" Background="{DynamicResource Zinwe.BadTint}">
-                <StackPanel>
-                    <TextBlock x:Name="NotRunningTitle" Text="Zinwe isn't running" FontWeight="SemiBold" FontSize="15" />
-                    <TextBlock x:Name="NotRunningBody" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0"
-                               AutomationProperties.LiveSetting="Assertive" />
-                    <Button x:Name="NotRunningRetry" Style="{StaticResource Zinwe.OutlineButton}" Content="Try again"
-                            Height="34" HorizontalAlignment="Left" Margin="0,10,0,0" Click="OnRetryStatus" />
-                </StackPanel>
-            </Border>
-
-            <!-- The member said no: monitoring is off; they can agree any time. -->
-            <Border x:Name="DeclinedPanel" Style="{StaticResource Zinwe.Card}" Visibility="Collapsed"
-                    Margin="0,0,0,10" Padding="16,12">
-                <StackPanel>
-                    <TextBlock x:Name="DeclinedTitle" Text="" FontWeight="SemiBold" FontSize="13.5" />
-                    <TextBlock x:Name="DeclinedBody" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,2,0,0"
-                               Foreground="{DynamicResource Zinwe.Muted}" />
-                    <Button x:Name="DeclinedAgreeButton" Style="{StaticResource Zinwe.HeaderButton}" Content="Read and agree"
-                            Height="32" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnReadAndAgree" />
-                </StackPanel>
-            </Border>
-
-            <!-- Just agreed: one short welcome with the daily routine. -->
-            <Border x:Name="WelcomePanel" Style="{StaticResource Zinwe.Card}" Visibility="Collapsed"
-                    Margin="0,0,0,10" Padding="16,12" Background="{DynamicResource Zinwe.OkTint}">
-                <StackPanel>
-                    <TextBlock x:Name="WelcomeTitle" Text="" FontWeight="SemiBold" FontSize="13.5" />
-                    <TextBlock x:Name="WelcomeBody" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,2,0,0" />
-                    <Button x:Name="WelcomeDismiss" Style="{StaticResource Zinwe.HeaderButton}" Content="Got it"
-                            Height="32" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnWelcomeDismiss" />
-                </StackPanel>
-            </Border>
-        </StackPanel>
-
-        <!-- Connect this PC (until enrolled), with "removed" above it when the owner removed this PC. -->
-        <ScrollViewer x:Name="ConnectScroller" Grid.Row="2" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-            <StackPanel>
-                <Border x:Name="RemovedPanel" Style="{StaticResource Zinwe.Card}" Visibility="Collapsed" Padding="18"
-                        Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock x:Name="RemovedTitle" Text="" FontWeight="SemiBold" FontSize="15" TextWrapping="Wrap" />
-                        <TextBlock x:Name="RemovedBody" Text="" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0"
-                                   Foreground="{DynamicResource Zinwe.Muted}" />
-                    </StackPanel>
-                </Border>
-
-                <Border x:Name="ConnectPanel" Style="{StaticResource Zinwe.Card}" Padding="18">
-                    <StackPanel>
-                        <TextBlock x:Name="ConnectTitle" Text="Connect this PC" FontWeight="SemiBold" FontSize="16" />
-                        <TextBlock x:Name="ConnectIntro" Text="" FontSize="12.5" Foreground="{DynamicResource Zinwe.Muted}"
-                                   TextWrapping="Wrap" Margin="0,4,0,0" />
-                        <TextBlock x:Name="EmailLabel" Text="Work email" FontSize="12.5" FontWeight="Medium" Margin="0,14,0,6" />
-                        <Grid>
-                            <TextBox x:Name="EmailInput" Style="{StaticResource Zinwe.Input}" AutomationProperties.Name="Work email"
-                                     TextChanged="OnConnectInputChanged" />
-                            <TextBlock x:Name="EmailPlaceholder" Text="you@company.com" IsHitTestVisible="False"
-                                       Foreground="{DynamicResource Zinwe.Muted}" FontSize="13" Margin="11,9,11,0" />
-                        </Grid>
-                        <TextBlock x:Name="MemberIdLabel" Text="Member ID" FontSize="12.5" FontWeight="Medium" Margin="0,12,0,6" />
-                        <Grid>
-                            <TextBox x:Name="MemberIdInput" Style="{StaticResource Zinwe.Input}" CharacterCasing="Upper"
-                                     AutomationProperties.Name="Member ID" TextChanged="OnConnectInputChanged" />
-                            <TextBlock x:Name="MemberIdPlaceholder" Text="ZM-XXXX-XXXX" IsHitTestVisible="False"
-                                       Foreground="{DynamicResource Zinwe.Muted}" FontSize="13" Margin="11,9,11,0" />
-                        </Grid>
-                        <TextBlock x:Name="ConnectHint" Text="" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                                   Foreground="{DynamicResource Zinwe.Muted}" />
-                        <TextBlock x:Name="ConnectMessage" Text="" FontSize="12.5" TextWrapping="Wrap"
-                                   Margin="0,10,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Assertive" />
-                        <Button x:Name="ConnectButton" Style="{StaticResource Zinwe.PrimaryButton}"
-                                Content="Connect" Margin="0,14,0,0" Click="OnConnect" IsDefault="True" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- The consent notice: title, the notice (scrolls), and the choice (always on screen, outside the scroll). -->
-        <Border x:Name="ConsentPanel" Grid.Row="2" Style="{StaticResource Zinwe.Card}" Visibility="Collapsed" Padding="0">
+        <!-- Header: Back or the Z tile, the screen title with one useful line under it, the work pill + menu. -->
+        <Border Grid.Row="1" Height="56" Margin="0,0,0,8" Background="{DynamicResource Z.Bg}"
+                BorderBrush="{DynamicResource Z.Line}" BorderThickness="0,0,0,1" Padding="14,0,12,0">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock x:Name="ConsentTitle" Text="" FontWeight="SemiBold" FontSize="16" Margin="18,16,18,4"
-                           TextWrapping="Wrap" />
-                <ScrollViewer x:Name="ConsentScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False"
-                              Padding="18,0,10,8">
-                    <StackPanel x:Name="ConsentBody" Margin="0,0,8,0" />
-                </ScrollViewer>
-                <Border Grid.Row="2" BorderBrush="{DynamicResource Zinwe.Line}" BorderThickness="0,1,0,0" Padding="18,12,18,16">
-                    <StackPanel>
-                        <TextBlock x:Name="ConsentFooterText" Text="" FontSize="12.5" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource Zinwe.Muted}" AutomationProperties.LiveSetting="Polite" />
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="ConsentPrimary" Style="{StaticResource Zinwe.PrimaryButton}" Content="I agree"
-                                    Click="OnConsentPrimary" />
-                            <Button x:Name="ConsentSecondary" Grid.Column="2" Style="{StaticResource Zinwe.OutlineButton}"
-                                    Content="I don't agree" Click="OnConsentSecondary" />
-                        </Grid>
-                    </StackPanel>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="BackButton" Style="{StaticResource Z.IconBtn}" Width="40" Height="40" Margin="-8,0,6,0"
+                        AutomationProperties.Name="Back" ToolTip="Back" Click="OnBack" Visibility="Collapsed">
+                    <Path Data="M7,1 L1,7 L7,13" Stroke="{DynamicResource Z.Ink}" StrokeThickness="2" StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                </Button>
+                <Border x:Name="HeaderMark" Width="32" Height="32" CornerRadius="9" Background="{DynamicResource Z.Orange}"
+                        Margin="0,0,10,0" VerticalAlignment="Center">
+                    <TextBlock Text="Z" FontSize="16" FontWeight="ExtraBold" Foreground="{DynamicResource Z.OnOrange}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="ScreenTitle" Text="Home" FontSize="16" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                    <StackPanel x:Name="StatusRow" Orientation="Horizontal" Margin="0,1,0,0">
+                        <Ellipse x:Name="StatusDot" Width="7" Height="7" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock x:Name="StatusLine" FontSize="12" Foreground="{DynamicResource Z.Ink3}" TextTrimming="CharacterEllipsis"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                </StackPanel>
+                <!-- The compact work pill (every screen but Home): time + a small menu. -->
+                <Button x:Name="MiniPill" Grid.Column="2" Click="OnMiniPill" Cursor="Hand" Visibility="Collapsed"
+                        FocusVisualStyle="{StaticResource Z.FocusRing}" MinHeight="44">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Grid Background="Transparent">
+                                <Border x:Name="b" MinHeight="34" CornerRadius="17" Padding="11,0,10,0" VerticalAlignment="Center"
+                                        Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="1">
+                                    <ContentPresenter VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Button.Template>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="MiniDot" Width="9" Height="9" VerticalAlignment="Center" />
+                        <TextBlock x:Name="MiniText" FontSize="13" FontWeight="Bold" Margin="7,0,0,0" VerticalAlignment="Center" />
+                        <Path x:Name="MiniChevron" Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource Z.Muted}" StrokeThickness="2"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Margin="7,1,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Popup x:Name="WorkMenu" Grid.Column="2" PlacementTarget="{Binding ElementName=MiniPill}" Placement="Custom"
+                       StaysOpen="False" AllowsTransparency="True" Closed="OnWorkMenuClosed">
+                    <Border Width="236" Margin="0,0,8,12" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}"
+                            BorderThickness="1" CornerRadius="14" Padding="6" KeyDown="OnWorkMenuKey">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="24" ShadowDepth="8" Opacity="0.18" Direction="270" Color="#17140F" />
+                        </Border.Effect>
+                        <StackPanel x:Name="WorkMenuItems" KeyboardNavigation.DirectionalNavigation="Cycle">
+                            <WrapPanel Margin="8,6,8,8">
+                                <Border x:Name="MenuPill" CornerRadius="10" Padding="9,2" Margin="0,0,8,0">
+                                    <TextBlock x:Name="MenuPillText" FontSize="12" FontWeight="Bold" />
+                                </Border>
+                                <TextBlock x:Name="MenuSince" FontSize="12" Foreground="{DynamicResource Z.Muted}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </WrapPanel>
+                            <Border Height="1" Background="{DynamicResource Z.LineSoft}" Margin="0,0,0,2" />
+                            <Button x:Name="MenuBreak" Style="{StaticResource Z.MenuRow}" FontWeight="Bold" Content="Take a break" Click="OnMenuBreak" />
+                            <Button x:Name="MenuEndBreak" Style="{StaticResource Z.MenuRow}" FontWeight="Bold" Content="End break" Click="OnMenuEndBreak" />
+                            <Button x:Name="MenuEnd" Style="{StaticResource Z.MenuRow}" Content="End day" Click="OnMenuEnd" />
+                            <Button Style="{StaticResource Z.MenuRow}" Content="My time today" Click="OnMenuTime" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </Grid>
         </Border>
 
-        <!-- Connected: the day on top, then (only if any) notes from Zinwe, then the chat, then the notice link. -->
-        <Grid x:Name="ConnectedContent" Grid.Row="2" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <!-- Everything under the header. -->
+        <Grid Grid.Row="2">
+            <ContentControl x:Name="OnboardHost" Focusable="False" />
 
-            <!-- Today: log in / break / log out (hidden when the company's plan has no work hours). -->
-            <Border x:Name="WorkCard" Style="{StaticResource Zinwe.Card}" Padding="16,12,16,14">
-                <StackPanel>
+            <Grid x:Name="AppArea">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="62" />
+                </Grid.RowDefinitions>
+
+                <!-- The work strip (Home only): pill, hours and minutes, the buttons that make sense now. -->
+                <Border x:Name="Strip" Margin="12,0,12,10" CornerRadius="14" Padding="12,4,4,4" BorderThickness="1">
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock x:Name="Greeting" Text="Good morning" FontSize="12.5" FontWeight="Medium"
-                                       Foreground="{DynamicResource Zinwe.Muted}" />
-                            <TextBlock x:Name="WorkedTime" Text="0:00:00" FontSize="30" FontWeight="SemiBold"
-                                       Margin="0,1,0,0" Typography.NumeralAlignment="Tabular" Focusable="True"
-                                       FocusVisualStyle="{StaticResource Zinwe.FocusRing}"
-                                       AutomationProperties.Name="Work time today" />
-                        </StackPanel>
-                        <Border x:Name="WorkPill" Grid.Column="1" VerticalAlignment="Top" CornerRadius="6" Padding="8,3"
-                                Background="{DynamicResource Zinwe.Paper}">
-                            <TextBlock x:Name="WorkPillText" Text="Not started" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Zinwe.Muted}" />
+                        <Border x:Name="StripPill" CornerRadius="10" Padding="9,2" VerticalAlignment="Center">
+                            <TextBlock x:Name="StripPillText" FontSize="12" FontWeight="Bold" />
                         </Border>
+                        <TextBlock x:Name="BigTime" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="18" FontWeight="Bold"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal">
+                            <Button x:Name="StartDayButton" Style="{StaticResource Z.BtnSm.Pri}" Content="Start day" Click="OnStartDay" />
+                            <Button x:Name="BreakButton" Style="{StaticResource Z.BtnSm}" Content="Take a break" Click="OnAskBreak" />
+                            <Button x:Name="EndDayButton" Style="{StaticResource Z.BtnSm}" Content="End day" Margin="6,0,0,0" Click="OnAskOut" />
+                            <Button x:Name="EndBreakButton" Style="{StaticResource Z.BtnSm.Dark}" Content="End break" Click="OnEndBreak" />
+                            <Button x:Name="StartAgainButton" Style="{StaticResource Z.BtnSm}" Content="Start again" Click="OnStartDay" />
+                        </StackPanel>
                     </Grid>
-                    <TextBlock x:Name="StatusLine" Text="Not logged in yet today" FontSize="12.5"
-                               Foreground="{DynamicResource Zinwe.Muted}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Name="BreakLine" Text="" FontSize="12.5" Foreground="{DynamicResource Zinwe.Muted}"
-                               Visibility="Collapsed" Typography.NumeralAlignment="Tabular" />
+                </Border>
 
-                    <!-- Only the buttons that make sense right now. -->
-                    <Grid x:Name="ActionsPanel" Margin="0,12,0,0">
-                        <Button x:Name="LogInButton" Style="{StaticResource Zinwe.PrimaryButton}" Height="36"
-                                Content="Log in" Click="OnLogIn" />
-                        <Grid x:Name="WorkingActions" Visibility="Collapsed">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="BreakButton" Style="{StaticResource Zinwe.OutlineButton}" Height="36"
-                                    Content="Take a break" Click="OnBreak" />
-                            <Button x:Name="LogOutButton" Grid.Column="2" Style="{StaticResource Zinwe.OutlineButton}" Height="36"
-                                    Content="Log out" Click="OnLogOut" />
+                <!-- Banners: Zinwe isn't running, offline. -->
+                <StackPanel Grid.Row="1">
+                    <Border x:Name="NotRunningBanner" Margin="12,0,12,8" CornerRadius="12" Padding="12,10" Background="{DynamicResource Z.RedTint}"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="NotRunningTitle" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Z.RedInk}" />
+                            <TextBlock x:Name="NotRunningBody" FontSize="12.5" TextWrapping="Wrap" Margin="0,2,0,0" Foreground="{DynamicResource Z.RedInk}"
+                                       AutomationProperties.LiveSetting="Assertive" />
+                            <Button x:Name="RetryButton" Style="{StaticResource Z.BtnSm}" HorizontalAlignment="Left" Margin="0,4,0,0"
+                                    Content="Try again" Click="OnRetry" />
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="OfflineBanner" Margin="12,0,12,8" CornerRadius="10" Padding="12,8" Background="{DynamicResource Z.Snack}"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="OfflineText" FontSize="12" Foreground="White" TextWrapping="Wrap" LineHeight="17"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </Border>
+                </StackPanel>
+
+                <!-- The task in focus (Home only): NOW / UP NEXT. -->
+                <Border x:Name="FocusCard" Grid.Row="2" Margin="12,0,12,10" CornerRadius="14" Padding="12,9,10,10" BorderThickness="1">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock x:Name="FocusKicker" Style="{StaticResource Z.Lbl}" />
+                            <TextBlock x:Name="FocusDue" FontSize="12" HorizontalAlignment="Right" />
                         </Grid>
-                    </Grid>
-
-                    <!-- The one input view for "Take a break" and "Log out": reason (required) + note. -->
-                    <StackPanel x:Name="PromptPanel" Visibility="Collapsed" Margin="0,12,0,0" KeyDown="OnPromptKeyDown">
-                        <Border Height="1" Background="{DynamicResource Zinwe.Line}" Margin="0,0,0,10" />
-                        <TextBlock x:Name="PromptTitle" Text="Taking a break" FontSize="14" FontWeight="SemiBold" />
-                        <TextBlock x:Name="PromptSubtitle" Text="" FontSize="12" Foreground="{DynamicResource Zinwe.Muted}"
-                                   Margin="0,1,0,8" TextWrapping="Wrap" />
-                        <WrapPanel x:Name="ReasonChips" Margin="0,0,-6,0" />
                         <Grid Margin="0,4,0,0">
-                            <TextBox x:Name="PromptNote" Style="{StaticResource Zinwe.Input}" MinHeight="44" MaxHeight="96"
-                                     AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                                     MaxLength="280" TextChanged="OnPromptNoteChanged" AutomationProperties.Name="Note" />
-                            <TextBlock x:Name="PromptNotePlaceholder" Text="Add a note (optional)" IsHitTestVisible="False"
-                                       Foreground="{DynamicResource Zinwe.Muted}" FontSize="13" Margin="11,9,11,0"
-                                       TextWrapping="Wrap" />
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="FocusTitle" Click="OnFocusOpen" Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}"
+                                    MinHeight="36" HorizontalContentAlignment="Left">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Grid Background="Transparent">
+                                            <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" FontWeight="Bold"
+                                                       FontSize="13.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button x:Name="FocusCta" Grid.Column="1" Margin="8,0,0,0" Click="OnFocusRun" />
+                        </Grid>
+                        <Grid x:Name="FocusSteps" Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="PromptHint" Text="" FontSize="12" Foreground="{DynamicResource Zinwe.Muted}"
-                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="2,0,8,0"
-                                       AutomationProperties.LiveSetting="Polite" />
-                            <Button Grid.Column="1" Style="{StaticResource Zinwe.HeaderButton}" Height="34" Content="Cancel"
-                                    Click="OnPromptCancel" IsCancel="True" />
-                            <Button x:Name="PromptConfirm" Grid.Column="2" Style="{StaticResource Zinwe.PrimaryButton}" Height="34"
-                                    Content="Start break" MinWidth="104" Margin="6,0,0,0" Click="OnPromptConfirm" />
+                            <Border Height="5" CornerRadius="3" Background="{DynamicResource Z.Fill}" VerticalAlignment="Center" ClipToBounds="True">
+                                <Border x:Name="FocusBar" HorizontalAlignment="Left" CornerRadius="3" Background="{DynamicResource Z.OkFill}" />
+                            </Border>
+                            <TextBlock x:Name="FocusStepsText" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="12"
+                                       Foreground="{DynamicResource Z.Muted}" Margin="8,0,0,0" />
                         </Grid>
                     </StackPanel>
-                </StackPanel>
-            </Border>
+                </Border>
 
-            <!-- Notes from Zinwe's own protection on this PC: title and the reason, only when there are some. -->
-            <Border x:Name="NoticesCard" Grid.Row="1" Margin="0,10,0,0" Padding="12,8,6,8" CornerRadius="10"
-                    Background="{DynamicResource Zinwe.WarnTint}" BorderBrush="{DynamicResource Zinwe.LineStrong}" BorderThickness="1"
-                    Visibility="Collapsed">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl x:Name="NoticeList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,2" Focusable="True" FocusVisualStyle="{StaticResource Zinwe.FocusRing}"
-                                          AutomationProperties.Name="{Binding AccessibleText}">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="12" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Ellipse Width="6" Height="6" Fill="{Binding ToneBrush}" VerticalAlignment="Top" Margin="0,6,0,0" />
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock FontSize="12.5" TextWrapping="Wrap">
-                                                <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
-                                                <Run Text="·" Foreground="{DynamicResource Zinwe.Muted}" />
-                                                <Run Text="{Binding When, Mode=OneWay}" Foreground="{DynamicResource Zinwe.Muted}" />
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding Body}" FontSize="12" TextWrapping="Wrap"
-                                                       Foreground="{DynamicResource Zinwe.Muted}" Visibility="{Binding BodyVisibility}" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                    <Button x:Name="ClearButton" Grid.Column="1" Style="{StaticResource Zinwe.HeaderButton}" Height="26"
-                            Padding="8,0" VerticalAlignment="Top" Content="Clear" Click="OnClear"
-                            AutomationProperties.Name="Clear the notes from Zinwe" />
+                <!-- The screens; the snack bar and the bottom sheet sit over them. -->
+                <Grid x:Name="ScreenHost" Grid.Row="3">
+                    <Grid.LayoutTransform>
+                        <ScaleTransform x:Name="TextScale" ScaleX="1" ScaleY="1" />
+                    </Grid.LayoutTransform>
+                    <!-- The views (Views/*) are added here in code: no XAML reference to this assembly's own types, so the
+                         markup compile needs no temporary assembly (that pass raced on obj\ and failed with CS2001). -->
+                    <Grid x:Name="ScreensHost" />
+
+                    <!-- Snack bar -->
+                    <Border x:Name="SnackBar" VerticalAlignment="Bottom" Margin="12" CornerRadius="12" Padding="12,4,12,4"
+                            Background="{DynamicResource Z.Snack}" Visibility="Collapsed" Panel.ZIndex="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="30" ShadowDepth="10" Opacity="0.5" Direction="270" />
+                        </Border.Effect>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SnackText" FontSize="12.5" Foreground="White" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       LineHeight="17" Margin="0,6" AutomationProperties.LiveSetting="Polite" />
+                            <StackPanel x:Name="SnackActions" Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" />
+                        </Grid>
+                    </Border>
+
+                    <ContentControl x:Name="SheetSlot" Panel.ZIndex="5" Focusable="False" />
                 </Grid>
-            </Border>
 
-            <!-- The chat with the admin: a compact bar that opens the conversation when clicked
-                 (hidden when the company's plan has no chat). -->
-            <tray:ChatPanel x:Name="Chat" Grid.Row="2" Margin="0,10,0,0" />
-
-            <!-- Neither work hours nor chat on the company's plan: just say the PC is protected. -->
-            <Border x:Name="ProtectedCard" Grid.Row="0" Style="{StaticResource Zinwe.Card}" Padding="16,14"
-                    Visibility="Collapsed">
-                <StackPanel>
-                    <TextBlock Text="This PC is protected" FontWeight="SemiBold" FontSize="15" />
-                    <TextBlock FontSize="12.5" Foreground="{DynamicResource Zinwe.Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                               Text="Zinwe is running and your company's rules apply. There's nothing you need to do here." />
-                </StackPanel>
-            </Border>
-
-            <!-- Feedback for the Zinwe team (FR-14), opened from the ⋯ menu; then the shortcut, said once, quietly.
-                 "What Zinwe records" and the policies moved into the ⋯ menu (and stay in the tray menu). -->
-            <StackPanel Grid.Row="3">
-                <tray:FeedbackPanel x:Name="Feedback" Margin="0,10,0,0" Visibility="Collapsed" />
-                <TextBlock x:Name="ShortcutHint" Text="" FontSize="11.5" Margin="0,10,0,0" HorizontalAlignment="Center"
-                           Foreground="{DynamicResource Zinwe.Muted}" TextWrapping="Wrap" TextAlignment="Center"
-                           Visibility="Collapsed" />
-            </StackPanel>
+                <!-- Bottom tabs. -->
+                <Border Grid.Row="4" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}" BorderThickness="0,1,0,0">
+                    <Grid x:Name="TabBar" AutomationProperties.Name="Zinwe sections">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition />
+                            <ColumnDefinition />
+                            <ColumnDefinition />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <RadioButton x:Name="TabHome" Style="{StaticResource Z.Tab}" GroupName="tabs" Content="Home" Checked="OnTab"
+                                     Tag="M3,11 L12,4 L21,11 V20 H5 V11 M10,20 V15 H14 V20" />
+                        <RadioButton x:Name="TabChat" Grid.Column="1" Style="{StaticResource Z.Tab}" GroupName="tabs" Content="Chat" Checked="OnTab"
+                                     Tag="M21,12 A8,8 0 0 1 9.4,19.1 L4,20 L5,15.4 A8,8 0 1 1 21,12 Z" />
+                        <RadioButton x:Name="TabTasks" Grid.Column="2" Style="{StaticResource Z.Tab}" GroupName="tabs" Content="Tasks" Checked="OnTab"
+                                     Tag="M5,4 H19 A1,1 0 0 1 20,5 V19 A1,1 0 0 1 19,20 H5 A1,1 0 0 1 4,19 V5 A1,1 0 0 1 5,4 Z M8.5,12.5 L11,15 L15.5,10" />
+                        <RadioButton x:Name="TabMe" Grid.Column="3" Style="{StaticResource Z.Tab}" GroupName="tabs" Content="Me" Checked="OnTab"
+                                     Tag="M12,12 A4,4 0 1 0 12,4 A4,4 0 0 0 12,12 Z M4,21 A8,8 0 0 1 20,21" />
+                        <Border x:Name="BadgeChat" Grid.Column="1" Style="{StaticResource BadgeStyle}" />
+                        <Border x:Name="BadgeTasks" Grid.Column="2" Style="{StaticResource BadgeStyle}" />
+                        <Border x:Name="BadgeMe" Grid.Column="3" Style="{StaticResource BadgeStyle}" />
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
+
 </Window>

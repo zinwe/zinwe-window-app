@@ -1,0 +1,130 @@
+<UserControl x:Class="Zinwe.Agent.Tray.Views.SheetView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+>
+    <!-- Bottom sheets over the screens: a dim backdrop (click closes) and a panel that keeps Tab inside it; Esc closes. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" MinHeight="40" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Border Grid.RowSpan="2" Background="{DynamicResource Z.Dim}" MouseLeftButtonDown="OnBackdrop" />
+        <Border x:Name="SheetPanel" Grid.Row="1" Background="{DynamicResource Z.Surface}" CornerRadius="18,18,0,0" Padding="14,8,14,14"
+                KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="30" ShadowDepth="10" Opacity="0.15" Direction="90" />
+            </Border.Effect>
+            <ScrollViewer Style="{StaticResource Z.Scroll}">
+                <StackPanel>
+                    <Border Width="40" Height="4" CornerRadius="2" Background="{DynamicResource Z.Line2}" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="Title" FontSize="15" FontWeight="Bold" Margin="0,10,0,0" TextWrapping="Wrap" />
+                    <TextBlock x:Name="Hint" FontSize="12.5" Foreground="{DynamicResource Z.Ink3}" TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="18" />
+
+                    <!-- Take a break / End day -->
+                    <StackPanel x:Name="ReasonPanel" Margin="0,10,0,0">
+                        <WrapPanel x:Name="ReasonChips" AutomationProperties.Name="Reason" />
+                        <TextBox x:Name="ReasonNote" Style="{StaticResource Z.InputPill}" Margin="0,10,0,0" MaxLength="280"
+                                 AutomationProperties.Name="Note" TextChanged="OnReasonNote" KeyDown="OnReasonKey" />
+                        <TextBlock x:Name="ReasonMissing" FontSize="12" Foreground="{DynamicResource Z.Muted}" Margin="4,6,0,0" Visibility="Collapsed"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="ReasonCta" Style="{StaticResource Z.Btn.Pri}" Margin="0,10,0,0" Click="OnReasonCta" />
+                    </StackPanel>
+
+                    <!-- Ask {owner} -->
+                    <StackPanel x:Name="AskPanel" Margin="0,10,0,0">
+                        <WrapPanel x:Name="AskChips" />
+                        <TextBox x:Name="AskNote" Style="{StaticResource Z.Input}" Margin="0,10,0,0" MaxLength="280" TextChanged="OnTaskNote" />
+                        <Button x:Name="AskCta" Style="{StaticResource Z.Btn.Dark}" Margin="0,10,0,0" Click="OnSendAsk" />
+                        <Border BorderBrush="{DynamicResource Z.LineSoft}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,6,0,0">
+                            <Grid>
+                                <TextBlock Text="Not something you can do?" FontSize="12.5" Foreground="{DynamicResource Z.Ink3}" VerticalAlignment="Center" />
+                                <Button Style="{StaticResource Z.BtnSm}" Content="Can’t do this" HorizontalAlignment="Right" Click="OnToCant" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Can't do this task -->
+                    <StackPanel x:Name="CantPanel" Margin="0,10,0,0">
+                        <WrapPanel x:Name="CantChips" />
+                        <TextBox x:Name="CantNote" Style="{StaticResource Z.Input}" Tag="A short reason (optional)" Margin="0,10,0,0" MaxLength="280"
+                                 TextChanged="OnTaskNote" />
+                        <Button x:Name="CantCta" Style="{StaticResource Z.Btn.Dark}" Margin="0,10,0,0" Click="OnSendCant" />
+                        <Button x:Name="BackToAsk" Style="{StaticResource Z.LinkBtn}" HorizontalAlignment="Center" Margin="0,6,0,0" Click="OnBackToAsk" />
+                    </StackPanel>
+
+                    <!-- Add a note -->
+                    <StackPanel x:Name="NotePanel" Margin="0,10,0,0">
+                        <TextBox x:Name="NoteInput" Style="{StaticResource Z.Input}" Tag="e.g. Booked the big room, 10 to 11" MaxLength="280"
+                                 AutomationProperties.Name="Note" TextChanged="OnTaskNote" />
+                        <Button x:Name="NoteCta" Style="{StaticResource Z.Btn.Pri}" Content="Save note" Margin="0,10,0,0" Click="OnSaveNote" />
+                    </StackPanel>
+
+                    <!-- Add a task for yourself / Edit your task -->
+                    <StackPanel x:Name="NewTaskPanel" Margin="0,10,0,0">
+                        <Label Content="What needs doing" Target="{Binding ElementName=NtTitle}" Padding="0" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Z.Ink2}" />
+                        <TextBox x:Name="NtTitle" Style="{StaticResource Z.Input}" Tag="e.g. Update the client tracker" Margin="0,6,0,0" MaxLength="200"
+                                 AutomationProperties.Name="What needs doing" TextChanged="OnFormChanged" />
+                        <TextBlock Text="Due" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,0" />
+                        <WrapPanel x:Name="DueChips" Margin="0,4,0,0" AutomationProperties.Name="Due" />
+                        <DatePicker x:Name="NtDate" Margin="0,6,0,0" SelectedDateChanged="OnDateChanged" AutomationProperties.Name="Due date"
+                                    FontFamily="{DynamicResource Zinwe.Font}" FontSize="14" />
+                        <TextBlock x:Name="NtDateHint" FontSize="12" Foreground="{DynamicResource Z.Muted}" Margin="0,4,0,0" />
+                        <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,0">
+                            <Run Text="Steps " /><Run Text="(optional)" FontWeight="Normal" Foreground="{DynamicResource Z.Muted}" />
+                        </TextBlock>
+                        <StackPanel x:Name="NtSteps" Margin="0,4,0,0" />
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="NtStep" Style="{StaticResource Z.Input}" Tag="Add a step and press Enter" MaxLength="120"
+                                     AutomationProperties.Name="New step" KeyDown="OnStepKey" TextChanged="OnStepChanged" />
+                            <Button x:Name="NtAddStep" Grid.Column="1" Style="{StaticResource Z.Btn}" Content="Add" Margin="6,0,0,0" IsEnabled="False"
+                                    Click="OnAddStep" />
+                        </Grid>
+                        <Button x:Name="NtCta" Style="{StaticResource Z.Btn.Pri}" MinHeight="46" Margin="0,12,0,0" Click="OnSaveForm" />
+                        <TextBlock x:Name="NtNote" FontSize="12" Foreground="{DynamicResource Z.Muted}" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <!-- Profile photo -->
+                    <StackPanel x:Name="PhotoPanel" Margin="0,10,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ContentControl x:Name="PhotoPreview" Margin="0,0,12,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="PhotoName" FontSize="13.5" FontWeight="Bold" />
+                                <TextBlock x:Name="PhotoStatus" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.StDone}"
+                                           TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                            </StackPanel>
+                        </Grid>
+                        <Button Style="{StaticResource Z.Btn}" Margin="0,12,0,0" Click="OnUpload">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" Stroke="{DynamicResource Z.Ink}" StrokeThickness="2"
+                                      Stretch="Uniform" Width="16" Height="16" Margin="0,0,6,0" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                <TextBlock Text="Upload a photo" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="Any photo works; we shrink it to 256 × 256 px (about 100 KB). JPG, PNG or WebP." FontSize="12"
+                                   Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0" />
+                        <TextBlock x:Name="PhotoError" FontSize="12.5" FontWeight="Medium" Foreground="{DynamicResource Z.RedText}" TextAlignment="Center"
+                                   TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Assertive" />
+                        <TextBlock Text="Pick an avatar" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,6" />
+                        <UniformGrid x:Name="AvatarGrid" Columns="8" AutomationProperties.Name="Avatars" />
+                        <Button x:Name="RemovePhoto" Style="{StaticResource Z.Btn}" Content="Remove photo" Margin="0,12,0,0" Click="OnRemovePhoto" />
+                        <Button Style="{StaticResource Z.Btn.Dark}" Content="Close" Margin="0,8,0,0" Click="OnClose" />
+                        <TextBlock x:Name="PhotoFoot" FontSize="12" Foreground="{DynamicResource Z.Muted}" TextAlignment="Center" TextWrapping="Wrap"
+                                   Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <!-- Send feedback (FR-14: goes to the Zinwe team) -->
+                    <ContentControl x:Name="FeedbackSlot" Margin="0,10,0,0" Focusable="False" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,32 @@
+<UserControl x:Class="Zinwe.Agent.Tray.Views.TasksView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Tasks: one scrolling row of filter chips (WhatsApp style), groups DOING / TO DO / WITH {OWNER} / DONE, + Add a task. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False"
+                      PanningMode="HorizontalOnly" PreviewMouseWheel="OnChipWheel">
+            <StackPanel x:Name="Chips" Orientation="Horizontal" Margin="12,0,12,6" AutomationProperties.Name="Filter tasks" />
+        </ScrollViewer>
+        <ScrollViewer Grid.Row="1" x:Name="ListScroller" Style="{StaticResource Z.Scroll}">
+            <StackPanel Margin="12,0,12,76">
+                <StackPanel x:Name="Groups" />
+                <StackPanel x:Name="Empty" Margin="6,24,6,0" Visibility="Collapsed">
+                    <TextBlock x:Name="EmptyText" Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" TextAlignment="Center" />
+                    <Button x:Name="ClearFilters" Style="{StaticResource Z.BtnSm}" Content="Clear filters" HorizontalAlignment="Center"
+                            Margin="0,8,0,0" Click="OnClear" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+        <Button Grid.Row="1" Style="{StaticResource Z.Fab}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,14"
+                Click="OnAdd" AutomationProperties.Name="Add a task">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="+" FontSize="20" Margin="0,-3,8,0" VerticalAlignment="Center" />
+                <TextBlock Text="Add a task" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+    </Grid>
+</UserControl>
