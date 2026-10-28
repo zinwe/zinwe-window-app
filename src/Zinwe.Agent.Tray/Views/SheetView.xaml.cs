@@ -373,17 +373,22 @@ public partial class SheetView : UserControl
         foreach (var preset in Avatars.Presets)
         {
             var on = m.Settings.Avatar == "preset:" + preset.Key;
+            var cell = new Grid { Width = 44, Height = 44 };
             var art = Ui.Art(preset, 36);
-            var ring = new Border
+            art.HorizontalAlignment = HorizontalAlignment.Center;
+            art.VerticalAlignment = VerticalAlignment.Center;
+            cell.Children.Add(art);
+            if (on)
             {
-                CornerRadius = new CornerRadius(22), Padding = new Thickness(2), BorderThickness = new Thickness(2), Child = art,
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            ring.SetResourceReference(Border.BorderBrushProperty, on ? "Z.Orange" : "Z.Surface");
+                // The board's ring: 2 px of surface, then 2 px of orange.
+                var ring = new System.Windows.Shapes.Ellipse { Width = 44, Height = 44, StrokeThickness = 2 };
+                ring.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Z.Orange");
+                cell.Children.Add(ring);
+            }
             var b = new RadioButton
             {
-                Content = ring, IsChecked = on, GroupName = "avatar", Cursor = Cursors.Hand, MinHeight = 44,
-                Template = PlainTemplate(), FocusVisualStyle = (Style)FindResource("Z.FocusRing"),
+                Content = cell, IsChecked = on, GroupName = "avatar", Cursor = Cursors.Hand,
+                Template = PlainTemplate(), FocusVisualStyle = (Style)FindResource("Z.FocusRing"), HorizontalAlignment = HorizontalAlignment.Center,
             };
             AutomationProperties.SetName(b, preset.Label + " avatar");
             var key = preset.Key;
@@ -397,7 +402,9 @@ public partial class SheetView : UserControl
         var t = new ControlTemplate(typeof(RadioButton));
         var grid = new FrameworkElementFactory(typeof(Grid));
         grid.SetValue(System.Windows.Controls.Panel.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
-        grid.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(ContentPresenter.ContentProperty, new TemplateBindingExtension(ContentControl.ContentProperty));
+        grid.AppendChild(presenter);
         t.VisualTree = grid;
         return t;
     }

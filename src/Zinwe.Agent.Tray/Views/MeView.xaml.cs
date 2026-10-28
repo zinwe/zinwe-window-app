@@ -9,7 +9,7 @@ namespace Zinwe.Agent.Tray.Views;
 /// <summary>Me: who and where, the pushed screens, the update card and the version.</summary>
 public partial class MeView : UserControl
 {
-    private readonly UpdateCard Update = new();
+    private readonly UpdateCard Update = new() { Margin = new Thickness(0, 0, 0, 12) };
 
     public MeView()
     {

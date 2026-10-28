@@ -28,10 +28,11 @@ public sealed class FixRoundWidgetTests : IDisposable
         Assert.Equal("What Kulkarni & Associates can see", view.SeesHeading);
         Assert.Equal(2, view.Sees.Count);
         Assert.Contains(view.Sees, s => s.StartsWith("Copies to USB drives", StringComparison.Ordinal));
-        Assert.Contains(view.Sees, s => s.StartsWith("When you log in", StringComparison.Ordinal));
+        // Tray v2 wording (prototype board): the work day is "start your day … end your day".
+        Assert.Contains(view.Sees, s => s.StartsWith("When you start your day", StringComparison.Ordinal));
         Assert.DoesNotContain(view.Sees, s => s.Contains("apps", StringComparison.Ordinal));
         Assert.Contains("message Ravi", view.DeclineBody);
-        Assert.Contains("Kulkarni & Associates will see that you didn't agree", view.DeclineBody);
+        Assert.Contains("Kulkarni & Associates sees that you didn't agree", view.DeclineBody);
     }
 
     [Fact]

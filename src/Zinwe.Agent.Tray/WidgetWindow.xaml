@@ -216,7 +216,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="FocusTitle" Click="OnFocusOpen" Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}"
+                            <Button x:Name="FocusTitle" Click="OnFocusOpen" Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}" Foreground="{DynamicResource Z.Ink}"
                                     MinHeight="36" HorizontalContentAlignment="Left">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">

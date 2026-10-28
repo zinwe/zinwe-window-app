@@ -40,7 +40,7 @@
             <Border Style="{StaticResource Z.Card}" ClipToBounds="True" Margin="0,0,0,12">
                 <StackPanel x:Name="Items" />
             </Border>
-            <ContentControl x:Name="UpdateHost" Margin="0,0,0,12" Focusable="False" />
+            <ContentControl x:Name="UpdateHost" Focusable="False" />
             <StackPanel Margin="6,0">
                 <TextBlock x:Name="ShortcutLine" FontSize="12" Foreground="{DynamicResource Z.Muted}">
                     <Run Text="Ctrl+Alt+Z" FontFamily="{DynamicResource Z.Mono}" /><Run Text=" opens or minimizes Zinwe" />

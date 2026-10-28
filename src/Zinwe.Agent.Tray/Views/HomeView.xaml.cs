@@ -8,7 +8,7 @@ namespace Zinwe.Agent.Tray.Views;
 /// <summary>Home: what needs the member (new tasks, unread messages, tasks due today) and today's timeline (real log).</summary>
 public partial class HomeView : UserControl
 {
-    private readonly UpdateCard Update = new();
+    private readonly UpdateCard Update = new() { Margin = new Thickness(0, 0, 0, 12) };
 
     public HomeView()
     {

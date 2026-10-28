@@ -5,7 +5,7 @@
     <!-- Home: the update card, "monitoring is off", Needs you, Today so far. -->
     <ScrollViewer Style="{StaticResource Z.Scroll}">
         <StackPanel Margin="12,4,12,16">
-            <ContentControl x:Name="UpdateHost" Margin="0,0,0,12" Focusable="False" />
+            <ContentControl x:Name="UpdateHost" Focusable="False" />
 
             <Border x:Name="DeclinedNote" CornerRadius="12" Padding="12,6,12,6" Background="{DynamicResource Z.WarnTint}" Margin="0,0,0,12"
                     Visibility="Collapsed">

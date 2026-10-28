@@ -32,7 +32,7 @@ public sealed class WorkPrompt
     /// The reason the sheet picks for the member (they can change it): Lunch around midday when there was no lunch
     /// break yet, "Done for today" from 5 PM.
     /// </summary>
-    public string? Likely(DateTimeOffset now, bool hadLunch)
+    public string? Likely(DateTimeOffset now, bool hadLunch = false)
     {
         var local = now.ToLocalTime().TimeOfDay;
         if (this == Break)

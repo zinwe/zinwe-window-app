@@ -26,7 +26,8 @@ public sealed class WorkPromptTests
     public void Break_and_log_out_read_as_their_own_actions()
     {
         Assert.Equal(("Taking a break", "Start break"), (WorkPrompt.Break.Title, WorkPrompt.Break.ConfirmLabel));
-        Assert.Equal(("Logging out", "Log out"), (WorkPrompt.LogOut.Title, WorkPrompt.LogOut.ConfirmLabel));
+        // Tray v2 (prototype board): "Ending your day" / "End day".
+        Assert.Equal(("Ending your day", "End day"), (WorkPrompt.LogOut.Title, WorkPrompt.LogOut.ConfirmLabel));
         Assert.Contains("Lunch", WorkPrompt.Break.Reasons);
         Assert.Contains("Done for today", WorkPrompt.LogOut.Reasons);
     }
@@ -67,6 +68,21 @@ public sealed class WorkPromptTests
 
         t.End(T0.AddHours(8), "Done for today");
         Assert.StartsWith("Worked today · logged out at ", WorkSummary.Status(t));
+    }
+
+    [Fact]
+    public void The_sheet_picks_the_likely_reason_and_says_open_tasks_stay()
+    {
+        var offset = TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 10, 15));
+        DateTimeOffset At(int h, int m = 0) => new(2026, 10, 15, h, m, 0, offset);
+        Assert.Equal("Lunch", WorkPrompt.Break.Likely(At(13), hadLunch: false));
+        Assert.Null(WorkPrompt.Break.Likely(At(13), hadLunch: true));
+        Assert.Null(WorkPrompt.Break.Likely(At(10)));
+        Assert.Equal("Done for today", WorkPrompt.LogOut.Likely(At(17, 30), hadLunch: true));
+        Assert.Null(WorkPrompt.LogOut.Likely(At(15), hadLunch: true));
+        Assert.Equal("Pick a reason. Your 3 open tasks stay in Tasks for tomorrow.", WorkPrompt.LogOut.Hint(3));
+        Assert.Equal("Pick a reason.", WorkPrompt.Break.Hint(3));
+        Assert.DoesNotContain("Tea / coffee", WorkPrompt.Break.Reasons);
     }
 
     [Theory]

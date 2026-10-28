@@ -162,7 +162,10 @@ public sealed class TrayModel : IDisposable
 
     public DateTimeOffset Now => DateTimeOffset.Now;
 
-    public ConsentState Consent => _consent.State(Status?.NoticeVersion);
+    // The notice in force when the service last answered: while it's down, an answer already given still counts.
+    private string? _lastNoticeVersion;
+
+    public ConsentState Consent => _consent.State(Status?.NoticeVersion ?? _lastNoticeVersion);
     public ConsentRecord? ConsentRecord => _consent.Load();
     public bool WorkHoursOn => PlanModules.Allows(Status?.Entitlements, PlanModules.WorkTime);
     public bool ChatOn => PlanModules.Allows(Status?.Entitlements, PlanModules.TeamChat);
@@ -272,6 +275,10 @@ public sealed class TrayModel : IDisposable
     {
         Status = await AgentPipeClient.GetStatusAsync(TimeSpan.FromSeconds(3));
         StatusKnown = true;
+        if (Status?.NoticeVersion is { } notice)
+        {
+            _lastNoticeVersion = notice;
+        }
         if (Status?.Removed == true)
         {
             _consent.Clear(); // removed from this company: a new one asks afresh
