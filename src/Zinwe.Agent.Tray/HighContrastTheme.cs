@@ -108,8 +108,40 @@ internal static class HighContrastTheme
                 resources[key] = Frozen((Color)ColorConverter.ConvertFromString(hex));
             }
         }
+        // The official wordmark: dark letters on a light ground, its light version on a dark one.
+        var darkGround = SystemParameters.HighContrast ? Luma(SystemColors.WindowColor) < 0.5 : _dark;
+        resources.Remove(WordmarkKey);
+        if (darkGround && LightWordmark() is { } light)
+        {
+            resources[WordmarkKey] = light;
+        }
         Changed?.Invoke();
     }
+
+    private const string WordmarkKey = "Z.Wordmark";
+
+    private static ImageSource? _lightWordmark;
+
+    private static ImageSource? LightWordmark()
+    {
+        try
+        {
+            if (_lightWordmark is null)
+            {
+                var image = new System.Windows.Media.Imaging.BitmapImage(
+                    new Uri("pack://application:,,,/Zinwe.Agent.Tray;component/Assets/zinwe-logo-light.png", UriKind.Absolute));
+                image.Freeze();
+                _lightWordmark = image;
+            }
+            return _lightWordmark;
+        }
+        catch (Exception)
+        {
+            return null; // the default (dark letters) still shows
+        }
+    }
+
+    private static double Luma(Color c) => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
 
     private static Color SystemColor(Hc role) => role switch
     {

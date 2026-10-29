@@ -12,10 +12,8 @@
             <ScrollViewer Style="{StaticResource Z.Scroll}">
                 <StackPanel Margin="16,12,16,16">
                     <StackPanel Margin="4,18,4,14">
-                        <Border Width="52" Height="52" CornerRadius="14" Background="{DynamicResource Z.Orange}" HorizontalAlignment="Left">
-                            <TextBlock Text="Z" FontSize="26" FontWeight="ExtraBold" Foreground="{DynamicResource Z.OnOrange}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
+                        <Image Source="{DynamicResource Z.Wordmark}" Height="34" Stretch="Uniform" HorizontalAlignment="Left"
+                               RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Zinwe" />
                         <TextBlock x:Name="ConnectTitle" Text="Connect this PC" FontSize="22" FontWeight="Bold" Margin="0,14,0,0" />
                         <TextBlock Text="Enter your work email and the Member ID from the invite email your admin sent you."
                                    Foreground="{DynamicResource Z.Ink3}" TextWrapping="Wrap" LineHeight="20" Margin="0,8,0,0" />

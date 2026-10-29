@@ -85,6 +85,10 @@
     <SolidColorBrush x:Key="Zinwe.Bad" Color="#C0331C" />
     <SolidColorBrush x:Key="Zinwe.BadTint" Color="#FCE8E4" />
 
+    <!-- The official logo (brand kit): the wordmark swaps to its light version in dark mode (HighContrastTheme). -->
+    <BitmapImage x:Key="Z.Wordmark" UriSource="pack://application:,,,/Zinwe.Agent.Tray;component/Assets/zinwe-logo.png" />
+    <BitmapImage x:Key="Z.Mark" UriSource="pack://application:,,,/Zinwe.Agent.Tray;component/Assets/zinwe-mark.png" />
+
     <FontFamily x:Key="Zinwe.Font">pack://application:,,,/Zinwe.Agent.Tray;component/Assets/Fonts/#Geist</FontFamily>
     <!-- Times, IDs and versions. The board uses Geist Mono; Windows 11 ships Cascadia Mono, so no extra font file. -->
     <FontFamily x:Key="Z.Mono">Cascadia Mono, Consolas</FontFamily>

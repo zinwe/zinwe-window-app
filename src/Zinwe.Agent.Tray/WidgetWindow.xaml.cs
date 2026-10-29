@@ -239,7 +239,8 @@ public partial class WidgetWindow : Window
             Push.Notifications => "Notifications",
             _ => "Help",
         } : m.Tab.ToString();
-        TitleText.Text = Zinwe.Agent.Core.AgentInstance.IsDefault ? "Zinwe" : $"Zinwe ({Zinwe.Agent.Core.AgentInstance.Name})";
+        // The wordmark says "Zinwe"; a dev copy adds its instance name next to it.
+        TitleText.Text = Zinwe.Agent.Core.AgentInstance.IsDefault ? "" : $"({Zinwe.Agent.Core.AgentInstance.Name})";
 
         // The line under the title says something useful only: setup state, offline, the date on Home, who the chat is with.
         (string Text, string? Dot) line = stage switch

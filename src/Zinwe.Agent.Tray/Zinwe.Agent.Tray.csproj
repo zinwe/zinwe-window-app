@@ -31,6 +31,7 @@
     <!-- The wordmark (widget header) and Geist, the website's typeface (SIL OFL 1.1, see Assets\Fonts\Geist-OFL.txt).
          Regenerate the logo files with design\make_tray_brand.py. -->
     <Resource Include="Assets\zinwe-logo.png" />
+    <Resource Include="Assets\zinwe-logo-light.png" />
     <Resource Include="Assets\Fonts\*.ttf" />
     <None Include="Assets\Fonts\Geist-OFL.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

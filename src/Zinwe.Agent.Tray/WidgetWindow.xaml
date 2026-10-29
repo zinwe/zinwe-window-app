@@ -47,7 +47,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Title bar: Z · Zinwe, minimize and close (both keep Zinwe running in the taskbar). -->
+        <!-- Title bar: the official Zinwe wordmark, minimize and close (both keep Zinwe running in the taskbar). -->
         <Grid Background="{DynamicResource Z.Fill}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -55,11 +55,9 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
-                <Border Width="16" Height="16" CornerRadius="4" Background="{DynamicResource Z.Orange}">
-                    <TextBlock Text="Z" FontSize="10" FontWeight="ExtraBold" Foreground="{DynamicResource Z.OnOrange}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-                <TextBlock x:Name="TitleText" Text="Zinwe" FontSize="12" Margin="8,0,0,0" Foreground="{DynamicResource Z.Ink2}"
+                <Image x:Name="TitleLogo" Source="{DynamicResource Z.Wordmark}" Height="14" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" AutomationProperties.Name="Zinwe" />
+                <TextBlock x:Name="TitleText" FontSize="12" Margin="6,0,0,0" Foreground="{DynamicResource Z.Ink2}"
                            VerticalAlignment="Center" />
             </StackPanel>
             <Button Grid.Column="1" Style="{StaticResource Z.WinCtl}" WindowChrome.IsHitTestVisibleInChrome="True"
@@ -74,7 +72,7 @@
             </Button>
         </Grid>
 
-        <!-- Header: Back or the Z tile, the screen title with one useful line under it, the work pill + menu. -->
+        <!-- Header: Back or the official Zinwe mark, the screen title with one useful line under it, the work pill + menu. -->
         <Border Grid.Row="1" Height="56" Margin="0,0,0,8" Background="{DynamicResource Z.Bg}"
                 BorderBrush="{DynamicResource Z.Line}" BorderThickness="0,0,0,1" Padding="14,0,12,0">
             <Grid>
@@ -88,11 +86,9 @@
                     <Path Data="M7,1 L1,7 L7,13" Stroke="{DynamicResource Z.Ink}" StrokeThickness="2" StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                 </Button>
-                <Border x:Name="HeaderMark" Width="32" Height="32" CornerRadius="9" Background="{DynamicResource Z.Orange}"
-                        Margin="0,0,10,0" VerticalAlignment="Center">
-                    <TextBlock Text="Z" FontSize="16" FontWeight="ExtraBold" Foreground="{DynamicResource Z.OnOrange}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
+                <Image x:Name="HeaderMark" Source="{DynamicResource Z.Mark}" Width="28" Height="28" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality" Margin="0,0,10,0" VerticalAlignment="Center"
+                       AutomationProperties.Name="Zinwe" />
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock x:Name="ScreenTitle" Text="Home" FontSize="16" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
                     <StackPanel x:Name="StatusRow" Orientation="Horizontal" Margin="0,1,0,0">

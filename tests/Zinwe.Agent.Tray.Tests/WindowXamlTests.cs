@@ -27,7 +27,12 @@ public sealed class WindowXamlTests
                 using var watcher = new NotificationWatcher(store, TimeSpan.FromMinutes(5));
                 // The v2 window hosts every view (Views/*), so this parses all of them with the app's styles.
                 using var model = new TrayModel(store, watcher, () => Task.FromResult<string?>(null));
-                Assert.NotNull(new WidgetWindow(model));
+                var window = new WidgetWindow(model);
+                // The official logo, not a drawn "Z": the mark in the header, the wordmark in the title bar.
+                Assert.IsType<System.Windows.Controls.Image>(window.FindName("HeaderMark"));
+                Assert.IsType<System.Windows.Controls.Image>(window.FindName("TitleLogo"));
+                Assert.True(((System.Windows.Media.Imaging.BitmapSource)app.FindResource("Z.Wordmark")).PixelWidth > 400);
+                Assert.True(((System.Windows.Media.Imaging.BitmapSource)app.FindResource("Z.Mark")).PixelWidth >= 256);
             }
             catch (Exception e)
             {
