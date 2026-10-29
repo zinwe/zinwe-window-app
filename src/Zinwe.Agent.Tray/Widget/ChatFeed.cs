@@ -190,7 +190,7 @@ public static partial class ChatFeed
 
     /// <summary>Admin chat messages the employee hasn't opened yet.</summary>
     public static int UnreadCount(IEnumerable<NotificationItem> items) =>
-        items.Count(i => i.IsChat && i.IsFromAdmin && !i.Read);
+        items.Count(i => i.IsChat && i.IsFromAdmin && !i.Read && i.TaskId is null); // task lines count as tasks
 
     /// <summary>The newest chat line, or null.</summary>
     public static NotificationItem? Latest(IEnumerable<NotificationItem> items) =>

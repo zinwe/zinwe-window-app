@@ -1,7 +1,7 @@
 <UserControl x:Class="Zinwe.Agent.Tray.Views.TasksView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Tasks: one scrolling row of filter chips (WhatsApp style), groups DOING / TO DO / WITH {OWNER} / DONE, + Add a task. -->
+    <!-- Tasks: one scrolling row of filter chips (WhatsApp style), groups DOING / TO DO / WITH {OWNER} / DONE for the owner's tasks, then MY TO-DOS (this PC only), + Add a to-do. -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -22,10 +22,10 @@
             </StackPanel>
         </ScrollViewer>
         <Button Grid.Row="1" Style="{StaticResource Z.Fab}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,14"
-                Click="OnAdd" AutomationProperties.Name="Add a task">
+                Click="OnAdd" AutomationProperties.Name="Add a to-do">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="+" FontSize="20" Margin="0,-3,8,0" VerticalAlignment="Center" />
-                <TextBlock Text="Add a task" VerticalAlignment="Center" />
+                <TextBlock Text="Add a to-do" VerticalAlignment="Center" />
             </StackPanel>
         </Button>
     </Grid>

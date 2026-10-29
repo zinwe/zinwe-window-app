@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows.Threading;
 using Zinwe.Agent.Core;
+using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Messages;
 using Zinwe.Agent.Core.Policy;
@@ -59,6 +60,13 @@ public sealed class TrayModel : IDisposable
     // End day is committed (saved + logged for the agent) when its Undo goes away, so Undo leaves no trace.
     private (string Before, DateTimeOffset At)? _pendingEnd;
 
+    // FR-20 v2 · the owner's tasks: the service's last snapshot (pipe "tasks"), the version it was fetched at, and the
+    // member's actions not confirmed by a snapshot yet (still in the outbox, or posted after that snapshot was taken).
+    private TasksReply? _remote;
+    private int? _remoteVersion;
+    private List<OutboxReply> _actions = [];
+    private readonly TaskSeenStore _taskSeen = new();
+
     public TrayModel(NotificationStore noteStore, NotificationWatcher watcher, Func<Task<string?>> startUpdate)
     {
         _noteStore = noteStore;
@@ -89,6 +97,7 @@ public sealed class TrayModel : IDisposable
         Tasks.Changed += Raise;
         _tick.Tick += (_, _) => OnTick();
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
+        _actions = [.. SafePendingActions()];
     }
 
     public void Start()
@@ -178,7 +187,31 @@ public sealed class TrayModel : IDisposable
     public string OwnerFirstStart => Avatars.First(Status?.OwnerName) is { Length: > 0 } f ? f : "Your admin";
     public string Company => ConsentText.Employer(Status?.CompanyName);
     public string CompanyStart => ConsentText.Employer(Status?.CompanyName, sentenceStart: true);
-    public IReadOnlyList<MemberTask> TaskList => Tasks.Load();
+    /// <summary>
+    /// Every task the Tasks tab shows: the member's own to-dos (this PC only) and, from a service + backend that have
+    /// them, the owner's tasks with the member's unconfirmed actions applied. While the owner's real tasks are on,
+    /// the board's sample owner tasks (Debug) are left out.
+    /// </summary>
+    public IReadOnlyList<MemberTask> TaskList
+    {
+        get
+        {
+            var local = Tasks.Load();
+            if (!RemoteOn)
+            {
+                return local;
+            }
+            var remote = OwnerTasks.Overlay(_remote!.Tasks ?? [], _actions)
+                .Select(d => OwnerTasks.ToMemberTask(d, OwnerFirstStart, Now, queued: PendingInOutbox.Contains(d.Id)));
+            return [.. local.Where(t => t.Mine), .. remote];
+        }
+    }
+
+    /// <summary>True when the service and the backend both have the owner's tasks (FR-20 v2).</summary>
+    public bool RemoteOn => _remote is { Supported: true, Backend: TaskBackend.On };
+
+    // Task ids with an action still waiting in the outbox (the "sends when you're back online" line).
+    private HashSet<long> PendingInOutbox { get; set; } = [];
     public IReadOnlyList<OutboxReply> PendingReplies => _outbox.Pending();
     public UpdateView Update => UpdateView.From(Status);
 
@@ -289,7 +322,107 @@ public sealed class TrayModel : IDisposable
             UpdateRefused = null;
         }
         UpdateConnectMessage();
+        await RefreshTasksAsync();
         Raise();
+    }
+
+    // ---- The owner's tasks (FR-20 v2) ------------------------------------------------------------
+
+    /// <summary>
+    /// Fetches the owner's tasks when the service says they changed (status TasksVersion), and retires the member's
+    /// actions a newer snapshot already holds. An older service has no TasksVersion: own to-dos only.
+    /// </summary>
+    private async Task RefreshTasksAsync()
+    {
+        var outbox = SafePendingActions();
+        PendingInOutbox = [.. outbox.Where(a => a.TaskId is not null).Select(a => a.TaskId!.Value)];
+        foreach (var a in outbox.Where(a => _actions.All(x => x.Id != a.Id)))
+        {
+            _actions.Add(a); // queued before this tray started (or by another copy)
+        }
+        if (Status?.TasksVersion is not { } version)
+        {
+            if (Status is not null)
+            {
+                _remote = null; // an older service: no owner tasks
+                _remoteVersion = null;
+            }
+            return;
+        }
+        if (version == _remoteVersion && _remote is not null)
+        {
+            RetireActions(outbox);
+            return;
+        }
+        if (await AgentPipeClient.GetTasksAsync(TimeSpan.FromSeconds(3)) is not { } reply)
+        {
+            return; // not reachable right now: keep what we have
+        }
+        _remote = reply;
+        _remoteVersion = reply.Version;
+        RetireActions(outbox);
+        if (reply.Backend == TaskBackend.On)
+        {
+            AnnounceTaskChanges(reply.Tasks ?? []);
+        }
+    }
+
+    /// <summary>An action is confirmed once the agent posted it (gone from the outbox) and a snapshot taken after it arrived.</summary>
+    private void RetireActions(IReadOnlyList<OutboxReply> outbox)
+    {
+        var waiting = outbox.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+        var syncedAt = _remote?.SyncedAt ?? DateTimeOffset.MinValue;
+        _actions = [.. _actions.Where(a => waiting.Contains(a.Id) || a.CreatedAtUtc > syncedAt)];
+    }
+
+    private void AnnounceTaskChanges(IReadOnlyList<DeviceTask> tasks)
+    {
+        if (Stage is not (Stage.App or Stage.Welcome))
+        {
+            return; // not connected / no answer yet: nothing to announce to
+        }
+        var (notices, marks) = TaskNotices.Diff(_taskSeen.Load(), tasks, OwnerFirstStart, Now);
+        _taskSeen.Save(marks);
+        foreach (var n in notices)
+        {
+            if (History.Local.Any(e => e.Key == n.Key))
+            {
+                continue;
+            }
+            Notify(n.Title, n.Body, n.Go, "Open", n.Key);
+        }
+    }
+
+    private IReadOnlyList<OutboxReply> SafePendingActions()
+    {
+        try
+        {
+            return _outbox.PendingTaskActions();
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Queue what the member did on an owner's task; it shows at once and the agent posts it (offline: later).</summary>
+    private OutboxReply? Act(MemberTask t, string action, string? note = null, long? stepId = null, bool? stepDone = null)
+    {
+        if (t.RemoteId is not { } id)
+        {
+            return null;
+        }
+        try
+        {
+            var item = _outbox.AppendTaskAction(id, action, note, stepId, stepDone);
+            _actions.Add(item);
+            PendingInOutbox.Add(id);
+            return item;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     // ---- Navigation -----------------------------------------------------------------
@@ -434,7 +567,7 @@ public sealed class TrayModel : IDisposable
     /// <summary>Opening Chat (or the window on Chat) reads the owner's messages; the agent tells the backend.</summary>
     public void ReadChat()
     {
-        if (ChatFeed.UnreadCount(Notes.Items) > 0)
+        if (Notes.Items.Any(i => i.IsChat && i.IsFromAdmin && !i.Read))
         {
             Notes = _noteStore.MarkChatRead();
         }
@@ -775,7 +908,20 @@ public sealed class TrayModel : IDisposable
     private void ReadTask(int id)
     {
         History.MarkRead(e => e.Go == "task:" + id);
-        if (TaskList.FirstOrDefault(t => t.Id == id) is { IsNew: true } t)
+        var t = TaskList.FirstOrDefault(x => x.Id == id);
+        if (t?.RemoteId is { } remoteId)
+        {
+            if (Notes.Items.Any(i => i.TaskId == remoteId && !i.Read))
+            {
+                Notes = _noteStore.MarkTaskRead(remoteId); // the chat line that brought it
+            }
+            if (t.IsNew)
+            {
+                Act(t, TaskActions.Seen); // the owner sees "Seen"
+            }
+            return;
+        }
+        if (t is { IsNew: true })
         {
             Tasks.Save(t with { IsNew = false });
         }
@@ -787,26 +933,72 @@ public sealed class TrayModel : IDisposable
         Raise();
     }
 
-    private void Change(MemberTask t, Func<MemberTask, MemberTask> fn)
+    /// <summary>
+    /// A change to a task: an own to-do (or a sample) is saved on this PC; an owner's task becomes the contract's
+    /// action (<paramref name="action"/>), queued for the agent and shown at once.
+    /// </summary>
+    private OutboxReply? Change(MemberTask t, Func<MemberTask, MemberTask> fn, string? action = null, string? note = null)
     {
-        var updated = fn(t) with { IsNew = false, Queued = Offline || t.Queued };
-        Tasks.Save(updated);
+        OutboxReply? sent = null;
+        if (t.RemoteId is not null)
+        {
+            if (action is not null)
+            {
+                sent = Act(t, action, note);
+            }
+        }
+        else
+        {
+            var updated = fn(t) with { IsNew = false, Queued = Offline || t.Queued };
+            Tasks.Save(updated);
+        }
         History.MarkRead(e => e.Go == "task:" + t.Id);
         Sheet = Sheet.None;
         TaskReason = "";
+        return sent;
+    }
+
+    /// <summary>The one quick action on a closed card (Confirm / Start / Mark done).</summary>
+    public void QuickRun(MemberTask t)
+    {
+        if (TaskBoard.Quick(t) is not { } quick)
+        {
+            return;
+        }
+        if (quick.Primary)
+        {
+            DoneTask(t);
+        }
+        else if (t.RemoteId is not null && TaskBoard.NeedsConfirm(t))
+        {
+            ConfirmTask(t);
+        }
+        else
+        {
+            StartTask(t);
+        }
+    }
+
+    /// <summary>An owner's task: "I'll do it" (accept), before starting.</summary>
+    public void ConfirmTask(MemberTask t)
+    {
+        Change(t, x => x with { Status = MemberTaskStatus.Confirmed }, TaskActions.Accept);
+        var confirmed = t with { Status = MemberTaskStatus.Confirmed, Confirm = false };
+        ShowSnack($"Confirmed: {t.Title}", [("Start now", () => StartTask(confirmed)), ("OK", CloseSnack)]);
     }
 
     public void StartTask(MemberTask t)
     {
-        Change(t, TaskBoard.Start);
+        Change(t, TaskBoard.Start, TaskActions.Start);
         FocusId = t.Id;
+        Snack = null;
         Raise();
     }
 
     public void DoneTask(MemberTask t)
     {
         var before = t;
-        Change(t, TaskBoard.MarkDone);
+        var sent = Change(t, TaskBoard.MarkDone, TaskActions.Done);
         if (FocusId == t.Id)
         {
             FocusId = null;
@@ -817,7 +1009,18 @@ public sealed class TrayModel : IDisposable
             ("Add a note", () => OpenNote(t.Id)),
             ("Undo", () =>
             {
-                Tasks.Save(before);
+                if (before.RemoteId is null)
+                {
+                    Tasks.Save(before);
+                }
+                else if (sent is not null && _outbox.TryRemove(sent.Id))
+                {
+                    _actions.RemoveAll(a => a.Id == sent.Id); // never left this PC
+                }
+                else
+                {
+                    Act(before, TaskActions.Start); // already with the owner: back to in progress
+                }
                 FocusId = before.Status == MemberTaskStatus.Progress ? before.Id : FocusId;
                 Snack = null;
                 Raise();
@@ -833,8 +1036,27 @@ public sealed class TrayModel : IDisposable
 
     public void ToggleStep(MemberTask t, int index)
     {
-        var updated = TaskBoard.ToggleStep(t, index) with { Queued = Offline || t.Queued };
-        Tasks.Save(updated);
+        var toggled = TaskBoard.ToggleStep(t, index);
+        if (ReferenceEquals(toggled, t))
+        {
+            return; // locked, or no such step
+        }
+        var updated = toggled with { Queued = Offline || t.Queued };
+        if (t.RemoteId is not null)
+        {
+            if (t.Status is MemberTaskStatus.New or MemberTaskStatus.Confirmed)
+            {
+                Act(t, TaskActions.Start); // ticking a step starts it, as on the board
+            }
+            if (t.Steps[index].Id is { } stepId)
+            {
+                Act(t, TaskActions.Note, stepId: stepId, stepDone: !t.Steps[index].Done);
+            }
+        }
+        else
+        {
+            Tasks.Save(updated);
+        }
         if (t.Status is MemberTaskStatus.New or MemberTaskStatus.Confirmed)
         {
             FocusId = t.Id;
@@ -850,7 +1072,7 @@ public sealed class TrayModel : IDisposable
 
     public void CarryOn(MemberTask t)
     {
-        Change(t, TaskBoard.CarryOn);
+        Change(t, TaskBoard.CarryOn, TaskActions.Start);
         FocusId = t.Id;
         Raise();
     }
@@ -891,8 +1113,12 @@ public sealed class TrayModel : IDisposable
             return;
         }
         var q = TaskBoard.Join(TaskReason, note);
-        Change(t, x => TaskBoard.Ask(x, TaskReason, note));
-        SendTaskMessage($"About “{t.Title}”: {q}");
+        var reason = TaskReason;
+        Change(t, x => TaskBoard.Ask(x, reason, note), TaskActions.Help, q);
+        if (t.RemoteId is null)
+        {
+            SendTaskMessage($"About “{t.Title}”: {q}");
+        }
         Raise();
     }
 
@@ -903,12 +1129,17 @@ public sealed class TrayModel : IDisposable
             return;
         }
         var q = TaskBoard.Join(TaskReason, note);
-        Change(t, x => TaskBoard.Cant(x, TaskReason, note));
+        var reason = TaskReason;
+        // The contract has no "can't": it's a request for help that says so (the owner sees the note).
+        Change(t, x => TaskBoard.Cant(x, reason, note), TaskActions.Help, "Can’t do this: " + q);
         if (FocusId == t.Id)
         {
             FocusId = null;
         }
-        SendTaskMessage($"I can’t do “{t.Title}”: {q}");
+        if (t.RemoteId is null)
+        {
+            SendTaskMessage($"I can’t do “{t.Title}”: {q}");
+        }
         ShowSnack($"Sent to {OwnerFirst}. They’ll reply in Chat.", [("OK", CloseSnack)]);
     }
 
@@ -938,7 +1169,14 @@ public sealed class TrayModel : IDisposable
         {
             return;
         }
-        Tasks.Save(TaskBoard.AddNote(t, text));
+        if (t.RemoteId is not null)
+        {
+            Act(t, TaskActions.Note, text.Trim());
+        }
+        else
+        {
+            Tasks.Save(TaskBoard.AddNote(t, text));
+        }
         Sheet = Sheet.None;
         ShowSnack($"Note saved on “{t.Title}”.", [("OK", CloseSnack)]);
     }
@@ -1028,7 +1266,7 @@ public sealed class TrayModel : IDisposable
 
     public void DeleteOwn(MemberTask t)
     {
-        var at = TaskList.ToList().FindIndex(x => x.Id == t.Id);
+        var at = Tasks.Load().ToList().FindIndex(x => x.Id == t.Id); // its place among the to-dos on this PC
         Tasks.Remove(t.Id);
         OpenCard = null;
         ShowSnack("Deleted: " + t.Title, [("Undo", () =>

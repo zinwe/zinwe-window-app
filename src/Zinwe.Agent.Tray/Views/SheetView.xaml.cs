@@ -59,8 +59,8 @@ public partial class SheetView : UserControl
             Sheet.Cant => ("Can’t do this task", task is null ? ""
                 : $"About “{task.Title}”. Tell {owner} why, in a few words. They can hand it to someone else or reply in Chat."),
             Sheet.Note => ($"Add a note for {owner}", "It stays on the task card."),
-            Sheet.NewTask => m.Form.EditId is null ? ("Add a task for yourself", "For your own to-dos. It shows in Tasks.")
-                : ("Edit your task", "Change the name, date or steps."),
+            Sheet.NewTask => m.Form.EditId is null ? ("Add a to-do", "Just for you: it stays on this PC, under My to-dos.")
+                : ("Edit your to-do", "Change the name, date or steps."),
             Sheet.Photo => ("Profile photo", "Optional. It shows on your profile and next to your messages in Chat."),
             _ => ("Send feedback", ""),
         };
@@ -284,7 +284,7 @@ public partial class SheetView : UserControl
             box.SetResourceReference(Border.BackgroundProperty, "Z.Bg");
             NtSteps.Children.Add(box);
         }
-        NtCta.Content = f.EditId is null ? "Add task" : "Save changes";
+        NtCta.Content = f.EditId is null ? "Add to-do" : "Save changes";
         NtCta.IsEnabled = NtTitle.Text.Trim().Length > 0 && !bad;
         NtNote.Text = $"{m.OwnerFirstStart} can see it, but doesn't need to do anything.";
     }

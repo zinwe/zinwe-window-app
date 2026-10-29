@@ -22,7 +22,10 @@ public sealed record NotificationItem(
     string Sender = "owner",
     // "chat" = a line of the admin<->employee conversation; "notice" = a note from Zinwe's own protection.
     // Null in files written before chat existed (see IsChat).
-    string? Kind = null)
+    string? Kind = null,
+    // FR-20 v2: the chat line the owner's new task created (the server's task id); the chat draws the task card
+    // here, and the task's own notice stands for it (no second "new message"). Null on every other line.
+    long? TaskId = null)
 {
     public const string ChatKind = "chat";
 
@@ -132,6 +135,9 @@ public sealed class NotificationStore
 
     /// <summary>The employee opened the chat: the admin's messages are read.</summary>
     public NotificationFile MarkChatRead() => MarkRead(i => i.IsChat);
+
+    /// <summary>The member opened an owner's task: the chat line that brought it is read too.</summary>
+    public NotificationFile MarkTaskRead(long taskId) => MarkRead(i => i.TaskId == taskId);
 
     /// <summary>"Mark read" on the widget's Notices list.</summary>
     public NotificationFile MarkNoticesRead() => MarkRead(i => !i.IsChat);

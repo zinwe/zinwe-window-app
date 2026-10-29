@@ -19,6 +19,8 @@ public enum MemberTaskStatus
     Cant,
     Done,
     Approved,
+    /// <summary>The owner called it off (FR-20 v2 side state).</summary>
+    Cancelled,
 }
 
 /// <summary>The four plain states the member sees (board: To do · Doing · Needs help · Done).</summary>
@@ -27,15 +29,27 @@ public enum TaskLane { Todo, Doing, Waiting, Done }
 [JsonConverter(typeof(JsonStringEnumConverter<DueKey>))]
 public enum DueKey { Overdue, Today, Tomorrow, Later }
 
-public sealed record TaskStep(string Label, bool Done);
+/// <param name="Id">The step's id on the server (owner's tasks); null for the member's own to-dos.</param>
+public sealed record TaskStep(string Label, bool Done, long? Id = null);
+
+/// <summary>One line of an owner's task's history, as the member reads it ("You started", "Ananya approved it").</summary>
+public sealed record TaskActivityLine(DateTimeOffset At, string Text);
 
 /// <param name="By">"You" for the member, otherwise the owner's name.</param>
 public sealed record TaskNote(string By, string Text);
 
-/// <summary>One task in the member's Tasks tab: from the owner, or the member's own to-do (<see cref="Mine"/>).</summary>
+/// <summary>
+/// One task in the member's Tasks tab: from the owner, or the member's own to-do (<see cref="Mine"/>).
+/// Owner's tasks from the server (FR-20 v2) carry <see cref="RemoteId"/> and use <c>Id = -RemoteId</c>, so they
+/// never collide with the own to-dos' ids (1, 2, 3 … in tasks.json).
+/// </summary>
 public sealed record MemberTask
 {
     public int Id { get; init; }
+    /// <summary>The task's id on the server (an owner's task, FR-20 v2); null for samples and own to-dos.</summary>
+    public long? RemoteId { get; init; }
+    /// <summary>What happened to it so far (owner's tasks), oldest first.</summary>
+    public IReadOnlyList<TaskActivityLine> Activity { get; init; } = [];
     public string Title { get; init; } = "";
     public string Details { get; init; } = "";
     /// <summary>The due label as the board shows it ("Today, 4:00 PM", "Fri 30 Oct", "Tomorrow").</summary>
@@ -90,7 +104,7 @@ public static class TaskBoard
     public static (string Key, string Label)[] FromOptions(string ownerFirst) =>
         [("any", "Anyone"), ("owner", "From " + ownerFirst), ("me", "Added by me")];
 
-    public static bool Finished(MemberTask t) => t.Status is MemberTaskStatus.Done or MemberTaskStatus.Approved;
+    public static bool Finished(MemberTask t) => t.Status is MemberTaskStatus.Done or MemberTaskStatus.Approved or MemberTaskStatus.Cancelled;
 
     public static TaskLane LaneOf(MemberTask t) => t.Status switch
     {
@@ -110,6 +124,7 @@ public static class TaskBoard
     {
         MemberTaskStatus.Review => $"Waiting for {ownerFirst}’s OK",
         MemberTaskStatus.Cant => "Can’t do this",
+        MemberTaskStatus.Cancelled => "Cancelled",
         _ => LaneOf(t) switch
         {
             TaskLane.Todo => "To do",
@@ -240,17 +255,27 @@ public static class TaskBoard
     public static int ChipCount(IEnumerable<MemberTask> tasks, string status, TaskFilter f, DateTimeOffset now) =>
         status == "all" ? 0 : tasks.Count(t => PassesStatus(t, status) && PassesOthers(t, f, now));
 
+    /// <summary>The group the member's own to-dos go in: kept apart from the owner's tasks (they stay on this PC).</summary>
+    public const string MyTodos = "MY TO-DOS";
+
     public static IReadOnlyList<TaskGroup> Groups(IReadOnlyList<MemberTask> shown, string statusFilter, string ownerFirst)
     {
+        var owners = shown.Where(t => !t.Mine).ToList();
+        var mine = shown.Where(t => t.Mine).ToList();
+        var groups = new List<TaskGroup>();
         if (statusFilter == "done")
         {
-            return shown.Count == 0 ? [] : [new TaskGroup("DONE", shown)];
+            Add("DONE", owners);
         }
-        var groups = new List<TaskGroup>();
-        Add("DOING", shown.Where(t => LaneOf(t) == TaskLane.Doing));
-        Add("TO DO", shown.Where(t => LaneOf(t) == TaskLane.Todo));
-        Add("WITH " + ownerFirst.ToUpperInvariant(), shown.Where(t => LaneOf(t) == TaskLane.Waiting));
-        Add("DONE", shown.Where(Finished));
+        else
+        {
+            Add("DOING", owners.Where(t => LaneOf(t) == TaskLane.Doing));
+            Add("TO DO", owners.Where(t => LaneOf(t) == TaskLane.Todo));
+            Add("WITH " + ownerFirst.ToUpperInvariant(), owners.Where(t => LaneOf(t) == TaskLane.Waiting));
+            Add("DONE", owners.Where(Finished));
+        }
+        // Own to-dos last, open ones first (the order Shown gave them within each half).
+        Add(MyTodos, mine.Where(t => !Finished(t)).Concat(mine.Where(Finished)));
         return groups;
 
         void Add(string label, IEnumerable<MemberTask> items)
@@ -298,7 +323,7 @@ public static class TaskBoard
         return LaneOf(t) switch
         {
             TaskLane.Todo => NeedsConfirm(t)
-                ? new QuickAction("Confirm", false, "Confirm and start: " + t.Title)
+                ? new QuickAction("Confirm", false, (t.RemoteId is null ? "Confirm and start: " : "Confirm: ") + t.Title)
                 : new QuickAction("Start", false, "Start: " + t.Title),
             TaskLane.Doing => new QuickAction("Mark done", true, "Mark done: " + t.Title),
             _ => null,
@@ -312,6 +337,7 @@ public static class TaskBoard
         MemberTaskStatus.Help => $"You asked {ownerFirst}. The answer arrives in Chat.",
         MemberTaskStatus.Cant => $"You told {ownerFirst} you can’t do this. They’ll reply in Chat.",
         MemberTaskStatus.Approved => $"Approved by {ownerFirst}.",
+        MemberTaskStatus.Cancelled => $"{ownerFirst} cancelled this task.",
         MemberTaskStatus.Done => $"{ownerFirst} can see it’s done.",
         _ when NeedsConfirm(t) => $"{ownerFirst} asked you to confirm before you start.",
         _ => "",

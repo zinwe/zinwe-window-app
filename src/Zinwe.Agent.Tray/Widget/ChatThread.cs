@@ -46,7 +46,9 @@ public sealed record ThreadRow
 
 /// <summary>
 /// Builds the v2 conversation from the real chat (the shared notifications file + the replies still in the outbox),
-/// the owner's task cards (task seam) and the local reply quotes. Pure.
+/// the owner's task cards and the local reply quotes. Pure. A chat line that carries an owner's task (FR-20 v2,
+/// <see cref="NotificationItem.TaskId"/>) becomes that task's card, live (its status as the Tasks tab shows it); an
+/// owner's task without such a line (samples, or a line older than the kept history) gets a card at the time it was sent.
 /// </summary>
 public static class ChatThread
 {
@@ -55,8 +57,17 @@ public static class ChatThread
         IReadOnlyList<ReplyQuotes.Entry> quotes, string ownerFirst, DateTimeOffset now, bool offline = false)
     {
         var rows = new List<ThreadRow>();
+        var owners = tasks.Where(t => !t.Mine).ToList();
+        var carded = new HashSet<int>();
         foreach (var i in items.Where(i => i.IsChat))
         {
+            if (i.TaskId is { } taskId && owners.FirstOrDefault(t => t.RemoteId == taskId) is { } live)
+            {
+                carded.Add(live.Id);
+                rows.Add(new ThreadRow { Key = "task:" + live.Id, Kind = ThreadKind.Task, Task = live, At = i.CreatedAtUtc,
+                    Meta = ownerFirst + " · " + i.CreatedAtUtc.ToLocalTime().ToString("h:mm tt") });
+                continue;
+            }
             if (i.IsFromAdmin && ChatFeed.IsBreakNotApproved(i))
             {
                 var (title, text) = ChatFeed.Content(i, ownerFirst);
@@ -76,7 +87,7 @@ public static class ChatThread
                 Importance = !mine && severity is "warning" or "critical" ? (severity == "critical" ? "Urgent" : "Important") : null,
             });
         }
-        foreach (var t in tasks.Where(t => !t.Mine))
+        foreach (var t in owners.Where(t => !carded.Contains(t.Id)))
         {
             rows.Add(new ThreadRow { Key = "task:" + t.Id, Kind = ThreadKind.Task, Task = t, At = t.SentAt,
                 Meta = ownerFirst + " · " + t.SentAt.ToLocalTime().ToString("h:mm tt") });

@@ -96,17 +96,7 @@ internal static class TaskCard
 
         if (!open && TaskBoard.Quick(t) is { } quick)
         {
-            var q = Ui.Button(quick.Label, quick.Primary ? "Z.BtnSm.Pri" : "Z.BtnSm.Dark", () =>
-            {
-                if (quick.Primary)
-                {
-                    m.DoneTask(t);
-                }
-                else
-                {
-                    m.StartTask(t);
-                }
-            }, quick.Aria);
+            var q = Ui.Button(quick.Label, quick.Primary ? "Z.BtnSm.Pri" : "Z.BtnSm.Dark", () => m.QuickRun(t), quick.Aria);
             q.Padding = new Thickness(10, 0, 10, 0);
             q.FontSize = 12;
             q.Margin = new Thickness(8, 0, 0, 0);
@@ -171,7 +161,7 @@ internal static class TaskCard
         var rule = new Border { Height = 1, Margin = new Thickness(0, 0, 0, 8) };
         rule.SetResourceReference(Border.BackgroundProperty, "Z.LineSoft");
         body.Children.Add(rule);
-        body.Children.Add(Ui.Text(t.Mine ? $"Added by you · {m.OwnerFirstStart} can see it"
+        body.Children.Add(Ui.Text(t.Mine ? "Your own to-do · kept on this PC only"
             : $"From {owner} · {Sent(t.SentAt, m.Now)}{(t.NeedsOk ? $" · {owner} checks it when it’s done" : "")}", 12, fg: "Z.Muted", wrap: true));
         if (t.Details.Length > 0)
         {
@@ -207,6 +197,19 @@ internal static class TaskCard
             l.Margin = new Thickness(0, 8, 0, 0);
             body.Children.Add(l);
         }
+        if (t.Activity.Count > 0)
+        {
+            var label = Ui.Text("ACTIVITY", 10.5, FontWeights.Bold, "Z.Muted");
+            label.Margin = new Thickness(0, 10, 0, 2);
+            body.Children.Add(label);
+            foreach (var a in t.Activity.TakeLast(6))
+            {
+                var entry = Ui.Text($"{Sent(a.At, m.Now)}{(a.At.ToLocalTime().Date == m.Now.ToLocalTime().Date ? "" : ", " + a.At.ToLocalTime().ToString("h:mm tt"))} · {a.Text}",
+                    11.5, fg: "Z.Ink3", wrap: true);
+                entry.Margin = new Thickness(0, 1, 0, 0);
+                body.Children.Add(entry);
+            }
+        }
         if (t.Queued && m.Offline)
         {
             var q = Ui.Text("Saved on this PC · sends when you're back online", 12, FontWeights.SemiBold, "Z.WarnText", wrap: true);
@@ -221,6 +224,13 @@ internal static class TaskCard
             actions.Add(("Edit", "Z.BtnSm", () => m.OpenNewTask(t), true));
             actions.Add(("Delete", "Z.BtnSm", () => m.DeleteOwn(t), false));
         }
+        else if (lane == TaskLane.Todo && t.RemoteId is not null && TaskBoard.NeedsConfirm(t))
+        {
+            // An owner's task: confirm you'll do it (the owner sees "Accepted"), or start right away.
+            actions.Add(("Confirm", "Z.BtnSm.Dark", () => m.ConfirmTask(t), true));
+            actions.Add(("Start", "Z.BtnSm", () => m.StartTask(t), false));
+            actions.Add(($"Ask {owner}", "Z.BtnSm", () => m.AskAbout(t), false));
+        }
         else if (lane == TaskLane.Todo)
         {
             actions.Add((TaskBoard.NeedsConfirm(t) ? "Confirm & start" : "Start", "Z.BtnSm.Dark", () => m.StartTask(t), true));
@@ -234,6 +244,18 @@ internal static class TaskCard
         else if (t.Status is MemberTaskStatus.Help or MemberTaskStatus.Cant)
         {
             actions.Add(("Carry on", "Z.BtnSm.Dark", () => m.CarryOn(t), true));
+            if (t.RemoteId is not null)
+            {
+                actions.Add(("Add a note", "Z.BtnSm", () => m.OpenNote(t.Id), false));
+            }
+        }
+        else if (t.RemoteId is not null && t.Status == MemberTaskStatus.Review)
+        {
+            actions.Add(("Add a note", "Z.BtnSm", () => m.OpenNote(t.Id), true));
+        }
+        else if (t.Status == MemberTaskStatus.Cancelled)
+        {
+            // Called off by the owner: nothing to do.
         }
         else if (TaskBoard.Finished(t))
         {

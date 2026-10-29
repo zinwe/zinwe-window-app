@@ -145,7 +145,8 @@ public sealed class TrayV2Tests : IDisposable
         Assert.False(TaskFilter.None.IsFiltered);
 
         var groups = TaskBoard.Groups(TaskBoard.Shown(tasks, TaskFilter.None, Now), "all", "Ananya");
-        Assert.Equal(["DOING", "TO DO", "WITH ANANYA", "DONE"], groups.Select(g => g.Label));
+        Assert.Equal(["DOING", "TO DO", "WITH ANANYA", "DONE", TaskBoard.MyTodos], groups.Select(g => g.Label));
+        Assert.Equal([5], groups[^1].Items.Select(t => t.Id)); // own to-dos stay apart
         Assert.Equal("No tasks match these filters.", TaskBoard.EmptyText(new TaskFilter(High: true), "Ananya"));
         Assert.Equal("Nothing to start.", TaskBoard.EmptyText(new TaskFilter(Status: "todo"), "Ananya"));
     }

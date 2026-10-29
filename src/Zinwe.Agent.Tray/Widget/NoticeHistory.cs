@@ -96,8 +96,9 @@ public sealed class NoticeHistory(string? directory = null)
 
     public static IReadOnlyList<NoticeEntry> Merge(IEnumerable<NoticeEntry> local, IEnumerable<NotificationItem> items, string ownerName)
     {
+        // A chat line that carries an owner's task isn't "a new message": the task's own notice (TaskNotices) is it.
         var fromFile = items
-            .Where(i => !i.IsChat || i.IsFromAdmin)
+            .Where(i => (!i.IsChat || i.IsFromAdmin) && i.TaskId is null)
             .Select(i => i.IsChat
                 ? new NoticeEntry("chat:" + i.Id, "New message from " + ownerName, ChatFeed.Preview(i, ownerName), "chat",
                     i.CreatedAtUtc, i.Read) { FromFile = true }
