@@ -65,7 +65,10 @@ public sealed record AgentStatus(
     string? ServerConsentState = null,
     /// <summary>FR-20 v2: goes up whenever the owner's tasks the service holds change (ask with the "tasks" request).
     /// Null = an older service without tasks: the widget keeps only the member's own to-dos.</summary>
-    int? TasksVersion = null);
+    int? TasksVersion = null,
+    /// <summary>FR-44: the member's picture as the service holds it. Null = an older service without team pictures:
+    /// the widget hides "Change picture" and shows initials.</summary>
+    PictureStatus? Picture = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

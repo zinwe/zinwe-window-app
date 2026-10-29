@@ -58,6 +58,8 @@ public sealed record WorkEvent(DateTimeOffset At, string State, string? Reason =
 /// <param name="UsbRestore">True once after the owner pressed "Restore USB": put USB back to the policy and send usb.restored.</param>
 /// <param name="CompanyName">The employer's name, when the backend sends it (shown on the consent screen and widget).</param>
 /// <param name="OwnerName">The owner's name, when the backend sends it ("Message Ravi").</param>
+/// <param name="Picture">FR-44: this PC's member's picture, raw (read it with <see cref="MemberPictures.Read"/>). The key
+/// missing (<see cref="JsonValueKind.Undefined"/>) = a backend without team pictures; JSON null = no picture.</param>
 public sealed record HeartbeatResponse(
     long DeviceId,
     DateTimeOffset ServerTime,
@@ -69,7 +71,8 @@ public sealed record HeartbeatResponse(
     string? ConsentState = null,
     bool? UsbRestore = null,
     string? CompanyName = null,
-    string? OwnerName = null);
+    string? OwnerName = null,
+    JsonElement Picture = default);
 
 /// <summary>
 /// A newer Windows agent release the PC should install. <paramref name="DownloadUrl"/> is either a path on our own
@@ -166,6 +169,84 @@ public enum TaskActionOutcome
     Refused,
 }
 
+/// <summary>
+/// FR-44: a member's picture. <see cref="Kind"/> "avatar" = one of the library's drawn people (<see cref="Key"/>, e.g.
+/// "a07"); "photo" = an uploaded 256 × 256 JPEG at <see cref="Url"/> (signed, no auth header; the URL changes whenever
+/// the picture changes, so it doubles as the cache key). No picture at all is null.
+/// </summary>
+public sealed record MemberPicture(string Kind, string? Key = null, string? Url = null, DateTimeOffset? UpdatedAt = null)
+{
+    public const string AvatarKind = "avatar";
+    public const string PhotoKind = "photo";
+
+    [JsonIgnore]
+    public bool IsAvatar => Kind == AvatarKind && !string.IsNullOrEmpty(Key);
+
+    [JsonIgnore]
+    public bool IsPhoto => Kind == PhotoKind && !string.IsNullOrEmpty(Url);
+}
+
+/// <summary>Reading the <c>picture</c> object wherever the backend sends it (heartbeat, <c>PUT me/picture/</c>).</summary>
+public static class MemberPictures
+{
+    /// <summary>Library keys: short, lower-case, stable ("a07"). Anything else is never sent.</summary>
+    public static bool IsValidKey(string? key) =>
+        key is { Length: >= 1 and <= 32 } && key.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' or '-');
+
+    /// <summary>
+    /// The picture in <paramref name="element"/>. <paramref name="present"/> is false when the field is missing (a
+    /// backend without pictures: keep what we have); a JSON null, or a shape this agent doesn't know, is "no picture".
+    /// </summary>
+    public static MemberPicture? Read(JsonElement element, out bool present)
+    {
+        present = element.ValueKind != JsonValueKind.Undefined;
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        var kind = Text(element, "kind");
+        if (kind == MemberPicture.AvatarKind && Text(element, "key") is { } key && IsValidKey(key))
+        {
+            return new MemberPicture(kind, Key: key);
+        }
+        if (kind == MemberPicture.PhotoKind && Text(element, "url") is { Length: > 0 } url)
+        {
+            DateTimeOffset? updated = element.TryGetProperty("updated_at", out var u) && u.ValueKind == JsonValueKind.String
+                && u.TryGetDateTimeOffset(out var at) ? at : null;
+            return new MemberPicture(kind, Url: url, UpdatedAt: updated);
+        }
+        return null;
+    }
+
+    /// <summary>The reply to <c>PUT me/picture/</c>: <c>{"picture": {…}}</c>, or the picture object on its own.</summary>
+    public static MemberPicture? ReadReply(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("picture", out var inner)
+            ? Read(inner, out _)
+            : Read(root, out _);
+
+    private static string? Text(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+}
+
+/// <summary>What became of a picture change the agent sent (<c>PUT</c> / <c>DELETE me/picture/</c>).</summary>
+public enum PictureOutcome
+{
+    /// <summary>Stored: <see cref="PictureResult.Picture"/> is the backend's view (null after a removal).</summary>
+    Saved,
+    /// <summary>Refused for good (a 4xx other than 404/405/429: unknown avatar, too large, not an image). Sending it
+    /// again won't help; the real picture shows.</summary>
+    Refused,
+    /// <summary>404/405: a backend without team pictures. The tray hides the control.</summary>
+    Unsupported,
+}
+
+/// <param name="Code">The backend's refusal code (<c>unknown_avatar</c>, <c>too_large</c>, <c>not_an_image</c>,
+/// <c>too_big_dimensions</c>), when it sent one.</param>
+public sealed record PictureResult(PictureOutcome Outcome, MemberPicture? Picture = null, string? Code = null, string? Detail = null);
+
+/// <summary><c>PUT me/picture/</c> with a library avatar.</summary>
+public sealed record AvatarPictureRequest(string Kind, string Key);
+
 /// <summary>POST /api/devices/messages/ — the member replies in the thread.</summary>
 public sealed record MemberReplyRequest(string Body);
 
@@ -190,6 +271,7 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(DeviceTask))]
 [JsonSerializable(typeof(DeviceTask[]))]
 [JsonSerializable(typeof(TaskActionRequest))]
+[JsonSerializable(typeof(AvatarPictureRequest))]
 [JsonSerializable(typeof(MetricUploadRequest))]
 [JsonSerializable(typeof(MetricUploadResponse))]
 [JsonSerializable(typeof(Dictionary<string, string[]>))]

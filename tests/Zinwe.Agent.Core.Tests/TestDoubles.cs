@@ -8,7 +8,8 @@ using Zinwe.Agent.Core.Usb;
 namespace Zinwe.Agent.Core.Tests;
 
 /// <summary>A request as the fake backend saw it (captured before the client disposes the message).</summary>
-internal sealed record SeenRequest(HttpMethod Method, string Path, string Body, long? ContentLength, string? AuthScheme, string? AuthParameter);
+internal sealed record SeenRequest(HttpMethod Method, string Path, string Body, long? ContentLength, string? AuthScheme, string? AuthParameter,
+    string? ContentType = null, string? Host = null, byte[]? Bytes = null);
 
 /// <summary>Programmable backend: <c>Respond</c> decides each response; every request is recorded.</summary>
 internal sealed class FakeBackend : HttpMessageHandler
@@ -25,13 +26,17 @@ internal sealed class FakeBackend : HttpMessageHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        var bytes = request.Content is null ? null : await request.Content.ReadAsByteArrayAsync(ct);
         var seen = new SeenRequest(
             request.Method,
             request.RequestUri!.AbsolutePath,
-            request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct),
+            bytes is null ? "" : Encoding.UTF8.GetString(bytes),
             request.Content?.Headers.ContentLength,
             request.Headers.Authorization?.Scheme,
-            request.Headers.Authorization?.Parameter);
+            request.Headers.Authorization?.Parameter,
+            request.Content?.Headers.ContentType?.MediaType,
+            request.RequestUri.Host,
+            bytes);
         Requests.Add(seen);
         return Respond(seen);
     }

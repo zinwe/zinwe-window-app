@@ -7,8 +7,11 @@ namespace Zinwe.Agent.Core.Messages;
 /// One pending item waiting to be posted. Id is a client guid (for removal after posting). <see cref="Kind"/> is
 /// "reply" (a chat line to the admin), "feedback" (FR-14: the member's rating of Zinwe, 1-10, for the Zinwe team) or
 /// "task_action" (FR-20 v2: what the member did on an owner's task - <see cref="TaskId"/>, <see cref="Action"/>,
-/// <see cref="Body"/> = the note, and for a step tick <see cref="StepId"/> + <see cref="StepDone"/>).
-/// The task fields are trailing and optional, so files written by older builds still read.
+/// <see cref="Body"/> = the note, and for a step tick <see cref="StepId"/> + <see cref="StepDone"/>) or "picture"
+/// (FR-44: the member's new picture - <see cref="Action"/> "avatar" / "photo" / "remove", <see cref="Body"/> = the
+/// avatar key or the photo's JPEG as base64; only the newest one is kept, and only the service writes it).
+/// The task fields are trailing and optional, so files written by older builds still read; builds before 1.3.1
+/// posted every kind they didn't know as chat, which is why picture items are written only by a service that knows them.
 /// </summary>
 public sealed record OutboxReply(
     string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null,
@@ -17,11 +20,15 @@ public sealed record OutboxReply(
     public const string ReplyKind = "reply";
     public const string FeedbackKind = "feedback";
     public const string TaskActionKind = "task_action";
+    public const string PictureKind = "picture";
 
     public bool IsFeedback => string.Equals(Kind, FeedbackKind, StringComparison.Ordinal);
 
     [JsonIgnore]
     public bool IsTaskAction => string.Equals(Kind, TaskActionKind, StringComparison.Ordinal);
+
+    [JsonIgnore]
+    public bool IsPicture => string.Equals(Kind, PictureKind, StringComparison.Ordinal);
 
     /// <summary>A line of the chat (not feedback, not a task action, nor a kind a newer build added).</summary>
     [JsonIgnore]
@@ -76,6 +83,35 @@ public sealed class MessageOutbox
         Add(item);
         return item;
     }
+
+    /// <summary>
+    /// Queue the member's new picture (FR-44), replacing any earlier one still waiting (the newest choice wins).
+    /// Returns the item, or null when it couldn't be written (nobody signed in, or the file is locked).
+    /// </summary>
+    public OutboxReply? ReplacePicture(string action, string body)
+    {
+        var item = new OutboxReply(Guid.NewGuid().ToString("N"), body, DateTimeOffset.UtcNow, OutboxReply.PictureKind, Action: action);
+        lock (_lock)
+        {
+            return _folder.Use(dir =>
+            {
+                var path = Path.Combine(dir, FileName);
+                var file = Load(path);
+                file.Items.RemoveAll(i => i.IsPicture);
+                file.Items.Add(item);
+                return Save(path, file) ? item : null;
+            }, null);
+        }
+    }
+
+    /// <summary>The member's picture change still waiting to be sent (the newest, when an older build left several).</summary>
+    public OutboxReply? PendingPicture() => All().LastOrDefault(i => i.IsPicture);
+
+    /// <summary>Drop every waiting picture change (the PC was removed, or connected as someone else).</summary>
+    public void RemovePictures() => Remove([.. All().Where(i => i.IsPicture).Select(i => i.Id)]);
+
+    /// <summary>True while anything but a picture change waits (pictures keep their own retry pace).</summary>
+    public bool HasPendingOtherThanPicture => All().Any(i => !i.IsPicture);
 
     /// <summary>Task actions still waiting to be posted, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingTaskActions() => [.. All().Where(i => i.IsTaskAction)];
@@ -178,7 +214,7 @@ public sealed class MessageOutbox
         return new OutboxFile();
     }
 
-    private static void Save(string path, OutboxFile file)
+    private static bool Save(string path, OutboxFile file)
     {
         try
         {
@@ -186,10 +222,11 @@ public sealed class MessageOutbox
             var tmp = path + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(file, Json));
             File.Move(tmp, path, overwrite: true);
+            return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // best-effort
+            return false; // best-effort
         }
     }
 }

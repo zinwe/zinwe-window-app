@@ -13,7 +13,8 @@ namespace Zinwe.Agent.Core.Messages;
 public sealed class MessageSync(BackendClient backend, NotificationWriter writer, MessageOutbox outbox, ILogger<MessageSync> logger)
 {
     /// <summary>True while the member has typed a reply (or feedback) the agent hasn't posted yet (sync right away).</summary>
-    public bool HasPendingReplies => outbox.All().Count > 0;
+    /// <remarks>A waiting picture change (FR-44) doesn't count: <c>PictureSync.HasWork</c> paces its own retries.</remarks>
+    public bool HasPendingReplies => outbox.HasPendingOtherThanPicture;
 
     public async Task SyncAsync(string deviceToken, CancellationToken ct)
     {

@@ -8,7 +8,8 @@ using Zinwe.Agent.Core.Ipc;
 namespace Zinwe.Agent.Service;
 
 /// <summary>
-/// Local-only named pipe the tray app uses to talk to the service (status, connect, update, usage readings, tasks).
+/// Local-only named pipe the tray app uses to talk to the service (status, connect, update, usage readings, tasks,
+/// the member's picture).
 /// A request type it doesn't know gets <see cref="PipeProtocol.NotSupported"/> (FR-20 v2 compatibility rule).
 /// FIX-015 hardening:
 /// <list type="bullet">
@@ -25,7 +26,8 @@ namespace Zinwe.Agent.Service;
 /// </summary>
 internal sealed partial class PipeServer(
     AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger,
-    Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
+    Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Pictures.PictureSync pictures,
+    Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
     : BackgroundService
 {
     private const int MaxInstances = 8;
@@ -93,12 +95,18 @@ internal sealed partial class PipeServer(
                 if (request.Type == PipeProtocol.RequestTypes.Status)
                 {
                     // TasksVersion says "this service knows tasks" and lets the tray fetch only when they changed.
-                    var status = state.Current with { TasksVersion = tasks.Version };
+                    // Picture (FR-44) says "this service knows pictures"; its Version lets the tray redraw only on change.
+                    var status = state.Current with { TasksVersion = tasks.Version, Picture = pictures.Status };
                     await writer.WriteLineAsync(PipeProtocol.Serialize(status).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Tasks)
                 {
                     await writer.WriteLineAsync(PipeProtocol.Serialize(tasks.Snapshot).AsMemory(), cts.Token);
+                }
+                else if (request.Type == PipeProtocol.RequestTypes.Picture)
+                {
+                    // FR-44: the member's new picture: kept in the outbox and sent by the chat loop (offline: later).
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(pictures.Request(request.Picture)).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Enroll)
                 {

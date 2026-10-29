@@ -19,9 +19,18 @@ public static class PipeProtocol
 
     /// <summary>
     /// A tray→service request. <see cref="Email"/>/<see cref="MemberId"/> are set only for "enroll";
-    /// <see cref="Usage"/> only for "usage".
+    /// <see cref="Usage"/> only for "usage"; <see cref="Picture"/> only for "picture" (FR-44, trailing and optional:
+    /// older services ignore it).
     /// </summary>
-    public sealed record Request(string Type, string? Email = null, string? MemberId = null, IReadOnlyList<ForegroundReport>? Usage = null);
+    public sealed record Request(
+        string Type, string? Email = null, string? MemberId = null, IReadOnlyList<ForegroundReport>? Usage = null,
+        PictureChoice? Picture = null);
+
+    /// <summary>
+    /// The longest request line the service reads. A "picture" request carries a ≤ 150 KB JPEG as base64 (≈ 200 KB);
+    /// 1.3.1 services read at most 32 KB and close the pipe on anything longer, which the tray reads as "not supported".
+    /// </summary>
+    public const int MaxRequestChars = 262_144;
 
     /// <summary>Reply to an "enroll" or "update" request: whether the service took it on, and what to tell the member.</summary>
     public sealed record EnrollAck(bool Accepted, string Message);
@@ -49,6 +58,12 @@ public static class PipeProtocol
         /// <see cref="AgentStatus.TasksVersion"/> changes; a status without it is an older service (own to-dos only).
         /// </summary>
         public const string Tasks = "tasks";
+        /// <summary>
+        /// FR-44: set or remove the member's picture (<see cref="Request.Picture"/>). The service keeps it in the outbox
+        /// (sent when online) and answers at once; the status's <see cref="AgentStatus.Picture"/> shows it. A status
+        /// without <see cref="AgentStatus.Picture"/> is an older service: the tray never sends this request to it.
+        /// </summary>
+        public const string Picture = "picture";
     }
 
     /// <summary>
@@ -82,7 +97,7 @@ public static class PipeProtocol
     public static async Task<Request?> ReadRequestAsync(StreamReader reader, CancellationToken ct)
     {
         var line = await reader.ReadLineAsync(ct);
-        if (string.IsNullOrWhiteSpace(line) || line.Length > 32_768)
+        if (string.IsNullOrWhiteSpace(line) || line.Length > MaxRequestChars)
         {
             return null;
         }
@@ -146,6 +161,13 @@ public static class AgentPipeClient
         }
     }
 
+    /// <summary>
+    /// FR-44: set or remove the member's picture. Null when the service isn't reachable; an older service answers
+    /// "not supported" (or closes the pipe: null too). Accepted = queued, it shows on the next status.
+    /// </summary>
+    public static Task<PipeProtocol.EnrollAck?> SetPictureAsync(PictureChoice choice, TimeSpan timeout, CancellationToken ct = default) =>
+        SendAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Picture, Picture: choice), timeout, ct);
+
     /// <summary>Hand the member-typed email + id to the service to enrol with. Returns null if the service isn't reachable.</summary>
     public static Task<PipeProtocol.EnrollAck?> SubmitEnrollmentAsync(string email, string memberId, TimeSpan timeout, CancellationToken ct = default) =>
         SendAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Enroll, email, memberId), timeout, ct);
@@ -205,4 +227,6 @@ public static class AgentPipeClient
 [JsonSerializable(typeof(PipeProtocol.EnrollAck))]
 [JsonSerializable(typeof(AgentStatus))]
 [JsonSerializable(typeof(TasksReply))]
+[JsonSerializable(typeof(PictureStatus))]
+[JsonSerializable(typeof(PictureChoice))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;

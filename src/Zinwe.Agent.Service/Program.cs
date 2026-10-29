@@ -93,6 +93,11 @@ builder.Services.AddSingleton<MessageSync>();
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TaskSync(
     sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),
     sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Tasks.TaskSync>>(), DataDirectory(sp)));
+// FR-44: the member's picture - heartbeat in, the tray's choice (pipe "picture" → outbox kind picture) out via
+// PUT/DELETE me/picture/, photos cached in the data folder and copied into the member's widget folder for the tray.
+builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Pictures.PictureSync(
+    sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(), sp.GetRequiredService<IWidgetFolder>(),
+    sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Pictures.PictureSync>>(), DataDirectory(sp)));
 // Usage metrics upload + the member's work status (read from the widget's per-user file).
 builder.Services.AddSingleton<MetricsUploadPump>();
 builder.Services.AddSingleton(sp => new WorkStatusReader(sp.GetRequiredService<IWidgetFolder>()));

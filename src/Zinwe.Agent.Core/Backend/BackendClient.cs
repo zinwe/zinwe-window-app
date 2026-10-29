@@ -154,6 +154,148 @@ public sealed class BackendClient
         }
     }
 
+    /// <summary>
+    /// FR-44 · <c>PUT /api/devices/me/picture/</c> with a library avatar (<c>{"kind":"avatar","key":"a07"}</c>).
+    /// See <see cref="PictureOutcome"/>; throws on network errors, 429 and 5xx so the outbox keeps it and retries.
+    /// </summary>
+    public async Task<PictureResult> SetAvatarAsync(string deviceToken, string key, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(
+            HttpMethod.Put, MyPicturePath, deviceToken,
+            JsonBody(new AvatarPictureRequest(MemberPicture.AvatarKind, key), BackendJsonContext.Default.AvatarPictureRequest), ct);
+        return await ReadPictureResultAsync(response, ct);
+    }
+
+    /// <summary>
+    /// FR-44 · <c>PUT /api/devices/me/picture/</c> with a photo: multipart <c>file</c> = the tray's 256 × 256 JPEG
+    /// (the server re-encodes it anyway). Same outcomes as <see cref="SetAvatarAsync"/>.
+    /// </summary>
+    public async Task<PictureResult> SetPhotoAsync(string deviceToken, byte[] jpeg, CancellationToken ct)
+    {
+        var file = new ByteArrayContent(jpeg);
+        file.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        using var form = new MultipartFormDataContent();
+        form.Add(file, "file", "picture.jpg");
+        // Buffered, so the request has a Content-Length (see JsonBody: WSGI reads a chunked body as empty).
+        await form.LoadIntoBufferAsync(ct);
+        using var response = await SendAsDeviceAsync(HttpMethod.Put, MyPicturePath, deviceToken, form, ct);
+        return await ReadPictureResultAsync(response, ct);
+    }
+
+    /// <summary>FR-44 · <c>DELETE /api/devices/me/picture/</c>: back to initials. Same outcomes as <see cref="SetAvatarAsync"/>.</summary>
+    public async Task<PictureResult> RemovePictureAsync(string deviceToken, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(HttpMethod.Delete, MyPicturePath, deviceToken, null, ct);
+        return await ReadPictureResultAsync(response, ct);
+    }
+
+    /// <summary>The biggest picture file the agent downloads (the server stores 256 × 256 JPEGs of 12-35 KB).</summary>
+    public const int MaxPictureDownloadBytes = 512 * 1024;
+
+    /// <summary>
+    /// FR-44 · download a member photo (<see cref="MemberPicture.Url"/>). The URL is signed, so the device token is
+    /// never sent with it (also not to our own backend). A path is resolved against the backend; an absolute URL must be
+    /// https (or loopback, for dev). Returns null when the picture is gone (404/410), or the file isn't a JPEG / is too
+    /// big; throws on network errors and 5xx so it's tried again.
+    /// </summary>
+    public async Task<byte[]?> DownloadPictureAsync(string url, CancellationToken ct)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Get, ToDownloadUri(url));
+        using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone or HttpStatusCode.Forbidden)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength > MaxPictureDownloadBytes)
+        {
+            return null;
+        }
+        await using var body = await response.Content.ReadAsStreamAsync(ct);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await body.ReadAsync(chunk, ct)) > 0)
+        {
+            if (buffer.Length + read > MaxPictureDownloadBytes)
+            {
+                return null;
+            }
+            buffer.Write(chunk, 0, read);
+        }
+        var bytes = buffer.ToArray();
+        return IsJpeg(bytes) ? bytes : null;
+    }
+
+    /// <summary>A JPEG starts with the SOI marker FF D8 FF.</summary>
+    public static bool IsJpeg(ReadOnlySpan<byte> bytes) => bytes.Length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+
+    private const string MyPicturePath = "api/devices/me/picture/";
+
+    private static async Task<PictureResult> ReadPictureResultAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var code = (int)response.StatusCode;
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+        {
+            return new PictureResult(PictureOutcome.Unsupported);
+        }
+        if (code is >= 400 and < 500 and not 429)
+        {
+            var (refusal, detail) = await ReadRefusalAsync(response, ct);
+            return new PictureResult(PictureOutcome.Refused, Code: refusal, Detail: detail);
+        }
+        response.EnsureSuccessStatusCode();
+        if (response.StatusCode == HttpStatusCode.NoContent)
+        {
+            return new PictureResult(PictureOutcome.Saved);
+        }
+        try
+        {
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return new PictureResult(PictureOutcome.Saved);
+            }
+            using var doc = JsonDocument.Parse(text);
+            return new PictureResult(PictureOutcome.Saved, MemberPictures.ReadReply(doc.RootElement));
+        }
+        catch (JsonException)
+        {
+            return new PictureResult(PictureOutcome.Saved); // stored; the next heartbeat carries the picture
+        }
+    }
+
+    /// <summary>The plan's 400 shape <c>{"code": "...", "detail": "..."}</c>; DRF's field errors otherwise.</summary>
+    private static async Task<(string? Code, string Detail)> ReadRefusalAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var text = await response.Content.ReadAsStringAsync(ct);
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                var code = doc.RootElement.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
+                if (doc.RootElement.TryGetProperty("detail", out var d) && FirstMessage(d) is { } detail)
+                {
+                    return (code, detail);
+                }
+                foreach (var property in doc.RootElement.EnumerateObject())
+                {
+                    if (FirstMessage(property.Value) is { } message)
+                    {
+                        return (code, message);
+                    }
+                }
+                return (code, $"The backend refused the picture ({(int)response.StatusCode}).");
+            }
+        }
+        catch (JsonException)
+        {
+            // not JSON
+        }
+        return (null, $"The backend refused the picture ({(int)response.StatusCode}).");
+    }
+
     /// <summary>Mark the admin's messages to this member as seen on the PC. Best-effort (ignored on failure).</summary>
     public async Task MarkMessagesReadAsync(string deviceToken, CancellationToken ct)
     {
