@@ -411,6 +411,8 @@ public partial class SheetView : UserControl
                 Content = cell, IsChecked = chosen, GroupName = "avatar", Cursor = Cursors.Hand, IsEnabled = !m.PictureBusy,
                 Template = PlainTemplate(), FocusVisualStyle = (Style)FindResource("Z.FocusRing"), HorizontalAlignment = HorizontalAlignment.Stretch,
                 ToolTip = avatar.Label,
+                // The app theme's RadioButton has a MinWidth wider than a 44 px cell: without this the cell is cut.
+                MinWidth = 0, MinHeight = 44, Padding = new Thickness(0),
             };
             AutomationProperties.SetName(b, avatar.Label + " avatar");
             var key = avatar.Key;

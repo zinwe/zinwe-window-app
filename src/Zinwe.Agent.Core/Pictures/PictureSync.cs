@@ -231,10 +231,11 @@ public sealed class PictureSync
                 return;
             }
         }
+        var photo = item.Action == PictureChoice.Photo ? DecodeJpeg(item.Body) : null;
         PictureResult? result = item.Action switch
         {
             PictureChoice.Avatar when MemberPictures.IsValidKey(item.Body) => await _backend.SetAvatarAsync(deviceToken, item.Body, ct),
-            PictureChoice.Photo when DecodeJpeg(item.Body) is { } jpeg => await _backend.SetPhotoAsync(deviceToken, jpeg, ct),
+            PictureChoice.Photo when photo is not null => await _backend.SetPhotoAsync(deviceToken, photo, ct),
             PictureChoice.Remove => await _backend.RemovePictureAsync(deviceToken, ct),
             _ => null, // nothing any backend could take: drop it
         };
@@ -256,7 +257,8 @@ public sealed class PictureSync
                     {
                         _widgetFile = _pendingFile; // the same picture: shown until the stored one is downloaded
                     }
-                    _logger.LogInformation("The member's picture was saved ({Action})", item.Action);
+                    _logger.LogInformation("The member's picture was saved ({Action}, {Bytes} bytes sent)", item.Action,
+                        photo?.Length ?? 0);
                     break;
                 case PictureOutcome.Unsupported:
                     _backendState = PictureBackend.Off;
