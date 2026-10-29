@@ -39,7 +39,7 @@ public static class OwnerTasks
         var (due, key, date) = DueOf(d.DueAt, now);
         var activity = d.Activity ?? [];
         var notes = activity
-            .Where(a => !string.IsNullOrWhiteSpace(a.Note))
+            .Where(a => !string.IsNullOrWhiteSpace(a.Note) && CarriesWords(a.Action))
             .Select(a => new TaskNote(IsMember(a.By) ? "You" : ownerFirst, a.Note!.Trim()))
             .ToList();
         if (status == MemberTaskStatus.Help && !string.IsNullOrWhiteSpace(d.HelpNote) && !notes.Any(n => n.Text == d.HelpNote.Trim()))
@@ -98,11 +98,19 @@ public static class OwnerTasks
         return (local.ToString("ddd d MMM", CultureInfo.CurrentCulture), DueKey.Later, DateOnly.FromDateTime(day));
     }
 
-    /// <summary>One history line in plain words.</summary>
+    /// <summary>
+    /// Activity whose note is words someone wrote (a question, a note, the owner's comment) - shown as a note on the
+    /// card. Step ticks carry the step's title and "edited" the changed fields: those are history, not notes.
+    /// </summary>
+    private static bool CarriesWords(string? action) => (action ?? "").ToLowerInvariant() is
+        "help" or "note" or "done" or "approved" or "approve" or "reopened" or "reopen" or "cancelled" or "cancel" or "nudged" or "nudge";
+
+    /// <summary>One history line in plain words (activity names from the backend, 15-api-reference "Tasks (FR-20 v2)").</summary>
     public static string Describe(DeviceTaskActivity a, string ownerFirst)
     {
         var member = IsMember(a.By);
         var who = member ? "You" : ownerFirst;
+        var step = string.IsNullOrWhiteSpace(a.Note) ? "a step" : "“" + a.Note.Trim() + "”";
         return (a.Action ?? "").ToLowerInvariant() switch
         {
             "created" or "create" or "sent" => $"{ownerFirst} sent it",
@@ -111,17 +119,27 @@ public static class OwnerTasks
             "start" or "started" or "progress" => member ? "You started it" : $"{ownerFirst} moved it to in progress",
             "help" => "You asked for help",
             "done" or "review" => "You marked it done",
-            "note" => string.IsNullOrWhiteSpace(a.Note) ? $"{who} ticked a step" : $"{who} added a note",
-            "step" => $"{who} ticked a step",
+            "step_done" => $"{who} ticked {step}",
+            "step_undone" => $"{who} unticked {step}",
+            "note" => $"{who} added a note",
             "approve" or "approved" => $"{ownerFirst} approved it",
             "reopen" or "reopened" => $"{ownerFirst} reopened it",
             "cancel" or "cancelled" => $"{ownerFirst} cancelled it",
-            "nudge" => $"{ownerFirst} sent a reminder",
+            "nudge" or "nudged" => $"{ownerFirst} sent a reminder",
             "edit" or "edited" or "update" or "updated" => $"{ownerFirst} changed it",
-            var other when other.Length > 0 => $"{who}: {other}",
+            var other when other.Length > 0 => $"{who}: {other.Replace('_', ' ')}",
             _ => member ? "You updated it" : $"{ownerFirst} updated it",
         };
     }
+
+    /// <summary>The activity name the backend records for a member action (so a queued line and the server's match).</summary>
+    public static string ActivityName(OutboxReply a) => a.Action switch
+    {
+        TaskActions.Accept => "accepted",
+        TaskActions.Start => "started",
+        TaskActions.Note when a.StepId is not null => a.StepDone == false ? "step_undone" : "step_done",
+        _ => a.Action ?? "",
+    };
 
     private static bool IsMember(string? by) => string.Equals(by, "member", StringComparison.OrdinalIgnoreCase);
 
@@ -171,12 +189,17 @@ public static class OwnerTasks
                 break;
         }
         var activity = t.Activity ?? [];
+        var name = ActivityName(a);
+        if (a.StepId is { } sid)
+        {
+            note = (t.Steps ?? []).FirstOrDefault(x => x.Id == sid)?.Title ?? note; // the server notes the step's title
+        }
         // Once the server has the line (same action and note, made around then), don't show it twice.
-        var known = activity.Any(x => IsMember(x.By) && x.Action == a.Action && (x.Note ?? "") == (note ?? "")
+        var known = activity.Any(x => IsMember(x.By) && x.Action == name && (x.Note ?? "") == (note ?? "")
             && x.At >= a.CreatedAtUtc - TimeSpan.FromMinutes(2));
         if (!known && a.Action != TaskActions.Seen)
         {
-            activity = [.. activity, new DeviceTaskActivity(a.CreatedAtUtc, "member", a.Action ?? "", note)];
+            activity = [.. activity, new DeviceTaskActivity(a.CreatedAtUtc, "member", name, note)];
         }
         return t with { Status = status, Steps = steps, HelpNote = helpNote, Activity = activity };
     }
@@ -238,12 +261,13 @@ public static class TaskNotices
 
     private static bool IsAnnounced(string? action) => (action ?? "").ToLowerInvariant() is not ("created" or "create" or "sent");
 
+
     public static string OwnerLine(string? action, string ownerFirst) => (action ?? "").ToLowerInvariant() switch
     {
         "approve" or "approved" => $"{ownerFirst} approved your task",
         "reopen" or "reopened" => $"{ownerFirst} reopened a task",
         "cancel" or "cancelled" => $"{ownerFirst} cancelled a task",
-        "nudge" => $"Reminder from {ownerFirst}",
+        "nudge" or "nudged" => $"Reminder from {ownerFirst}",
         "note" => $"{ownerFirst} added a note",
         "edit" or "edited" or "update" or "updated" => $"{ownerFirst} changed a task",
         _ => $"{ownerFirst} updated a task",

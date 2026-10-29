@@ -76,7 +76,9 @@ public sealed class OwnerTasksTests : IDisposable
         var t = OwnerTasks.ToMemberTask(Remote(41, "help", due, "high",
             [
                 new DeviceTaskActivity(Now.AddHours(-2), "owner", "created"),
-                new DeviceTaskActivity(Now.AddHours(-1), "member", "start"),
+                new DeviceTaskActivity(Now.AddHours(-1), "member", "started"),
+                new DeviceTaskActivity(Now.AddMinutes(-30), "member", "step_done", "First"),
+                new DeviceTaskActivity(Now.AddMinutes(-20), "owner", "edited", "title, steps"),
                 new DeviceTaskActivity(Now.AddMinutes(-5), "member", "help", "Which room?"),
             ], helpNote: "Which room?"), "Ananya", Now);
 
@@ -87,8 +89,9 @@ public sealed class OwnerTasksTests : IDisposable
         Assert.Equal(("Today, 4:00 PM", DueKey.Today, due), (t.Due, t.DueKey, t.DueAt!.Value));
         Assert.Equal("Details 41", t.Details);
         Assert.Equal([(411L, true), (412L, false)], t.Steps.Select(s => (s.Id!.Value, s.Done)));
-        Assert.Equal(new TaskNote("You", "Which room?"), t.Notes.Single()); // the help note shows once
-        Assert.Equal(["Ananya sent it", "You started it", "You asked for help"], t.Activity.Select(a => a.Text));
+        Assert.Equal(new TaskNote("You", "Which room?"), t.Notes.Single()); // the help note shows once; ticks and edits aren't notes
+        Assert.Equal(["Ananya sent it", "You started it", "You ticked “First”", "Ananya changed it", "You asked for help"],
+            t.Activity.Select(a => a.Text));
         Assert.Equal(Now.AddHours(-2), t.SentAt);
     }
 
@@ -135,7 +138,8 @@ public sealed class OwnerTasksTests : IDisposable
         Assert.Equal("progress", shown[0].Status);
         Assert.Equal("review", shown[1].Status);
         Assert.True(shown[1].Steps!.Single(s => s.Id == 22).Done);
-        Assert.Equal(["created", "accept", "start"], shown[0].Activity!.Select(a => a.Action)); // "seen" isn't a history line
+        Assert.Equal(["created", "accepted", "started"], shown[0].Activity!.Select(a => a.Action)); // "seen" isn't a history line
+        Assert.Equal(("step_done", "Second"), (shown[1].Activity![1].Action, shown[1].Activity![1].Note)); // as the server records it
     }
 
     [Fact]
@@ -190,7 +194,7 @@ public sealed class OwnerTasksTests : IDisposable
         [
             new DeviceTaskActivity(Now.AddHours(-2), "owner", "created"),
             new DeviceTaskActivity(Now.AddMinutes(-1), "member", "done"),
-            new DeviceTaskActivity(Now, "owner", "approve"),
+            new DeviceTaskActivity(Now, "owner", "approved"),
         ]);
         var (notices, next) = TaskNotices.Diff(marks, [approved, Remote(2, "sent")], "Ananya", Now);
 
@@ -207,8 +211,9 @@ public sealed class OwnerTasksTests : IDisposable
             [new DeviceTaskActivity(Now.AddHours(-2), "owner", "created"), new DeviceTaskActivity(Now, "member", "done")]);
 
         Assert.Empty(TaskNotices.Diff(marks, [mine], "Ananya", Now).Notices);
-        Assert.Equal("Reminder from Ananya", TaskNotices.OwnerLine("nudge", "Ananya"));
-        Assert.Equal("Ananya reopened a task", TaskNotices.OwnerLine("reopen", "Ananya"));
+        Assert.Equal("Reminder from Ananya", TaskNotices.OwnerLine("nudged", "Ananya"));
+        Assert.Equal("Ananya reopened a task", TaskNotices.OwnerLine("reopened", "Ananya"));
+        Assert.Equal("Ananya changed a task", TaskNotices.OwnerLine("edited", "Ananya"));
     }
 
     [Fact]
