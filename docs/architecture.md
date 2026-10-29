@@ -66,7 +66,7 @@ Rule: **a used or refused Member ID is never reused.** On successful enroll, on 
 
 ## The pipe (tray ↔ service, FIX-015)
 
-One JSON line in, one JSON line out (`PipeProtocol`): `status`, `enroll`, `update`, `usage`, and since 1.3.1 `tasks` (the owner's tasks the service synced, `TasksReply`; the status carries `TasksVersion` so the tray asks only when they changed). A request type the service doesn't know is answered `{"accepted":false,"message":"not supported"}` (1.3.0 services close the pipe instead; the tray reads both as "no tasks"), and replies only ever gain optional fields. The pipe carries enrolment and "install this update", so both ends check who is on the other side (`Core/Ipc/PipePeers.cs`):
+One JSON line in, one JSON line out (`PipeProtocol`): `status`, `enroll`, `update`, `usage`, since 1.3.1 `tasks` (the owner's tasks the service synced, `TasksReply`; the status carries `TasksVersion` so the tray asks only when they changed), and since FR-44 `picture` (set or remove the member's picture: `Request.Picture` = `{action: avatar|photo|remove, key?, jpeg?}` with the photo as base64; the reply is an `EnrollAck`; the status carries the optional `Picture` object). Request lines may be up to 256 K characters (a photo); 1.3.1 services stop at 32 K and close the pipe. A request type the service doesn't know is answered `{"accepted":false,"message":"not supported"}` (1.3.0 services close the pipe instead; the tray reads both as "no tasks"), and replies only ever gain optional fields. The pipe carries enrolment and "install this update", so both ends check who is on the other side (`Core/Ipc/PipePeers.cs`):
 
 | Check | Rule |
 |---|---|
@@ -128,11 +128,31 @@ Writes are ordered so a transition never passes through a looser state than eith
 | `policy.json` | last policy (`version`, `usb.mode`) | folder ACL (no secrets) |
 | `events.db` | unsent events | folder ACL |
 | `tasks-cache.json` | the owner's tasks for this member as last synced (FR-20 v2) | folder ACL (no secrets) |
+| `picture.json` | FR-44: whether the backend has pictures (`on`/`off`) + the member's picture object as last seen | folder ACL (no secrets) |
+| `pictures\<hash>.jpg` | FR-44: the member's photo, one file per URL (SHA-256 of the URL, 16 hex); older ones deleted | folder ACL |
 
 **Owner's tasks (FR-20 v2).** `TaskSync` runs on the chat loop: posts the member's `task_action` outbox items in order
 (`POST tasks/<id>/action/`; a 4xx other than 429 is final, network / 429 / 5xx keep the item for the next round), then
 `GET tasks/`. 404/403 = this backend has no tasks for the PC (`off`, re-checked every 10 min). Details and the tray side:
 `.claude/dev/docs/08-windows-agent.md` → "Owner's tasks in the tray".
+
+**Team pictures (FR-44).** `PictureSync` (Core/Pictures) reads `picture` from every heartbeat reply (`HeartbeatResponse.Picture`
+is a raw `JsonElement`: key missing = a backend without pictures, or a PC without a member → `off`; null = initials). The
+tray's choice arrives on the pipe (`picture`) and is written, by the service, into the shared outbox as kind `picture`
+(only the newest kept; `Action` = avatar/photo/remove, `Body` = the key or the JPEG as base64). The chat loop sends it with
+`PUT`/`DELETE me/picture/` (JSON avatar, or a buffered multipart `file`): stored → the reply's picture; 404/405 → `off`
+(the tray hides the control until a heartbeat carries the field); any other 4xx (incl. 409 `no_member`) → dropped, the real
+picture shows; network / 429 / 5xx → kept, retried after 15 s doubling to 5 min (a waiting picture does not wake the chat
+loop every 2 s). A photo URL is downloaded once (no device token: the URL is signed; https or loopback; JPEG only,
+≤ 512 KB) into `pictures\`, then copied **as the signed-in user** into their widget folder as
+`member-picture-<hash>.jpg` (a waiting photo as `member-picture-p<id>.jpg`), because the tray can't read this folder.
+`AgentStatus.Picture` = `{backend, kind, key, file, version, pending}`; `version` moves on every change, so the tray
+redraws only then. Removal / a new connect clears it all. Details: `.claude/dev/docs/08-windows-agent.md` → "Team pictures (FR-44)".
+
+Outbox kinds (`messages-outbox.json`, one file, the widget and the service both write it): `reply` (chat), `feedback`,
+`task_action` (written by the tray only while the service says it knows tasks) and `picture` (written by the service
+only). Every reader takes only the kinds it knows: `Pending()` is chat only, so an unknown kind is never posted as chat;
+builds before 1.3.1 posted unknown kinds as chat, which is why new kinds are written only by a peer that knows them.
 
 ## Updates (FIX-016)
 

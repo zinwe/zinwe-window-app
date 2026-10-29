@@ -56,6 +56,10 @@ public sealed class PicturesApiTests : IDisposable
         Assert.True(photo.IsPhoto);
         Assert.Equal((PhotoUrl, new DateTimeOffset(2026, 10, 30, 18, 0, 0, TimeSpan.Zero)), (photo.Url, photo.UpdatedAt));
 
+        // As P1 built it: microseconds and a Z suffix.
+        var micro = MemberPictures.Read(Element($$"""{"kind":"photo","url":"{{PhotoUrl}}","updated_at":"2026-10-30T18:00:00.123456Z"}"""), out _)!;
+        Assert.Equal(new DateTimeOffset(2026, 10, 30, 18, 0, 0, TimeSpan.Zero).AddTicks(1_234_560), micro.UpdatedAt);
+
         // Shapes this agent doesn't know are "no picture", never an error.
         Assert.Null(MemberPictures.Read(Element("""{"kind":"hologram","key":"x"}"""), out _));
         Assert.Null(MemberPictures.Read(Element("""{"kind":"avatar","key":"../../etc"}"""), out _));
@@ -154,6 +158,17 @@ public sealed class PicturesApiTests : IDisposable
         var result = await _backend.Client().SetPhotoAsync("tok", Jpeg(), CancellationToken.None);
 
         Assert.Equal((PictureOutcome.Refused, "too_large", "The photo is over 150 KB."), (result.Outcome, result.Code, result.Detail));
+    }
+
+    [Fact]
+    public async Task A_pc_without_a_member_is_refused_for_good_not_retried()
+    {
+        // P1: 409 {"code": "no_member"} when the PC isn't linked to a member (its heartbeat then has no picture either).
+        _backend.Respond = _ => FakeBackend.Json(HttpStatusCode.Conflict, """{"code": "no_member", "detail": "This PC isn't linked to a person."}""");
+
+        var result = await _backend.Client().SetAvatarAsync("tok", "a01", CancellationToken.None);
+
+        Assert.Equal((PictureOutcome.Refused, "no_member"), (result.Outcome, result.Code));
     }
 
     [Theory]
