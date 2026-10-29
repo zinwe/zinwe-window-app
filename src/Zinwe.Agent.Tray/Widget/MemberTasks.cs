@@ -334,7 +334,8 @@ public static class TaskBoard
     public static string Line(MemberTask t, string ownerFirst) => Capital(t.Status switch
     {
         MemberTaskStatus.Review => $"{ownerFirst} checks it before it closes.",
-        MemberTaskStatus.Help => $"You asked {ownerFirst}. The answer arrives in Chat.",
+        MemberTaskStatus.Help => t.RemoteId is null ? $"You asked {ownerFirst}. The answer arrives in Chat."
+            : $"You asked {ownerFirst} for help. They see it on this task.",
         MemberTaskStatus.Cant => $"You told {ownerFirst} you can’t do this. They’ll reply in Chat.",
         MemberTaskStatus.Approved => $"Approved by {ownerFirst}.",
         MemberTaskStatus.Cancelled => $"{ownerFirst} cancelled this task.",

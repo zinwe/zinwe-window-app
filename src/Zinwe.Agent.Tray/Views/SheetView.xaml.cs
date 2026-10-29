@@ -55,7 +55,7 @@ public partial class SheetView : UserControl
         (Title.Text, Hint.Text) = sheet switch
         {
             Sheet.Break or Sheet.Out => (m.Prompt!.Title, m.Prompt.Hint(m.OpenTasks)),
-            Sheet.Ask => ($"Ask {owner}", task is null ? "" : $"About “{task.Title}”. {m.OwnerFirstStart} gets it in Chat."),
+            Sheet.Ask => ($"Ask {owner}", task is null ? "" : $"About “{task.Title}”. {m.OwnerFirstStart} " + (task.RemoteId is null ? "gets it in Chat." : "sees it on the task right away.")),
             Sheet.Cant => ("Can’t do this task", task is null ? ""
                 : $"About “{task.Title}”. Tell {owner} why, in a few words. They can hand it to someone else or reply in Chat."),
             Sheet.Note => ($"Add a note for {owner}", "It stays on the task card."),

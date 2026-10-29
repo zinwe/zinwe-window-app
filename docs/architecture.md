@@ -66,7 +66,7 @@ Rule: **a used or refused Member ID is never reused.** On successful enroll, on 
 
 ## The pipe (tray ↔ service, FIX-015)
 
-One JSON line in, one JSON line out (`PipeProtocol`): `status`, `enroll`, `update`, `usage`. The pipe carries enrolment and "install this update", so both ends check who is on the other side (`Core/Ipc/PipePeers.cs`):
+One JSON line in, one JSON line out (`PipeProtocol`): `status`, `enroll`, `update`, `usage`, and since 1.3.1 `tasks` (the owner's tasks the service synced, `TasksReply`; the status carries `TasksVersion` so the tray asks only when they changed). A request type the service doesn't know is answered `{"accepted":false,"message":"not supported"}` (1.3.0 services close the pipe instead; the tray reads both as "no tasks"), and replies only ever gain optional fields. The pipe carries enrolment and "install this update", so both ends check who is on the other side (`Core/Ipc/PipePeers.cs`):
 
 | Check | Rule |
 |---|---|
@@ -127,6 +127,12 @@ Writes are ordered so a transition never passes through a looser state than eith
 | `device.dat` | device id + token | DPAPI (LocalSystem) + folder ACL |
 | `policy.json` | last policy (`version`, `usb.mode`) | folder ACL (no secrets) |
 | `events.db` | unsent events | folder ACL |
+| `tasks-cache.json` | the owner's tasks for this member as last synced (FR-20 v2) | folder ACL (no secrets) |
+
+**Owner's tasks (FR-20 v2).** `TaskSync` runs on the chat loop: posts the member's `task_action` outbox items in order
+(`POST tasks/<id>/action/`; a 4xx other than 429 is final, network / 429 / 5xx keep the item for the next round), then
+`GET tasks/`. 404/403 = this backend has no tasks for the PC (`off`, re-checked every 10 min). Details and the tray side:
+`.claude/dev/docs/08-windows-agent.md` → "Owner's tasks in the tray".
 
 ## Updates (FIX-016)
 

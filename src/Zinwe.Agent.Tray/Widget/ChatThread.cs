@@ -197,13 +197,13 @@ public static class Avatars
     public static Preset? Find(string? avatar) =>
         avatar is { } a && a.StartsWith("preset:", StringComparison.Ordinal) ? Presets.FirstOrDefault(p => p.Key == a[7..]) : null;
 
-    /// <summary>"Emily Carter" → "EC"; "ravi" → "R"; empty → "Z".</summary>
+    /// <summary>"Emily Carter" → "EC"; "ravi" → "R"; empty → "" (the avatar then shows the official Zinwe mark).</summary>
     public static string Initials(string? name)
     {
         var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length switch
         {
-            0 => "Z",
+            0 => "",
             1 => parts[0][..1].ToUpperInvariant(),
             _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant(),
         };

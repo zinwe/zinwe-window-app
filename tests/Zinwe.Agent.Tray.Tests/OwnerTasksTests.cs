@@ -214,6 +214,8 @@ public sealed class OwnerTasksTests : IDisposable
         Assert.Equal("Reminder from Ananya", TaskNotices.OwnerLine("nudged", "Ananya"));
         Assert.Equal("Ananya reopened a task", TaskNotices.OwnerLine("reopened", "Ananya"));
         Assert.Equal("Ananya changed a task", TaskNotices.OwnerLine("edited", "Ananya"));
+        Assert.Equal("Your admin approved your task", TaskNotices.OwnerLine("approved", "your admin")); // a line start
+        Assert.Equal("New task from your admin", TaskNotices.Diff(null, [Remote(1)], "your admin", Now).Notices.Single().Title);
     }
 
     [Fact]

@@ -262,7 +262,8 @@ public static class TaskNotices
     private static bool IsAnnounced(string? action) => (action ?? "").ToLowerInvariant() is not ("created" or "create" or "sent");
 
 
-    public static string OwnerLine(string? action, string ownerFirst) => (action ?? "").ToLowerInvariant() switch
+    /// <param name="ownerFirst">"Ananya", or "your admin" when the name isn't known (capitalised where it starts a line).</param>
+    public static string OwnerLine(string? action, string ownerFirst) => Capital((action ?? "").ToLowerInvariant() switch
     {
         "approve" or "approved" => $"{ownerFirst} approved your task",
         "reopen" or "reopened" => $"{ownerFirst} reopened a task",
@@ -271,7 +272,9 @@ public static class TaskNotices
         "note" => $"{ownerFirst} added a note",
         "edit" or "edited" or "update" or "updated" => $"{ownerFirst} changed a task",
         _ => $"{ownerFirst} updated a task",
-    };
+    });
+
+    private static string Capital(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 }
 
 /// <summary>task-seen.json: the marks <see cref="TaskNotices.Diff"/> works from (best effort, like the other widget files).</summary>

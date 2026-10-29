@@ -184,6 +184,18 @@ internal static class Ui
             return Art(preset, size);
         }
         var bg = (Color)ColorConverter.ConvertFromString(initialsBg);
+        if (initials.Length == 0)
+        {
+            // No name known: the official Zinwe mark, not a drawn "Z".
+            var mark = new Image { Width = size * 0.56, Height = size * 0.56, Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            mark.SetResourceReference(Image.SourceProperty, "Z.Mark");
+            RenderOptions.SetBitmapScalingMode(mark, BitmapScalingMode.HighQuality);
+            return new Border
+            {
+                Width = size, Height = size, CornerRadius = new CornerRadius(size / 2), Background = new SolidColorBrush(bg), Child = mark,
+            };
+        }
         return new Border
         {
             Width = size, Height = size, CornerRadius = new CornerRadius(size / 2), Background = new SolidColorBrush(bg),

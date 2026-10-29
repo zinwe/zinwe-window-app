@@ -359,7 +359,7 @@ public sealed class TrayV2Tests : IDisposable
         Assert.Equal("Sunrise", Avatars.Find("preset:sun")?.Label);
         Assert.Null(Avatars.Find("photo:1"));
         Assert.Equal("EC", Avatars.Initials("Emily Carter"));
-        Assert.Equal("Z", Avatars.Initials(null));
+        Assert.Equal("", Avatars.Initials(null)); // no name: the official mark, not a drawn "Z"
         Assert.Equal("Ananya", Avatars.First("Ananya Rao"));
         Assert.Equal("Emily Carter", new MemberProfile("emily.carter@kitecrest.com").DisplayName);
         Assert.Equal("You", new MemberProfile().DisplayName);

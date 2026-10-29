@@ -381,7 +381,7 @@ public sealed class TrayModel : IDisposable
         {
             return; // not connected / no answer yet: nothing to announce to
         }
-        var (notices, marks) = TaskNotices.Diff(_taskSeen.Load(), tasks, OwnerFirstStart, Now);
+        var (notices, marks) = TaskNotices.Diff(_taskSeen.Load(), tasks, OwnerFirst, Now);
         _taskSeen.Save(marks);
         foreach (var n in notices)
         {
@@ -1293,7 +1293,7 @@ public sealed class TrayModel : IDisposable
             var unreadChat = ChatFeed.UnreadCount(Notes.Items);
             if (unreadChat > 0)
             {
-                var last = Notes.Items.Where(i => i.IsChat && i.IsFromAdmin).MaxBy(i => i.CreatedAtUtc);
+                var last = Notes.Items.Where(i => i.IsChat && i.IsFromAdmin && i.TaskId is null).MaxBy(i => i.CreatedAtUtc);
                 list.Add(("chat", $"{unreadChat} new message{(unreadChat == 1 ? "" : "s")} from {OwnerFirst}",
                     last is null ? "" : ChatFeed.Preview(last, OwnerFirst), () => Go(Tab.Chat)));
             }
