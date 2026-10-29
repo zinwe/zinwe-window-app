@@ -28,6 +28,7 @@ internal sealed partial class AgentWorker(
     MemberCredentialSource keySource,
     PolicySync policy,
     MessageSync messages,
+    Zinwe.Agent.Core.Tasks.TaskSync tasks,
     MetricsUploadPump metrics,
     WorkStatusReader work,
     WorkTransitionLog workLog,
@@ -116,6 +117,7 @@ internal sealed partial class AgentWorker(
             identityStore.Save(identity);
             keySource.Consume(credential);
             removal.Delete();
+            tasks.Clear(); // a (re)connect may be another member: never show the last one's tasks
             LogEnrolled(response.DeviceId, response.ReEnrolled);
             return identity;
         }
@@ -174,9 +176,10 @@ internal sealed partial class AgentWorker(
     }
 
     /// <summary>
-    /// Owner↔member chat: pulls the conversation every <see cref="AgentOptions.MessagePollSeconds"/>, and
-    /// sooner (within ~2s) when the member has typed a reply in the widget. The only caller of
-    /// <see cref="MessageSync"/>, so outbox drains never overlap.
+    /// Owner↔member chat and the owner's tasks: pulls both every <see cref="AgentOptions.MessagePollSeconds"/>, and
+    /// sooner (within ~2s) when the member has typed a reply or acted on a task in the widget (the outbox has
+    /// something). The only caller of <see cref="MessageSync"/> and <see cref="Zinwe.Agent.Core.Tasks.TaskSync"/>, so
+    /// outbox drains never overlap.
     /// </summary>
     private async Task MessageLoopAsync(DeviceIdentity identity, CancellationToken ct)
     {
@@ -189,6 +192,7 @@ internal sealed partial class AgentWorker(
                 if (DateTimeOffset.UtcNow >= next || messages.HasPendingReplies)
                 {
                     await messages.SyncAsync(identity.DeviceToken, ct);
+                    await tasks.SyncAsync(identity.DeviceToken, ct);
                     next = DateTimeOffset.UtcNow + interval;
                 }
             }
@@ -291,6 +295,7 @@ internal sealed partial class AgentWorker(
                 state.SetPolicy(null);
                 identityStore.Delete();
                 removal.Save(new RemovalRecord(company, DateTimeOffset.UtcNow));
+                tasks.Clear();
                 state.Set(AgentState.Rejected, message: RemovedMessage(company), removed: true);
                 LogDeviceRejected(identity.DeviceId, e.Message);
                 return; // back to the enrollment loop, which waits for a new Member ID

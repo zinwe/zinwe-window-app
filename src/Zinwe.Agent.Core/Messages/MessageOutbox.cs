@@ -1,17 +1,31 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Zinwe.Agent.Core.Messages;
 
 /// <summary>
 /// One pending item waiting to be posted. Id is a client guid (for removal after posting). <see cref="Kind"/> is
-/// "reply" (a chat line to the admin) or "feedback" (FR-14: the member's rating of Zinwe, 1-10, for the Zinwe team).
+/// "reply" (a chat line to the admin), "feedback" (FR-14: the member's rating of Zinwe, 1-10, for the Zinwe team) or
+/// "task_action" (FR-20 v2: what the member did on an owner's task - <see cref="TaskId"/>, <see cref="Action"/>,
+/// <see cref="Body"/> = the note, and for a step tick <see cref="StepId"/> + <see cref="StepDone"/>).
+/// The task fields are trailing and optional, so files written by older builds still read.
 /// </summary>
-public sealed record OutboxReply(string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null)
+public sealed record OutboxReply(
+    string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null,
+    long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null)
 {
     public const string ReplyKind = "reply";
     public const string FeedbackKind = "feedback";
+    public const string TaskActionKind = "task_action";
 
     public bool IsFeedback => string.Equals(Kind, FeedbackKind, StringComparison.Ordinal);
+
+    [JsonIgnore]
+    public bool IsTaskAction => string.Equals(Kind, TaskActionKind, StringComparison.Ordinal);
+
+    /// <summary>A line of the chat (not feedback, not a task action, nor a kind a newer build added).</summary>
+    [JsonIgnore]
+    public bool IsChatReply => Kind is null or "" || string.Equals(Kind, ReplyKind, StringComparison.Ordinal);
 }
 
 /// <summary>
@@ -51,6 +65,43 @@ public sealed class MessageOutbox
     public string AppendFeedback(int rating, string message) => Add(new OutboxReply(
         Guid.NewGuid().ToString("N"), message, DateTimeOffset.UtcNow, OutboxReply.FeedbackKind, Math.Clamp(rating, 1, 10)));
 
+    /// <summary>
+    /// Queue what the member did on an owner's task (FR-20 v2). The agent posts it to
+    /// <c>tasks/&lt;id&gt;/action/</c>; it stays here, and is retried, until the backend stored or refused it.
+    /// </summary>
+    public OutboxReply AppendTaskAction(long taskId, string action, string? note = null, long? stepId = null, bool? stepDone = null)
+    {
+        var item = new OutboxReply(Guid.NewGuid().ToString("N"), (note ?? "").Trim(), DateTimeOffset.UtcNow,
+            OutboxReply.TaskActionKind, TaskId: taskId, Action: action, StepId: stepId, StepDone: stepId is null ? null : stepDone);
+        Add(item);
+        return item;
+    }
+
+    /// <summary>Task actions still waiting to be posted, oldest first.</summary>
+    public IReadOnlyList<OutboxReply> PendingTaskActions() => [.. All().Where(i => i.IsTaskAction)];
+
+    /// <summary>
+    /// Take back a task action that hasn't been posted yet (Undo). True when it was still waiting: once the agent
+    /// posted it, it's gone from the file and the caller sends the opposite action instead.
+    /// </summary>
+    public bool TryRemove(string id)
+    {
+        lock (_lock)
+        {
+            return _folder.Use(dir =>
+            {
+                var path = Path.Combine(dir, FileName);
+                var file = Load(path);
+                if (file.Items.RemoveAll(i => i.Id == id) == 0)
+                {
+                    return false;
+                }
+                Save(path, file);
+                return true;
+            }, false);
+        }
+    }
+
     private string Add(OutboxReply reply)
     {
         lock (_lock)
@@ -67,8 +118,8 @@ public sealed class MessageOutbox
         return reply.Id;
     }
 
-    /// <summary>Chat replies still waiting to be posted, oldest first (feedback is not part of the chat).</summary>
-    public IReadOnlyList<OutboxReply> Pending() => [.. All().Where(i => !i.IsFeedback)];
+    /// <summary>Chat replies still waiting to be posted, oldest first (feedback and task actions are not part of the chat).</summary>
+    public IReadOnlyList<OutboxReply> Pending() => [.. All().Where(i => i.IsChatReply)];
 
     /// <summary>Feedback still waiting to be posted, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingFeedback() => [.. All().Where(i => i.IsFeedback)];

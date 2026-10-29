@@ -11,9 +11,11 @@ namespace Zinwe.Agent.Core.Messages;
 // IWidgetFolder (the dev console agent: its own folder; the LocalSystem service: the signed-in user's, as them).
 // Kind: "chat" = a line of the owner<->member conversation (shown in the widget's Chat window);
 // "notice" = a note from Zinwe's own protection (USB blocked, ...). Null in files written before chat existed.
+// TaskId (FR-20 v2): the chat line the owner's new task created; the widget draws the task card there. Left out
+// (null) on every other line, so trays that don't know it read the file exactly as before.
 internal sealed record WidgetNotification(
     string Id, DateTimeOffset CreatedAtUtc, string Severity, string Title, string? Body, bool Read, string Sender = "owner",
-    string? Kind = null);
+    string? Kind = null, long? TaskId = null);
 
 internal sealed class WidgetNotificationFile
 {
@@ -86,7 +88,8 @@ public sealed class NotificationWriter
             {
                 // The member's own replies arrive "already read" (they wrote them); admin lines start unread.
                 var isMember = string.Equals(m.Sender, "member", StringComparison.OrdinalIgnoreCase);
-                file.Items.Add(new WidgetNotification(id, m.CreatedAt, m.Severity, m.Title, m.Body, Read: isMember, Sender: m.Sender, Kind: kind));
+                file.Items.Add(new WidgetNotification(id, m.CreatedAt, m.Severity, m.Title, m.Body, Read: isMember, Sender: m.Sender, Kind: kind,
+                    TaskId: m.Task is { Id: > 0 } task ? task.Id : null));
                 added++;
             }
         }

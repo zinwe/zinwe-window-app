@@ -8,7 +8,8 @@ using Zinwe.Agent.Core.Ipc;
 namespace Zinwe.Agent.Service;
 
 /// <summary>
-/// Local-only named pipe the tray app uses to talk to the service (status, connect, update, usage readings).
+/// Local-only named pipe the tray app uses to talk to the service (status, connect, update, usage readings, tasks).
+/// A request type it doesn't know gets <see cref="PipeProtocol.NotSupported"/> (FR-20 v2 compatibility rule).
 /// FIX-015 hardening:
 /// <list type="bullet">
 /// <item>ACL: SYSTEM full control; INTERACTIVE (people signed in at the PC, incl. Remote Desktop) read/write only -
@@ -24,7 +25,7 @@ namespace Zinwe.Agent.Service;
 /// </summary>
 internal sealed partial class PipeServer(
     AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger,
-    Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
+    Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
     : BackgroundService
 {
     private const int MaxInstances = 8;
@@ -85,24 +86,39 @@ internal sealed partial class PipeServer(
                 await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
 
                 var request = await PipeProtocol.ReadRequestAsync(reader, cts.Token);
-                if (request?.Type == PipeProtocol.RequestTypes.Status)
+                if (request is null)
                 {
-                    await writer.WriteLineAsync(PipeProtocol.Serialize(state.Current).AsMemory(), cts.Token);
+                    return; // garbage or nothing: close, as always
                 }
-                else if (request?.Type == PipeProtocol.RequestTypes.Enroll)
+                if (request.Type == PipeProtocol.RequestTypes.Status)
+                {
+                    // TasksVersion says "this service knows tasks" and lets the tray fetch only when they changed.
+                    var status = state.Current with { TasksVersion = tasks.Version };
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(status).AsMemory(), cts.Token);
+                }
+                else if (request.Type == PipeProtocol.RequestTypes.Tasks)
+                {
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(tasks.Snapshot).AsMemory(), cts.Token);
+                }
+                else if (request.Type == PipeProtocol.RequestTypes.Enroll)
                 {
                     await writer.WriteLineAsync(PipeProtocol.Serialize(HandleEnroll(request)).AsMemory(), cts.Token);
                 }
-                else if (request?.Type == PipeProtocol.RequestTypes.Usage)
+                else if (request.Type == PipeProtocol.RequestTypes.Usage)
                 {
                     // The tray's foreground readings; the web feature records them under the owner's settings.
                     var accepted = inbox?.Post(request.Usage) ?? 0;
                     await writer.WriteLineAsync(PipeProtocol.Serialize(new PipeProtocol.EnrollAck(inbox is not null, $"{accepted}")).AsMemory(), cts.Token);
                 }
-                else if (request?.Type == PipeProtocol.RequestTypes.Update)
+                else if (request.Type == PipeProtocol.RequestTypes.Update)
                 {
                     // "Update now": download, verify and install the offered release (progress goes on the status).
                     await writer.WriteLineAsync(PipeProtocol.Serialize(updater.Start()).AsMemory(), cts.Token);
+                }
+                else
+                {
+                    // A newer tray asking for something this service doesn't do: say so, so it can fall back.
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(PipeProtocol.NotSupported).AsMemory(), cts.Token);
                 }
             }
             catch (Exception e) when (e is IOException or OperationCanceledException)

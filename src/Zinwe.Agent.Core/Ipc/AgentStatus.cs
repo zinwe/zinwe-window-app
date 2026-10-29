@@ -62,7 +62,10 @@ public sealed record AgentStatus(
     /// <summary>What can be recorded under the policy in force, for the consent screen; null = everything.</summary>
     Work.MonitoringScope? Monitoring = null,
     /// <summary>The backend's view of the member's consent ("pending" | "given" | "declined"); null = unknown.</summary>
-    string? ServerConsentState = null);
+    string? ServerConsentState = null,
+    /// <summary>FR-20 v2: goes up whenever the owner's tasks the service holds change (ask with the "tasks" request).
+    /// Null = an older service without tasks: the widget keeps only the member's own to-dos.</summary>
+    int? TasksVersion = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

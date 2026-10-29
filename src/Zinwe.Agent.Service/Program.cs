@@ -89,6 +89,10 @@ builder.Services.AddSingleton(sp => new NotificationWriter(sp.GetRequiredService
 // The member's outbound replies (widget writes, agent drains) — shared per-user file.
 builder.Services.AddSingleton(sp => new MessageOutbox(sp.GetRequiredService<IWidgetFolder>()));
 builder.Services.AddSingleton<MessageSync>();
+// FR-20 v2: the owner's tasks - the member's actions (outbox kind task_action) out, GET tasks/ in, served on the pipe.
+builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TaskSync(
+    sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),
+    sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Tasks.TaskSync>>(), DataDirectory(sp)));
 // Usage metrics upload + the member's work status (read from the widget's per-user file).
 builder.Services.AddSingleton<MetricsUploadPump>();
 builder.Services.AddSingleton(sp => new WorkStatusReader(sp.GetRequiredService<IWidgetFolder>()));

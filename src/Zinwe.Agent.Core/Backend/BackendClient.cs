@@ -107,6 +107,53 @@ public sealed class BackendClient
         return true;
     }
 
+    /// <summary>
+    /// GET /api/devices/tasks/ (FR-20 v2): the member's open tasks + those approved in the last 7 days. Null when this
+    /// backend has no tasks for the PC: an older backend without the endpoint (404), or a plan without it (403) - the
+    /// widget then keeps only the member's own to-dos. Throws on network errors, 429 and 5xx so it's retried.
+    /// </summary>
+    public async Task<DeviceTask[]?> GetTasksAsync(string deviceToken, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(HttpMethod.Get, "api/devices/tasks/", deviceToken, null, ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.MethodNotAllowed)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        var tasks = await ReadAsync(response, BackendJsonContext.Default.DeviceTaskArray, ct);
+        return [.. tasks.Where(t => t is not null && t.Id != 0)];
+    }
+
+    /// <summary>
+    /// POST /api/devices/tasks/&lt;id&gt;/action/ (FR-20 v2): what the member did on an owner's task. Returns the
+    /// outcome and, when stored, the backend's view of the task. A 4xx other than 429 is a refusal for good (an
+    /// older backend, a task that was cancelled or deleted, a move the backend doesn't allow): don't send it again.
+    /// Throws on network errors, 429 and 5xx so the outbox keeps it and retries.
+    /// </summary>
+    public async Task<(TaskActionOutcome Outcome, DeviceTask? Task)> PostTaskActionAsync(
+        string deviceToken, long taskId, string action, string? note = null, long? stepId = null, bool? stepDone = null,
+        CancellationToken ct = default)
+    {
+        var body = new TaskActionRequest(action, string.IsNullOrWhiteSpace(note) ? null : note.Trim(), stepId, stepId is null ? null : stepDone);
+        using var response = await SendAsDeviceAsync(
+            HttpMethod.Post, $"api/devices/tasks/{taskId.ToString(System.Globalization.CultureInfo.InvariantCulture)}/action/",
+            deviceToken, JsonBody(body, BackendJsonContext.Default.TaskActionRequest), ct);
+        var code = (int)response.StatusCode;
+        if (code is >= 400 and < 500 and not 429)
+        {
+            return (TaskActionOutcome.Refused, null);
+        }
+        response.EnsureSuccessStatusCode();
+        try
+        {
+            return (TaskActionOutcome.Done, await response.Content.ReadFromJsonAsync(BackendJsonContext.Default.DeviceTask, ct));
+        }
+        catch (JsonException)
+        {
+            return (TaskActionOutcome.Done, null); // stored; the shape is the next sync's business
+        }
+    }
+
     /// <summary>Mark the admin's messages to this member as seen on the PC. Best-effort (ignored on failure).</summary>
     public async Task MarkMessagesReadAsync(string deviceToken, CancellationToken ct)
     {

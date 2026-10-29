@@ -99,9 +99,72 @@ public sealed record EventUploadRequest(EventUpload[] Events);
 /// <summary>One line of the member's conversation (GET /api/devices/messages/). Shown in the employee widget.</summary>
 /// <param name="Sender">"owner" = an admin message/alert; "member" = the member's own reply. Trailing/optional for back-compat.</param>
 /// <param name="ReadByMember">Server-side "the member has read it" (only meaningful for owner lines).</param>
+/// <param name="Kind">"task" on the line the owner's new task created (FR-20 v2); null/other on older backends.</param>
+/// <param name="Task">The task that line carries (FR-20 v2): the widget draws a task card instead of a bubble.</param>
 public sealed record AgentMessage(
     long Id, string Title, string? Body, string Severity, DateTimeOffset CreatedAt, string Sender = "owner",
-    bool ReadByMember = false);
+    bool ReadByMember = false, string? Kind = null, DeviceTask? Task = null);
+
+/// <summary>
+/// A task the owner gave this PC's member (FR-20 v2, GET /api/devices/tasks/). Status: sent → seen → accepted →
+/// progress → review → approved, side states help and cancelled. Unknown extra fields are ignored, and every field
+/// but the id has a default, so a backend that adds or drops one doesn't break the agent.
+/// </summary>
+public sealed record DeviceTask(
+    long Id,
+    string Title = "",
+    string? Note = "",
+    DateTimeOffset? DueAt = null,
+    string? Priority = "normal",
+    IReadOnlyList<DeviceTaskStep>? Steps = null,
+    string Status = "sent",
+    string? HelpNote = "",
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? UpdatedAt = null,
+    DateTimeOffset? StatusChangedAt = null,
+    string? StatusChangedBy = null,
+    long? MessageId = null,
+    IReadOnlyList<DeviceTaskActivity>? Activity = null,
+    string? MemberName = null);
+
+/// <summary>One step of a <see cref="DeviceTask"/>.</summary>
+public sealed record DeviceTaskStep(long Id, string Title = "", bool Done = false);
+
+/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member".</summary>
+public sealed record DeviceTaskActivity(DateTimeOffset At, string By = "", string Action = "", string? Note = null);
+
+/// <summary>
+/// POST /api/devices/tasks/&lt;id&gt;/action/ — what the member did: "seen" | "accept" | "start" | "help" | "done" |
+/// "note". A step tick is "note" with <paramref name="StepId"/> + <paramref name="StepDone"/>. Empty parts are left out.
+/// </summary>
+public sealed record TaskActionRequest(
+    string Action,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Note = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? StepId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? StepDone = null);
+
+/// <summary>The member's task actions (the contract's names).</summary>
+public static class TaskActions
+{
+    public const string Seen = "seen";
+    public const string Accept = "accept";
+    public const string Start = "start";
+    public const string Help = "help";
+    public const string Done = "done";
+    public const string Note = "note";
+
+    public static bool IsKnown(string? action) => action is Seen or Accept or Start or Help or Done or Note;
+}
+
+/// <summary>What happened to a task action the agent posted.</summary>
+public enum TaskActionOutcome
+{
+    /// <summary>Stored; the backend's view of the task came back.</summary>
+    Done,
+    /// <summary>Refused for good (4xx other than 429: an older backend, a task that's gone, a step that doesn't exist).
+    /// Sending it again won't help; the next sync shows the real state.</summary>
+    Refused,
+}
 
 /// <summary>POST /api/devices/messages/ — the member replies in the thread.</summary>
 public sealed record MemberReplyRequest(string Body);
@@ -112,7 +175,8 @@ public sealed record MemberFeedbackRequest(int Rating, string Message);
 /// <summary><see cref="Accepted"/> = newly stored; <see cref="Duplicates"/> = ids the backend already had (a retry).</summary>
 public sealed record EventUploadResponse(int Accepted, int Duplicates);
 
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
+    NumberHandling = JsonNumberHandling.AllowReadingFromString)]
 [JsonSerializable(typeof(EnrollRequest))]
 [JsonSerializable(typeof(EnrollResponse))]
 [JsonSerializable(typeof(HeartbeatRequest))]
@@ -123,6 +187,9 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(AgentMessage[]))]
 [JsonSerializable(typeof(MemberReplyRequest))]
 [JsonSerializable(typeof(MemberFeedbackRequest))]
+[JsonSerializable(typeof(DeviceTask))]
+[JsonSerializable(typeof(DeviceTask[]))]
+[JsonSerializable(typeof(TaskActionRequest))]
 [JsonSerializable(typeof(MetricUploadRequest))]
 [JsonSerializable(typeof(MetricUploadResponse))]
 [JsonSerializable(typeof(Dictionary<string, string[]>))]

@@ -8,6 +8,9 @@ namespace Zinwe.Agent.Core.Ipc;
 /// <summary>
 /// Service ↔ tray protocol: one UTF-8 JSON line request, one JSON line response, then close.
 /// Kept deliberately tiny; add request types here (e.g. "consent", "alerts") as modules land.
+/// Compatibility: a request type the service doesn't know is answered with <see cref="NotSupported"/> (since 1.3.1;
+/// older services close the pipe without a word, which every client reads as null), and replies only ever gain
+/// optional fields, so an older tray keeps reading a newer service and the other way round.
 /// </summary>
 public static class PipeProtocol
 {
@@ -23,6 +26,12 @@ public static class PipeProtocol
     /// <summary>Reply to an "enroll" or "update" request: whether the service took it on, and what to tell the member.</summary>
     public sealed record EnrollAck(bool Accepted, string Message);
 
+    /// <summary>The message of the reply to a request type this service doesn't know.</summary>
+    public const string NotSupportedMessage = "not supported";
+
+    /// <summary>The reply to a request type this service doesn't know (an older service only closes the pipe).</summary>
+    public static readonly EnrollAck NotSupported = new(false, NotSupportedMessage);
+
     public static class RequestTypes
     {
         public const string Status = "status";
@@ -35,6 +44,11 @@ public static class PipeProtocol
         /// front): the service in Session 0 can't see the desktop, so the tray, in the member's session, reads it.
         /// </summary>
         public const string Usage = "usage";
+        /// <summary>
+        /// FR-20 v2: the owner's tasks the service last synced (<see cref="TasksReply"/>). The tray asks when
+        /// <see cref="AgentStatus.TasksVersion"/> changes; a status without it is an older service (own to-dos only).
+        /// </summary>
+        public const string Tasks = "tasks";
     }
 
     /// <summary>
@@ -55,6 +69,14 @@ public static class PipeProtocol
     public static string Serialize(EnrollAck ack) => JsonSerializer.Serialize(ack, PipeJsonContext.Default.EnrollAck);
 
     public static EnrollAck? DeserializeAck(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.EnrollAck);
+
+    public static string Serialize(TasksReply reply) => JsonSerializer.Serialize(reply, PipeJsonContext.Default.TasksReply);
+
+    /// <summary>
+    /// A "tasks" reply. A <see cref="NotSupported"/> ack (or any other shape) reads as <c>Supported = false</c>, so a
+    /// service that doesn't know tasks never breaks the tray.
+    /// </summary>
+    public static TasksReply? DeserializeTasks(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.TasksReply);
 
     /// <summary>Server side: read one request line. Returns null on a malformed or empty request.</summary>
     public static async Task<Request?> ReadRequestAsync(StreamReader reader, CancellationToken ct)
@@ -103,6 +125,26 @@ public static class AgentPipeClient
     /// <summary>Send the tray's foreground readings. Returns null if the service isn't reachable (the caller keeps them).</summary>
     public static Task<PipeProtocol.EnrollAck?> ReportUsageAsync(IReadOnlyList<ForegroundReport> usage, TimeSpan timeout, CancellationToken ct = default) =>
         SendAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Usage, Usage: usage), timeout, ct);
+
+    /// <summary>
+    /// The owner's tasks the service holds (FR-20 v2). Null when the service isn't reachable or doesn't know tasks
+    /// (an older service closes the pipe, a newer one without them says "not supported"): own to-dos only, then.
+    /// </summary>
+    public static async Task<TasksReply?> GetTasksAsync(TimeSpan timeout, CancellationToken ct = default) =>
+        ParseTasks(await ExchangeAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Tasks), timeout, ct));
+
+    /// <summary>A reply line → tasks; null for nothing, garbage or a "not supported" answer.</summary>
+    internal static TasksReply? ParseTasks(string? line)
+    {
+        try
+        {
+            return line is null ? null : PipeProtocol.DeserializeTasks(line) is { Supported: true } reply ? reply : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Hand the member-typed email + id to the service to enrol with. Returns null if the service isn't reachable.</summary>
     public static Task<PipeProtocol.EnrollAck?> SubmitEnrollmentAsync(string email, string memberId, TimeSpan timeout, CancellationToken ct = default) =>
@@ -162,4 +204,5 @@ public static class AgentPipeClient
 [JsonSerializable(typeof(List<ForegroundReport>))]
 [JsonSerializable(typeof(PipeProtocol.EnrollAck))]
 [JsonSerializable(typeof(AgentStatus))]
+[JsonSerializable(typeof(TasksReply))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;
