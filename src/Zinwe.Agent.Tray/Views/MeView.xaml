@@ -12,7 +12,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Button x:Name="AvatarButton" Width="46" Height="46" Margin="0,0,12,0" VerticalAlignment="Center" Cursor="Hand"
-                            AutomationProperties.Name="Change photo" ToolTip="Change photo" Click="OnPhoto"
+                            AutomationProperties.Name="Change picture" ToolTip="Change picture" Click="OnPhoto"
                             FocusVisualStyle="{StaticResource Z.FocusRing}">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -21,7 +21,7 @@
                         </Button.Template>
                         <Grid>
                             <ContentControl x:Name="AvatarHost" />
-                            <Border Width="20" Height="20" CornerRadius="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3,-3"
+                            <Border x:Name="CameraBadge" Width="20" Height="20" CornerRadius="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3,-3"
                                     Background="{DynamicResource Z.Inv}" BorderBrush="{DynamicResource Z.Surface}" BorderThickness="2">
                                 <Path Data="M4 8h3l2-3h6l2 3h3v11H4zM12 9.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" Stroke="{DynamicResource Z.OnInv}"
                                       StrokeThickness="1.6" Stretch="Uniform" Width="10" Height="10" StrokeLineJoin="Round" />
@@ -33,7 +33,8 @@
                         <TextBlock FontSize="12" Foreground="{DynamicResource Z.Muted}" TextTrimming="CharacterEllipsis">
                             <Run x:Name="CompanyRun" /><Run Text=" · " /><Run x:Name="PcRun" FontFamily="{DynamicResource Z.Mono}" />
                         </TextBlock>
-                        <Button Style="{StaticResource Z.LinkBtn}" Content="Change photo" Click="OnPhoto" />
+                        <Button x:Name="ChangeLink" Style="{StaticResource Z.LinkBtn}" Content="Change picture" Click="OnPhoto" MinHeight="44"
+                                HorizontalAlignment="Left" />
                     </StackPanel>
                 </Grid>
             </Border>

@@ -67,11 +67,17 @@ public sealed class TrayModel : IDisposable
     private List<OutboxReply> _actions = [];
     private readonly TaskSeenStore _taskSeen = new();
 
-    public TrayModel(NotificationStore noteStore, NotificationWatcher watcher, Func<Task<string?>> startUpdate)
+    // FR-44 · the member's picture: their fresh pick (drawn at once), and how it reaches the service (pipe "picture").
+    private readonly PicturePick _pick = new();
+    private readonly Func<PictureChoice, Task<PipeProtocol.EnrollAck?>> _sendPicture;
+
+    public TrayModel(NotificationStore noteStore, NotificationWatcher watcher, Func<Task<string?>> startUpdate,
+        Func<PictureChoice, Task<PipeProtocol.EnrollAck?>>? sendPicture = null)
     {
         _noteStore = noteStore;
         _watcher = watcher;
         _startUpdate = startUpdate;
+        _sendPicture = sendPicture ?? (choice => AgentPipeClient.SetPictureAsync(choice, TimeSpan.FromSeconds(5)));
         Tasks = new LocalTaskSource(TraySeams.UseSamples);
         Settings = _settingsStore.Load();
         Timer = _timerStore.Load(DateTimeOffset.Now);
@@ -308,6 +314,7 @@ public sealed class TrayModel : IDisposable
     {
         Status = await AgentPipeClient.GetStatusAsync(TimeSpan.FromSeconds(3));
         StatusKnown = true;
+        _pick.Observe(Status?.Picture);
         if (Status?.NoticeVersion is { } notice)
         {
             _lastNoticeVersion = notice;
@@ -1383,6 +1390,7 @@ public sealed class TrayModel : IDisposable
         Snack = null;
         PhotoError = null;
         PhotoStatus = null;
+        PhotoDraft = null;
         WorkMenuOpen = false;
         Raise();
     }
@@ -1393,41 +1401,94 @@ public sealed class TrayModel : IDisposable
         Raise();
     }
 
-    public void PickAvatar(string? avatar)
-    {
-        PhotoError = null;
-        PhotoStatus = null;
-        SaveSettings(Settings with { Avatar = avatar });
-    }
+    // ---- The member's picture (FR-44) ------------------------------------------------------------
 
-    /// <summary>SEAM 4 · Profile photo: shrunk to 256 × 256 px and kept on this PC (avatar.jpg); not uploaded yet.</summary>
-    public void UsePhoto(string file)
+    /// <summary>What the header, Me and the member's chat lines draw: a fresh pick at once, else the service's view.</summary>
+    public PictureView MyPicture => _pick.Current(Status?.Picture);
+
+    /// <summary>"Change picture" shows only with a service and backend that have team pictures.</summary>
+    public bool PictureOn => Status?.Picture is { CanChange: true };
+
+    /// <summary>The compressed photo shown in the sheet before it's used.</summary>
+    public CompressedPhoto? PhotoDraft { get; private set; }
+
+    /// <summary>While the pipe call for a pick is out.</summary>
+    public bool PictureBusy { get; private set; }
+
+    public Task PickAvatarAsync(string key) =>
+        SendPictureAsync(new PictureChoice(PictureChoice.Avatar, key), new PictureView(PictureChoice.Avatar, key));
+
+    public Task RemovePictureAsync() => SendPictureAsync(new PictureChoice(PictureChoice.Remove), PictureView.None);
+
+    /// <summary>"Upload a photo": compress it here (256 × 256 JPEG, no metadata) and show it before it's used.</summary>
+    public void PreparePhoto(string file)
     {
+        PhotoStatus = null;
         try
         {
-            var ext = Path.GetExtension(file).ToLowerInvariant();
-            if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
-            {
-                PhotoError = "That file isn’t a JPG, PNG or WebP photo. Try another one.";
-                Raise();
-                return;
-            }
-            var before = new FileInfo(file).Length;
-            var after = PhotoShrink.To256(file, Path.Combine(WidgetPaths.Directory, "avatar.jpg"));
+            PhotoDraft = PictureCompress.FromFile(file);
             PhotoError = null;
-            PhotoStatus = $"New photo saved · {Size(before)} → {Size(after)}";
-            SaveSettings(Settings with { Avatar = "photo:" + DateTimeOffset.UtcNow.ToUnixTimeSeconds() });
         }
-        catch (Exception)
+        catch (PhotoRejectedException e)
         {
-            PhotoError = "That photo couldn’t be opened. Try another one.";
-            Raise();
+            PhotoDraft = null;
+            PhotoError = e.Message;
         }
-
-        static string Size(long b) => b >= 1_048_576 ? $"{b / 1_048_576.0:0.0} MB" : $"{Math.Max(1, b / 1024)} KB";
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            PhotoDraft = null;
+            PhotoError = "That photo couldn’t be opened. Try another one.";
+        }
+        Raise();
     }
 
-    public static string AvatarFile => Path.Combine(WidgetPaths.Directory, "avatar.jpg");
+    public void DiscardPhoto()
+    {
+        PhotoDraft = null;
+        Raise();
+    }
+
+    /// <summary>"Use this photo": the draft goes to the service (offline: it waits there and is sent later).</summary>
+    public Task UsePhotoAsync()
+    {
+        if (PhotoDraft is not { } draft)
+        {
+            return Task.CompletedTask;
+        }
+        PhotoDraft = null;
+        return SendPictureAsync(new PictureChoice(PictureChoice.Photo, Jpeg: Convert.ToBase64String(draft.Jpeg)),
+            new PictureView(PictureChoice.Photo, Jpeg: draft.Jpeg));
+    }
+
+    private async Task SendPictureAsync(PictureChoice choice, PictureView view)
+    {
+        if (!PictureOn)
+        {
+            PhotoError = "Pictures aren’t available on your company’s Zinwe yet.";
+            Raise();
+            return;
+        }
+        _pick.Pick(view, Status?.Picture);
+        PhotoError = null;
+        PhotoStatus = null;
+        PictureBusy = true;
+        Raise();
+        var ack = await _sendPicture(choice);
+        PictureBusy = false;
+        if (ack is not { Accepted: true })
+        {
+            _pick.Drop();
+            PhotoError = ack is null ? "Zinwe isn’t running, so your picture didn’t change. Try again in a moment."
+                : ack.Message == PipeProtocol.NotSupportedMessage ? "This version of Zinwe can’t change pictures yet."
+                : ack.Message;
+            Raise();
+            return;
+        }
+        PhotoStatus = Offline ? "Saved on this PC · sends when you’re back online"
+            : choice.Action == PictureChoice.Remove ? "Picture removed · your initials show again"
+            : "Saved · your admin sees it on your team card";
+        await RefreshStatusAsync();
+    }
 
     // ---- Update ---------------------------------------------------------------------------------
 

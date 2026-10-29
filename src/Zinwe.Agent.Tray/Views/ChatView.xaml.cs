@@ -68,7 +68,7 @@ public partial class ChatView : UserControl
         var rows = m.Thread;
         var signature = string.Join("|", rows.Select(r => r.Key + "@" + r.Meta + "@" + r.Task?.Status + r.Task?.IsNew
             + string.Concat(r.Task?.Steps.Select(s => s.Done ? "1" : "0") ?? []) + r.Task?.Notes.Count + "@" + r.Task?.Activity.Count + r.Task?.Queued))
-            + "#" + m.OpenCard + "#" + m.Settings.Avatar + "#" + m.Now.ToLocalTime().Date.ToString("yyyyMMdd") + "#" + m.OwnerName;
+            + "#" + m.OpenCard + "#" + m.MyPicture.Stamp + "#" + m.Now.ToLocalTime().Date.ToString("yyyyMMdd") + "#" + m.OwnerName;
         if (signature == _signature)
         {
             return;
@@ -90,6 +90,7 @@ public partial class ChatView : UserControl
         _rows.Clear();
         var meInitials = Avatars.Initials(m.Profile.DisplayName == "You" ? null : m.Profile.DisplayName);
         var ownerInitials = Avatars.Initials(m.Status?.OwnerName);
+
         foreach (var row in rows)
         {
             FrameworkElement el = row.Kind switch
@@ -135,7 +136,7 @@ public partial class ChatView : UserControl
         var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = row.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left };
 
         FrameworkElement avatar = row.HasAvatar
-            ? row.Mine ? Ui.Avatar(m.Settings.Avatar, meInitials, 26) : Ui.Avatar(null, ownerInitials, 26, "#E6EEFB")
+            ? row.Mine ? Ui.Avatar(m.MyPicture, meInitials, 26) : Ui.Avatar(null, ownerInitials, 26, "#E6EEFB")
             : new Border { Width = 26 };
         avatar.VerticalAlignment = VerticalAlignment.Bottom;
         avatar.Margin = new Thickness(row.Mine ? 4 : 0, 0, row.Mine ? 0 : 4, 0);

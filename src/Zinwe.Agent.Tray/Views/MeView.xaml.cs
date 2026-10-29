@@ -19,6 +19,8 @@ public partial class MeView : UserControl
 
     public TrayModel? Model { get; set; }
 
+    private string? _pictureStamp;
+
     /// <summary>Set by the window when Ctrl+Alt+Z is registered (null when another app holds it).</summary>
     public bool ShortcutOn { get; set; } = true;
 
@@ -30,7 +32,20 @@ public partial class MeView : UserControl
         }
         var name = m.Profile.DisplayName;
         NameText.Text = name;
-        AvatarHost.Content = Ui.Avatar(m.Settings.Avatar, Avatars.Initials(name == "You" ? null : name), 46);
+        // FR-44: the picture from the server (or the member's fresh pick); "Change picture" only where pictures exist.
+        var picture = m.MyPicture;
+        if (picture.Stamp + "|" + name != _pictureStamp)
+        {
+            _pictureStamp = picture.Stamp + "|" + name;
+            AvatarHost.Content = Ui.Avatar(picture, Avatars.Initials(name == "You" ? null : name), 46);
+        }
+        var canChange = m.PictureOn;
+        AvatarButton.IsEnabled = canChange;
+        AvatarButton.Cursor = canChange ? System.Windows.Input.Cursors.Hand : null;
+        AvatarButton.Focusable = canChange;
+        CameraBadge.Visibility = canChange ? Visibility.Visible : Visibility.Collapsed;
+        ChangeLink.Visibility = canChange ? Visibility.Visible : Visibility.Collapsed;
+        System.Windows.Automation.AutomationProperties.SetName(AvatarButton, canChange ? $"Change picture ({picture.Describe()})" : picture.Describe());
         CompanyRun.Text = m.Status?.CompanyName is { Length: > 0 } c ? c : "Zinwe";
         PcRun.Text = m.Status?.Hostname ?? Environment.MachineName;
 

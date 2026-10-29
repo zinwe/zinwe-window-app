@@ -34,6 +34,9 @@
     <Resource Include="Assets\zinwe-logo-light.png" />
     <Resource Include="Assets\Fonts\*.ttf" />
     <None Include="Assets\Fonts\Geist-OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- FR-44: the team avatar library, a byte-identical copy of zinwe-frontend/src/dashboard/team/avatars.json
+         (.gitattributes keeps its bytes as they are). Read by Widget/AvatarLibrary.cs. -->
+    <EmbeddedResource Include="Assets\avatars.json" LogicalName="Zinwe.Agent.Tray.avatars.json" />
   </ItemGroup>
 
   <ItemGroup>

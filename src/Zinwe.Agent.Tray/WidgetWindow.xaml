@@ -89,6 +89,9 @@
                 <Image x:Name="HeaderMark" Source="{DynamicResource Z.Mark}" Width="28" Height="28" Stretch="Uniform"
                        RenderOptions.BitmapScalingMode="HighQuality" Margin="0,0,10,0" VerticalAlignment="Center"
                        AutomationProperties.Name="Zinwe" />
+                <!-- FR-44: the member's picture takes the mark's place once they have one. -->
+                <ContentControl x:Name="HeaderPicture" Width="28" Height="28" Margin="0,0,10,0" VerticalAlignment="Center"
+                                Focusable="False" Visibility="Collapsed" AutomationProperties.Name="Your picture" />
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock x:Name="ScreenTitle" Text="Home" FontSize="16" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
                     <StackPanel x:Name="StatusRow" Orientation="Horizontal" Margin="0,1,0,0">

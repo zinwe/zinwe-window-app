@@ -143,7 +143,10 @@ public sealed record TraySettings
     public bool Dark { get; init; }
     public bool TextLarge { get; init; }
     public DateTimeOffset? PausedUntil { get; init; }
-    /// <summary>null = initials; "preset:{key}" = a preset avatar; "photo" = the member's own photo (avatar.png).</summary>
+    /// <summary>
+    /// Before FR-44 (v1.3.0-1.3.1): the picture kept on this PC only ("preset:{key}" / "photo:…"). No longer read - the
+    /// picture now lives on the server (status <c>Picture</c>) - but kept so older files load unchanged.
+    /// </summary>
     public string? Avatar { get; init; }
     /// <summary>Reminder keys already shown, and the local day they belong to.</summary>
     public string RemindedDay { get; init; } = "";

@@ -225,12 +225,23 @@ public partial class WidgetWindow : Window
 
     private static Visibility Show(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 
+    private string? _headerPicture;
+
     private void RenderHeader(TrayModel m, Stage stage)
     {
         var inApp = stage == Stage.App;
         var pushed = inApp && m.Push != Push.None;
         BackButton.Visibility = Show(pushed);
-        HeaderMark.Visibility = Show(!pushed);
+        // FR-44: the member's picture in place of the mark (no picture, or not set up: the official mark, as before).
+        var picture = inApp ? m.MyPicture : PictureView.None;
+        HeaderMark.Visibility = Show(!pushed && !picture.HasPicture);
+        HeaderPicture.Visibility = Show(!pushed && picture.HasPicture);
+        if (picture.HasPicture && picture.Stamp != _headerPicture)
+        {
+            _headerPicture = picture.Stamp;
+            HeaderPicture.Content = Views.Ui.Avatar(picture, "", 28);
+            AutomationProperties.SetName(HeaderPicture, picture.Describe());
+        }
         ScreenTitle.Text = !inApp ? "Zinwe" : pushed ? m.Push switch
         {
             Push.Time => "My time",

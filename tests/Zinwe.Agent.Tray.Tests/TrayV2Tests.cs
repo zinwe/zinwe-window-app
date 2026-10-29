@@ -355,9 +355,8 @@ public sealed class TrayV2Tests : IDisposable
     [Fact]
     public void Avatars_and_names_come_from_what_the_tray_knows()
     {
-        Assert.Equal(8, Avatars.Presets.Length);
-        Assert.Equal("Sunrise", Avatars.Find("preset:sun")?.Label);
-        Assert.Null(Avatars.Find("photo:1"));
+        Assert.Equal("Hijab", AvatarLibrary.Find("a07")?.Label); // FR-44: the shared library (PicturesTests)
+        Assert.Null(AvatarLibrary.Find("preset:sun")); // the v1.3 local presets are gone
         Assert.Equal("EC", Avatars.Initials("Emily Carter"));
         Assert.Equal("", Avatars.Initials(null)); // no name: the official mark, not a drawn "Z"
         Assert.Equal("Ananya", Avatars.First("Ananya Rao"));

@@ -88,35 +88,50 @@
                         <TextBlock x:Name="NtNote" FontSize="12" Foreground="{DynamicResource Z.Muted}" HorizontalAlignment="Center" Margin="0,8,0,0" />
                     </StackPanel>
 
-                    <!-- Profile photo -->
+                    <!-- Your picture (FR-44): the 16-person library, a photo (compressed here, shown before it's used), remove. -->
                     <StackPanel x:Name="PhotoPanel" Margin="0,10,0,0">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <ContentControl x:Name="PhotoPreview" Margin="0,0,12,0" />
+                            <ContentControl x:Name="PhotoPreview" Margin="0,0,12,0" Focusable="False" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock x:Name="PhotoName" FontSize="13.5" FontWeight="Bold" />
+                                <TextBlock x:Name="PhotoName" FontSize="13.5" FontWeight="Bold" TextWrapping="Wrap" />
                                 <TextBlock x:Name="PhotoStatus" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.StDone}"
                                            TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
                         </Grid>
-                        <Button Style="{StaticResource Z.Btn}" Margin="0,12,0,0" Click="OnUpload">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Data="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" Stroke="{DynamicResource Z.Ink}" StrokeThickness="2"
-                                      Stretch="Uniform" Width="16" Height="16" Margin="0,0,6,0" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                <TextBlock Text="Upload a photo" />
-                            </StackPanel>
-                        </Button>
-                        <TextBlock Text="Any photo works; we shrink it to 256 × 256 px (about 100 KB). JPG, PNG or WebP." FontSize="12"
-                                   Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0" />
+                        <!-- The compressed photo, before it's used -->
+                        <Grid x:Name="DraftPanel" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="UseDraft" Style="{StaticResource Z.Btn.Pri}" Content="Use this photo" MinHeight="44" Click="OnUseDraft" />
+                            <Button Grid.Column="1" Style="{StaticResource Z.Btn}" Content="Cancel" MinHeight="44" Margin="8,0,0,0" Click="OnDiscardDraft" />
+                        </Grid>
+                        <StackPanel x:Name="ChoosePanel">
+                            <Button x:Name="UploadButton" Style="{StaticResource Z.Btn}" Margin="0,12,0,0" MinHeight="44" Click="OnUpload"
+                                    AutomationProperties.Name="Upload a photo">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" Stroke="{DynamicResource Z.Ink}" StrokeThickness="2"
+                                          Stretch="Uniform" Width="16" Height="16" Margin="0,0,6,0" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    <TextBlock Text="Upload a photo" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="JPG, PNG, BMP or GIF up to 10 MB. Zinwe crops it to a 256 × 256 square and shrinks it to about 30 KB on this PC first."
+                                       FontSize="12" Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0" />
+                        </StackPanel>
                         <TextBlock x:Name="PhotoError" FontSize="12.5" FontWeight="Medium" Foreground="{DynamicResource Z.RedText}" TextAlignment="Center"
                                    TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Assertive" />
-                        <TextBlock Text="Pick an avatar" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,6" />
-                        <UniformGrid x:Name="AvatarGrid" Columns="8" AutomationProperties.Name="Avatars" />
-                        <Button x:Name="RemovePhoto" Style="{StaticResource Z.Btn}" Content="Remove photo" Margin="0,12,0,0" Click="OnRemovePhoto" />
-                        <Button Style="{StaticResource Z.Btn.Dark}" Content="Close" Margin="0,8,0,0" Click="OnClose" />
+                        <StackPanel x:Name="LibraryPanel">
+                            <TextBlock Text="Or pick an avatar" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,6" />
+                            <UniformGrid x:Name="AvatarGrid" Columns="8" AutomationProperties.Name="Avatars" />
+                        </StackPanel>
+                        <Button x:Name="RemovePhoto" Style="{StaticResource Z.Btn}" Content="Remove picture" Margin="0,12,0,0" MinHeight="44"
+                                Click="OnRemovePhoto" />
+                        <Button Style="{StaticResource Z.Btn.Dark}" Content="Close" Margin="0,8,0,0" MinHeight="44" Click="OnClose" />
                         <TextBlock x:Name="PhotoFoot" FontSize="12" Foreground="{DynamicResource Z.Muted}" TextAlignment="Center" TextWrapping="Wrap"
                                    Margin="0,8,0,0" />
                     </StackPanel>

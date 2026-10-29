@@ -61,7 +61,7 @@ public partial class SheetView : UserControl
             Sheet.Note => ($"Add a note for {owner}", "It stays on the task card."),
             Sheet.NewTask => m.Form.EditId is null ? ("Add a to-do", "Just for you: it stays on this PC, under My to-dos.")
                 : ("Edit your to-do", "Change the name, date or steps."),
-            Sheet.Photo => ("Profile photo", "Optional. It shows on your profile and next to your messages in Chat."),
+            Sheet.Photo => ("Your picture", "Optional. It shows on your team card, here and next to your messages in Chat."),
             _ => ("Send feedback", ""),
         };
         Hint.Visibility = Show(Hint.Text.Length > 0);
@@ -352,47 +352,76 @@ public partial class SheetView : UserControl
         }
     }
 
-    // ---- Profile photo -------------------------------------------------------------------
+    // ---- Your picture (FR-44) -------------------------------------------------------------
+
+    private string? _gridStamp;
 
     private void RenderPhoto(TrayModel m)
     {
         var name = m.Profile.DisplayName;
-        PhotoPreview.Content = Ui.Avatar(m.Settings.Avatar, Avatars.Initials(name == "You" ? null : name), 64);
-        PhotoName.Text = m.Settings.Avatar is null ? "Your initials"
-            : m.Settings.Avatar.StartsWith("photo", StringComparison.Ordinal) ? "Your photo"
-            : (Avatars.Find(m.Settings.Avatar)?.Label ?? "Your") + " avatar";
-        PhotoStatus.Text = m.PhotoStatus ?? "";
-        PhotoStatus.Visibility = Show(m.PhotoStatus is not null);
-        PhotoError.Text = m.PhotoError ?? "";
-        PhotoError.Visibility = Show(m.PhotoError is not null);
-        RemovePhoto.Visibility = Show(m.Settings.Avatar is not null);
-        // SEAM 4: the photo stays on this PC until photo sync exists, so the board's "Your admin can see this photo." waits.
-        PhotoFoot.Text = "Kept on this PC for now. Your admin sees it once Zinwe syncs profile photos.";
+        var initials = Avatars.Initials(name == "You" ? null : name);
+        var draft = m.PhotoDraft;
+        var current = m.MyPicture;
+        var shown = draft is null ? current : new PictureView(Zinwe.Agent.Core.Ipc.PictureChoice.Photo, Jpeg: draft.Jpeg);
+        PhotoPreview.Content = Ui.Avatar(shown, initials, 64);
+        AutomationProperties.SetName(PhotoPreview, draft is null ? shown.Describe() : "Your new photo, not used yet");
+        PhotoName.Text = draft is null ? shown.Describe() : "Your new photo";
+        var status = draft is not null
+            ? $"{draft.Width} × {draft.Height} · {PictureCompress.Bytes(draft.Jpeg.Length)} (from {PictureCompress.Bytes(draft.SourceBytes)}). Use it?"
+            : m.PictureBusy ? "Saving…"
+            : m.PhotoStatus ?? (m.Status?.Picture is { Pending: true } ? "Saved on this PC · sends when you’re back online" : null);
+        PhotoStatus.Text = status ?? "";
+        PhotoStatus.Visibility = Show(status is not null);
+        PhotoError.Text = m.PhotoError ?? (m.PictureOn ? "" : "Pictures aren’t available on your company’s Zinwe yet.");
+        PhotoError.Visibility = Show(PhotoError.Text.Length > 0);
 
-        AvatarGrid.Children.Clear();
-        foreach (var preset in Avatars.Presets)
+        var on = m.PictureOn;
+        DraftPanel.Visibility = Show(on && draft is not null);
+        ChoosePanel.Visibility = Show(on && draft is null);
+        LibraryPanel.Visibility = Show(on && draft is null);
+        RemovePhoto.Visibility = Show(on && draft is null && current.HasPicture);
+        UseDraft.IsEnabled = UploadButton.IsEnabled = RemovePhoto.IsEnabled = !m.PictureBusy;
+        PhotoFoot.Text = "Your admin sees this picture on your team card.";
+
+        // The grid is rebuilt only when the choice changes (keeps keyboard focus on the cell the member is on).
+        var stamp = (current.IsAvatar ? current.Key : "") + "|" + m.PictureBusy;
+        if (stamp == _gridStamp && AvatarGrid.Children.Count > 0)
         {
-            var on = m.Settings.Avatar == "preset:" + preset.Key;
-            var cell = new Grid { Width = 44, Height = 44 };
-            var art = Ui.Art(preset, 36);
+            return;
+        }
+        _gridStamp = stamp;
+        AvatarGrid.Children.Clear();
+        foreach (var avatar in AvatarLibrary.All)
+        {
+            var chosen = current.IsAvatar && current.Key == avatar.Key;
+            var cell = new Grid { MinHeight = 44, Margin = new Thickness(0, 0, 0, 4) };
+            var art = Ui.Art(avatar, 38);
             art.HorizontalAlignment = HorizontalAlignment.Center;
             art.VerticalAlignment = VerticalAlignment.Center;
             cell.Children.Add(art);
-            if (on)
+            var ring = new System.Windows.Shapes.Ellipse
             {
-                // The board's ring: 2 px of surface, then 2 px of orange.
-                var ring = new System.Windows.Shapes.Ellipse { Width = 44, Height = 44, StrokeThickness = 2 };
-                ring.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Z.Orange");
-                cell.Children.Add(ring);
-            }
+                Width = 44, Height = 44, StrokeThickness = chosen ? 2.5 : 1, HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            // The board's ring: orange around the chosen one (button face in High Contrast), a hairline otherwise.
+            ring.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, chosen ? "Z.Orange" : "Z.LineSoft");
+            cell.Children.Add(ring);
             var b = new RadioButton
             {
-                Content = cell, IsChecked = on, GroupName = "avatar", Cursor = Cursors.Hand,
-                Template = PlainTemplate(), FocusVisualStyle = (Style)FindResource("Z.FocusRing"), HorizontalAlignment = HorizontalAlignment.Center,
+                Content = cell, IsChecked = chosen, GroupName = "avatar", Cursor = Cursors.Hand, IsEnabled = !m.PictureBusy,
+                Template = PlainTemplate(), FocusVisualStyle = (Style)FindResource("Z.FocusRing"), HorizontalAlignment = HorizontalAlignment.Stretch,
+                ToolTip = avatar.Label,
             };
-            AutomationProperties.SetName(b, preset.Label + " avatar");
-            var key = preset.Key;
-            b.Checked += (_, _) => m.PickAvatar("preset:" + key);
+            AutomationProperties.SetName(b, avatar.Label + " avatar");
+            var key = avatar.Key;
+            // Checked (not Click): keyboard and UI Automation select without a click.
+            b.Checked += (_, _) =>
+            {
+                if (Model is { } model && !(model.MyPicture.IsAvatar && model.MyPicture.Key == key))
+                {
+                    _ = model.PickAvatarAsync(key);
+                }
+            };
             AvatarGrid.Children.Add(b);
         }
     }
@@ -414,15 +443,20 @@ public partial class SheetView : UserControl
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Choose a photo",
-            Filter = "Photos (*.jpg;*.jpeg;*.png;*.webp)|*.jpg;*.jpeg;*.png;*.webp|All files (*.*)|*.*",
+            Filter = PictureCompress.DialogFilter,
         };
         if (dialog.ShowDialog(Window.GetWindow(this)) == true)
         {
-            Model?.UsePhoto(dialog.FileName);
+            Model?.PreparePhoto(dialog.FileName);
+            Dispatcher.BeginInvoke(() => UseDraft.Focus(), DispatcherPriority.Input);
         }
     }
 
-    private void OnRemovePhoto(object sender, RoutedEventArgs e) => Model?.PickAvatar(null);
+    private void OnUseDraft(object sender, RoutedEventArgs e) => _ = Model?.UsePhotoAsync();
+
+    private void OnDiscardDraft(object sender, RoutedEventArgs e) => Model?.DiscardPhoto();
+
+    private void OnRemovePhoto(object sender, RoutedEventArgs e) => _ = Model?.RemovePictureAsync();
 
     private void OnClose(object sender, RoutedEventArgs e) => Model?.CloseSheet();
 

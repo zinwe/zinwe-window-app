@@ -1,0 +1,2 @@
+# FR-44: the avatar library is a byte-identical copy of zinwe-frontend/src/dashboard/team/avatars.json.
+src/Zinwe.Agent.Tray/Assets/avatars.json -text

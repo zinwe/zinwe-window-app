@@ -177,26 +177,9 @@ public sealed class ReplyQuotes(string? directory = null)
     }
 }
 
-/// <summary>The board's preset avatars: up to three shapes on a coloured ground (40 × 40).</summary>
+/// <summary>Names for avatar circles (the pictures themselves: <see cref="AvatarLibrary"/>, FR-44).</summary>
 public static class Avatars
 {
-    public sealed record Preset(string Key, string Label, string Bg, (string Path, string Fill)[] Shapes);
-
-    public static readonly Preset[] Presets =
-    [
-        new("sun", "Sunrise", "#FDEBDC", [("M20 8a8 8 0 1 1 0 16a8 8 0 1 1 0-16z", "#F26A0A"), ("M0 29c7-5 14-6 20-2s13 4 20-1v14H0z", "#8A3A04")]),
-        new("peaks", "Mountains", "#E6EEFB", [("M1 36 15 14l8 11 5-6 11 17z", "#1B4FB0"), ("M15 14l-4 6 4-2 4 3z", "#FFFFFF"), ("M30 6a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", "#F26A0A")]),
-        new("waves", "Waves", "#E3F4EA", [("M0 16c5-4 10-4 15 0s10 4 15 0 8-3 10-2v6c-2-1-5 0-10 2s-10 4-15 0S5 18 0 22z", "#17663F"), ("M0 27c5-4 10-4 15 0s10 4 15 0 8-3 10-2v6c-2-1-5 0-10 2s-10 4-15 0S5 29 0 33z", "#5FB58A")]),
-        new("leaf", "Leaf", "#FBF0D9", [("M9 31C9 17 19 9 32 8c0 13-8 23-23 23z", "#8A5300"), ("M9.6 31.4 8.6 30.4 25 14l1 1z", "#FBF0D9")]),
-        new("shapes", "Shapes", "#141210", [("M0 40V18a22 22 0 0 1 22 22z", "#F26A0A"), ("M28 6a6 6 0 1 1 0 12a6 6 0 1 1 0-12z", "#F7F6F2"), ("M24 25h11v11H24z", "#5AB0F0")]),
-        new("stripes", "Stripes", "#F4ECFB", [("M0 10 10 0h6L0 16zM0 24 24 0h6L0 30zM0 38 38 0h2v4L4 40H0zM12 40 40 12v6L18 40zM26 40l14-14v6l-8 8z", "#7A3FB0")]),
-        new("figure", "Figure", "#FFF1E6", [("M8 40c0-9 5-15 12-15s12 6 12 15z", "#141210"), ("M20 9a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13z", "#A84505")]),
-        new("night", "Night", "#22313F", [("M23 8a12 12 0 1 0 10 19A10 10 0 0 1 23 8z", "#F2C04B"), ("M10 9l1.2 2.3 2.3 1.2-2.3 1.2L10 16l-1.2-2.3-2.3-1.2 2.3-1.2z", "#FFFFFF"), ("M31 31l.8 1.5 1.5.8-1.5.8-.8 1.5-.8-1.5-1.5-.8 1.5-.8z", "#FFFFFF")]),
-    ];
-
-    public static Preset? Find(string? avatar) =>
-        avatar is { } a && a.StartsWith("preset:", StringComparison.Ordinal) ? Presets.FirstOrDefault(p => p.Key == a[7..]) : null;
-
     /// <summary>"Emily Carter" → "EC"; "ravi" → "R"; empty → "" (the avatar then shows the official Zinwe mark).</summary>
     public static string Initials(string? name)
     {

@@ -159,29 +159,20 @@ internal static class Ui
             Child = Text(text, size, weight ?? FontWeights.Bold, fgKey),
         }.Res(Border.BackgroundProperty, bgKey);
 
-    /// <summary>The member's picture: their photo, a preset avatar, or initials on a tint.</summary>
-    public static FrameworkElement Avatar(string? avatar, string initials, double size, string initialsBg = "#F4ECFB")
+    /// <summary>
+    /// A member's circle (FR-44): their photo, a library avatar, or - with no picture - initials on a tint, or the
+    /// official Zinwe mark when no name is known. A thin ring in the line colour keeps the circle visible on any ground
+    /// (it turns into the text colour in High Contrast).
+    /// </summary>
+    public static FrameworkElement Avatar(PictureView? picture, string initials, double size, string initialsBg = "#F4ECFB")
     {
-        if (avatar is { } a && a.StartsWith("photo", StringComparison.Ordinal) && System.IO.File.Exists(TrayModel.AvatarFile))
+        if (picture is { IsPhoto: true } && Photo(picture) is { } photo)
         {
-            try
-            {
-                var image = new BitmapImage();
-                image.BeginInit();
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-                image.UriSource = new Uri(TrayModel.AvatarFile);
-                image.EndInit();
-                return new Ellipse { Width = size, Height = size, Fill = new ImageBrush(image) { Stretch = Stretch.UniformToFill } };
-            }
-            catch (Exception)
-            {
-                // fall through to initials
-            }
+            return Ringed(new Ellipse { Width = size, Height = size, Fill = new ImageBrush(photo) { Stretch = Stretch.UniformToFill } }, size);
         }
-        if (Avatars.Find(avatar) is { } preset)
+        if (picture is { IsAvatar: true } && AvatarLibrary.Find(picture.Key) is { } avatar)
         {
-            return Art(preset, size);
+            return Ringed(Art(avatar, size), size);
         }
         var bg = (Color)ColorConverter.ConvertFromString(initialsBg);
         if (initials.Length == 0)
@@ -208,15 +199,81 @@ internal static class Ui
         };
     }
 
-    public static FrameworkElement Art(Avatars.Preset preset, double size)
+    private static FrameworkElement Ringed(FrameworkElement picture, double size)
     {
-        var canvas = new Canvas { Width = 40, Height = 40, Clip = new EllipseGeometry(new Point(20, 20), 20, 20) };
-        canvas.Children.Add(new Rectangle { Width = 40, Height = 40, Fill = Hex(preset.Bg) });
-        foreach (var (data, fill) in preset.Shapes)
+        var ring = new Ellipse { Width = size, Height = size, StrokeThickness = size >= 40 ? 1.5 : 1, IsHitTestVisible = false };
+        ring.SetResourceReference(Shape.StrokeProperty, "Z.Line");
+        var grid = new Grid { Width = size, Height = size };
+        grid.Children.Add(picture);
+        grid.Children.Add(ring);
+        return grid;
+    }
+
+    /// <summary>A library avatar: its paths on its tint, clipped to a circle.</summary>
+    public static FrameworkElement Art(LibraryAvatar avatar, double size)
+    {
+        var box = AvatarLibrary.ViewSize;
+        var canvas = new Canvas { Width = box, Height = box, Clip = new EllipseGeometry(new Point(box / 2, box / 2), box / 2, box / 2) };
+        canvas.Children.Add(new Rectangle { Width = box, Height = box, Fill = Hex(avatar.Bg) });
+        foreach (var (data, fill) in avatar.Paths)
         {
-            canvas.Children.Add(new Path { Data = Geometry.Parse(data), Fill = Hex(fill) });
+            canvas.Children.Add(new Path { Data = PathGeometry(data), Fill = Hex(fill) });
         }
         return new Viewbox { Width = size, Height = size, Child = canvas };
+    }
+
+    private static readonly Dictionary<string, Geometry> Shapes = [];
+
+    /// <summary>Parsed once and frozen: the library's paths are drawn on every render.</summary>
+    private static Geometry PathGeometry(string data)
+    {
+        if (!Shapes.TryGetValue(data, out var g))
+        {
+            g = Geometry.Parse(data);
+            g.Freeze();
+            Shapes[data] = g;
+        }
+        return g;
+    }
+
+    private static (string Key, BitmapSource Image)? _lastPhoto;
+
+    /// <summary>The photo, loaded once per file (its name changes with the picture) or per fresh JPEG.</summary>
+    private static BitmapSource? Photo(PictureView picture)
+    {
+        var key = picture.Jpeg is { } bytes ? "mem:" + bytes.Length + ":" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..16]
+            : "file:" + picture.File;
+        if (_lastPhoto is { } last && last.Key == key)
+        {
+            return last.Image;
+        }
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad; // the file isn't kept open: the service may replace it
+            if (picture.Jpeg is { } jpeg)
+            {
+                image.StreamSource = new System.IO.MemoryStream(jpeg); // (IgnoreImageCache throws with a stream)
+            }
+            else if (System.IO.File.Exists(picture.File))
+            {
+                image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                image.UriSource = new Uri(picture.File!);
+            }
+            else
+            {
+                return null;
+            }
+            image.EndInit();
+            image.Freeze();
+            _lastPhoto = (key, image);
+            return image;
+        }
+        catch (Exception)
+        {
+            return null; // unreadable: initials
+        }
     }
 
     public static SolidColorBrush Hex(string hex)
