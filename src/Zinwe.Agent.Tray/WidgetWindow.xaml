@@ -126,7 +126,7 @@
                     <Border Width="236" Margin="0,0,8,12" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}"
                             BorderThickness="1" CornerRadius="14" Padding="6" KeyDown="OnWorkMenuKey">
                         <Border.Effect>
-                            <DropShadowEffect BlurRadius="24" ShadowDepth="8" Opacity="0.18" Direction="270" Color="#17140F" />
+                            <DropShadowEffect BlurRadius="24" ShadowDepth="8" Opacity="0.18" Direction="270" Color="#141210" />
                         </Border.Effect>
                         <StackPanel x:Name="WorkMenuItems" KeyboardNavigation.DirectionalNavigation="Cycle">
                             <WrapPanel Margin="8,6,8,8">
@@ -233,8 +233,8 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Height="5" CornerRadius="3" Background="{DynamicResource Z.Fill}" VerticalAlignment="Center" ClipToBounds="True">
-                                <Border x:Name="FocusBar" HorizontalAlignment="Left" CornerRadius="3" Background="{DynamicResource Z.OkFill}" />
+                            <Border Height="5" CornerRadius="3" Background="{DynamicResource Z.ProgressTrack}" VerticalAlignment="Center" ClipToBounds="True">
+                                <Border x:Name="FocusBar" HorizontalAlignment="Left" CornerRadius="3" Background="{DynamicResource Z.Progress}" />
                             </Border>
                             <TextBlock x:Name="FocusStepsText" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="12"
                                        Foreground="{DynamicResource Z.Muted}" Margin="8,0,0,0" />

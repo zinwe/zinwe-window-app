@@ -25,8 +25,8 @@ public sealed class NotificationRow
     /// <summary>Bubble fill: a warm tint for the member's own replies, light grey for admin messages.</summary>
     public Brush BubbleBrush => IsMine ? MineFill : AdminFill;
 
-    private static readonly Brush MineFill = Freeze(Color.FromRgb(0xFF, 0xF4, 0xEE));
-    private static readonly Brush AdminFill = Freeze(Color.FromRgb(0xF4, 0xF4, 0xF5));
+    private static readonly Brush MineFill = Freeze(Color.FromRgb(0xFD, 0xEB, 0xDC));
+    private static readonly Brush AdminFill = Freeze(Color.FromRgb(0xF5, 0xF5, 0xF5));
 
     private static Brush Freeze(Color c)
     {

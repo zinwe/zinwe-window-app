@@ -136,7 +136,7 @@ public partial class ChatView : UserControl
         var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = row.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left };
 
         FrameworkElement avatar = row.HasAvatar
-            ? row.Mine ? Ui.Avatar(m.MyPicture, meInitials, 26) : Ui.Avatar(null, ownerInitials, 26, "#E6EEFB")
+            ? row.Mine ? Ui.Avatar(m.MyPicture, meInitials, 26) : Ui.Avatar(null, ownerInitials, 26, "#FDEBDC")
             : new Border { Width = 26 };
         avatar.VerticalAlignment = VerticalAlignment.Bottom;
         avatar.Margin = new Thickness(row.Mine ? 4 : 0, 0, row.Mine ? 0 : 4, 0);

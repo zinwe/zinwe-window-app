@@ -151,7 +151,7 @@ internal static class TaskCard
         }
         card.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
         card.SetResourceReference(Border.BorderBrushProperty, open ? "Z.Line2" : "Z.Line");
-        card.Effect = new DropShadowEffect { BlurRadius = 20, ShadowDepth = 8, Opacity = 0.12, Direction = 270, Color = Color.FromRgb(0x17, 0x14, 0x0F) };
+        card.Effect = new DropShadowEffect { BlurRadius = 20, ShadowDepth = 8, Opacity = 0.12, Direction = 270, Color = Color.FromRgb(0x14, 0x12, 0x10) };
         return card;
     }
 
@@ -339,7 +339,7 @@ internal static class TaskCard
         grid.AppendChild(circle);
         t.VisualTree = grid;
         var on = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
-        on.Setters.Add(new Setter(Border.BackgroundProperty, Ui.Hex("#1F8A4C"), "c"));
+        on.Setters.Add(new Setter(Border.BackgroundProperty, new DynamicResourceExtension("Z.OkFill"), "c"));
         on.Setters.Add(new Setter(Border.BorderThicknessProperty, new Thickness(0), "c"));
         on.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "m"));
         t.Triggers.Add(on);

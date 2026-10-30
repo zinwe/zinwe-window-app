@@ -164,7 +164,7 @@ internal static class Ui
     /// official Zinwe mark when no name is known. A thin ring in the line colour keeps the circle visible on any ground
     /// (it turns into the text colour in High Contrast).
     /// </summary>
-    public static FrameworkElement Avatar(PictureView? picture, string initials, double size, string initialsBg = "#F4ECFB")
+    public static FrameworkElement Avatar(PictureView? picture, string initials, double size, string initialsBg = "#F5F5F5")
     {
         if (picture is { IsPhoto: true } && Photo(picture) is { } photo)
         {

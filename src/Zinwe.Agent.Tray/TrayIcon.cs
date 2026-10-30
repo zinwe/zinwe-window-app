@@ -464,14 +464,14 @@ internal sealed partial class TrayIcon : IDisposable
             {
                 DrawFallbackZ(g, size);
             }
-            using var ring = new Drawing.Pen(Drawing.Color.FromArgb(0x1C, 0x20, 0x26), 2.5f);
+            using var ring = new Drawing.Pen(Drawing.Color.FromArgb(0x14, 0x12, 0x10), 2.5f);
             if (status > 0)
             {
                 var fill = status switch
                 {
-                    1 => Drawing.Color.FromArgb(0x2F, 0xBF, 0x6A),
-                    2 => Drawing.Color.FromArgb(0xE0, 0xA0, 0x30),
-                    _ => Drawing.Color.FromArgb(0xB9, 0xB0, 0xA2),
+                    1 => Drawing.Color.FromArgb(0x4A, 0xDE, 0x80), // working: status green
+                    2 => Drawing.Color.FromArgb(0xF2, 0x6A, 0x0A), // on a break: orange (no amber, v1.3.2)
+                    _ => Drawing.Color.FromArgb(0xA3, 0xA3, 0xA3), // not in: neutral grey
                 };
                 using var dot = new Drawing.SolidBrush(fill);
                 g.FillEllipse(dot, 20, 20, 11, 11);
@@ -479,7 +479,7 @@ internal sealed partial class TrayIcon : IDisposable
             }
             if (badge)
             {
-                using var red = new Drawing.SolidBrush(Drawing.Color.FromArgb(0xD2, 0x36, 0x1F));
+                using var red = new Drawing.SolidBrush(Drawing.Color.FromArgb(0xC0, 0x33, 0x1C));
                 g.FillEllipse(red, 20, 1, 11, 11);
                 g.DrawEllipse(ring, 20, 1, 11, 11);
             }
@@ -526,7 +526,7 @@ internal sealed partial class TrayIcon : IDisposable
     }
 
     /// <summary>
-    /// The taskbar icon carries the board's two dots: the work state bottom right (green working, amber on a break,
+    /// The taskbar icon carries the board's two dots: the work state bottom right (green working, orange on a break,
     /// grey otherwise) and a red dot top right while something is unread, an update waits, or setup isn't finished.
     /// </summary>
     private void UpdateGlyph()

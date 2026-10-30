@@ -5,7 +5,7 @@ namespace Zinwe.Agent.Tray;
 
 /// <summary>
 /// The tray's three looks, all by swapping the token brushes of Theme/Tokens.xaml (every view uses them as
-/// DynamicResource): the brand light palette, the board's dark palette (Settings › Look › Dark mode), and Windows
+/// DynamicResource): the brand light palette, the black-based dark palette (Settings › Look › Dark mode), and Windows
 /// High Contrast, which always wins and repaints everything with the system's contrast colours.
 /// </summary>
 internal static class HighContrastTheme
@@ -13,18 +13,35 @@ internal static class HighContrastTheme
     private static ResourceDictionary? _resources;
     private static bool _dark;
 
-    /// <summary>The board's .zdark values. Keys not listed keep their light value (fixed brand fills and tints).</summary>
+    /// <summary>
+    /// Dark mode (colour rule v1.3.2): black-based neutrals, white text, orange accent. Every key has a dark value,
+    /// tints included, so no light chip sits on the black ground. Text on an orange fill stays ink (Z.OnOrange).
+    /// </summary>
     internal static readonly IReadOnlyDictionary<string, string> Dark = new Dictionary<string, string>
     {
-        ["Z.Bg"] = "#151311", ["Z.Surface"] = "#201D19", ["Z.Surface2"] = "#1B1916", ["Z.Fill"] = "#2C2824",
-        ["Z.Line"] = "#3A352F", ["Z.LineSoft"] = "#2E2A25", ["Z.Line2"] = "#4D463E", ["Z.Ink"] = "#F2EEE7",
-        ["Z.Ink2"] = "#DCD5C9", ["Z.Ink3"] = "#CFC7BA", ["Z.Muted"] = "#B9B0A2", ["Z.Link"] = "#FF9A55",
-        ["Z.Inv"] = "#EDE8DE", ["Z.OnInv"] = "#141210", ["Z.AccentSoft"] = "#2E2117", ["Z.AccentLine"] = "#6B3A14",
-        ["Z.WarnSoft"] = "#2B2416", ["Z.WarnLine"] = "#5C4A22", ["Z.Snack"] = "#3A352F", ["Z.TabOn"] = "#3A2414",
-        ["Z.Hover"] = "#26221E", ["Z.WarnText"] = "#E3A857", ["Z.StDoing"] = "#FFB27A", ["Z.StWait"] = "#9DBBFF",
-        ["Z.StDone"] = "#72D39C", ["Z.RedText"] = "#FF8A75",
-        ["Zinwe.White"] = "#201D19", ["Zinwe.Paper"] = "#151311", ["Zinwe.Ink"] = "#F2EEE7", ["Zinwe.Muted"] = "#B9B0A2",
-        ["Zinwe.Line"] = "#3A352F", ["Zinwe.LineStrong"] = "#4D463E",
+        // ground, surfaces, lines
+        ["Z.Bg"] = "#0E0E0E", ["Z.Surface"] = "#1A1A1A", ["Z.Surface2"] = "#262626", ["Z.Fill"] = "#262626",
+        ["Z.Hover"] = "#262626", ["Z.Line"] = "#333333", ["Z.LineSoft"] = "#333333", ["Z.Line2"] = "#4A4A4A",
+        // ink
+        ["Z.Ink"] = "#F5F5F5", ["Z.Ink2"] = "#CFCFCF", ["Z.Ink3"] = "#CFCFCF", ["Z.Muted"] = "#A3A3A3",
+        ["Z.Inv"] = "#F5F5F5", ["Z.OnInv"] = "#141210", ["Z.Link"] = "#FF8A3D",
+        // accent (orange) and its soft panels; amber states use the same orange
+        ["Z.AccentSoft"] = "#1F150D", ["Z.AccentLine"] = "#5A3315", ["Z.WarnSoft"] = "#1F150D", ["Z.WarnLine"] = "#5A3315",
+        ["Z.TabOn"] = "#3A2414", ["Z.OrangeTint"] = "#3A2414", ["Z.OrangeInk"] = "#FF8A3D", ["Z.SoonTint"] = "#3A2414",
+        ["Z.WarnTint"] = "#3A2414", ["Z.Warn"] = "#FF8A3D", ["Z.WarnInk"] = "#FF8A3D", ["Z.WarnText"] = "#FF8A3D",
+        ["Z.StDoing"] = "#FF8A3D",
+        // grey (was blue)
+        ["Z.InfoTint"] = "#262626", ["Z.Info"] = "#CFCFCF", ["Z.InfoInk"] = "#F5F5F5", ["Z.StWait"] = "#CFCFCF",
+        // status: red for errors, green for working/done
+        ["Z.RedTint"] = "#3A1A15", ["Z.RedText"] = "#FF6B57", ["Z.RedInk"] = "#FF6B57",
+        ["Z.OkTint"] = "#12301F", ["Z.Ok"] = "#4ADE80", ["Z.StDone"] = "#4ADE80",
+        // snackbar and scrim
+        ["Z.Snack"] = "#333333", ["Z.Dim"] = "#99000000", ["Z.ProgressTrack"] = "#5A3315",
+        // legacy keys (v1 widget, FeedbackPanel, ChatRow / NotificationRow)
+        ["Zinwe.White"] = "#1A1A1A", ["Zinwe.Paper"] = "#0E0E0E", ["Zinwe.Ink"] = "#F5F5F5", ["Zinwe.Muted"] = "#A3A3A3",
+        ["Zinwe.Line"] = "#333333", ["Zinwe.LineStrong"] = "#4A4A4A", ["Zinwe.OrangeText"] = "#FF8A3D",
+        ["Zinwe.OrangeTint"] = "#3A2414", ["Zinwe.OrangeInk"] = "#FF8A3D", ["Zinwe.Ok"] = "#4ADE80", ["Zinwe.OkTint"] = "#12301F",
+        ["Zinwe.Warn"] = "#FF8A3D", ["Zinwe.WarnTint"] = "#3A2414", ["Zinwe.Bad"] = "#FF6B57", ["Zinwe.BadTint"] = "#3A1A15",
     };
 
     private enum Hc { Window, WindowText, Control, ControlText, Highlight, HighlightText, Gray }
@@ -41,6 +58,7 @@ internal static class HighContrastTheme
         ["Z.AccentSoft"] = Hc.Window, ["Z.AccentLine"] = Hc.WindowText, ["Z.WarnSoft"] = Hc.Window, ["Z.WarnLine"] = Hc.WindowText,
         ["Z.Snack"] = Hc.Highlight, ["Z.TabOn"] = Hc.Highlight, ["Z.Orange"] = Hc.Control, ["Z.OnOrange"] = Hc.ControlText,
         ["Z.Focus"] = Hc.Highlight, ["Z.OkTint"] = Hc.Window, ["Z.Ok"] = Hc.WindowText, ["Z.OkFill"] = Hc.Highlight,
+        ["Z.Progress"] = Hc.Highlight, ["Z.ProgressTrack"] = Hc.Window, // same system roles as before (OkFill / Fill)
         ["Z.WarnTint"] = Hc.Window, ["Z.Warn"] = Hc.WindowText, ["Z.WarnInk"] = Hc.WindowText, ["Z.InfoTint"] = Hc.Window,
         ["Z.Info"] = Hc.WindowText, ["Z.InfoInk"] = Hc.WindowText, ["Z.OrangeTint"] = Hc.Window, ["Z.OrangeInk"] = Hc.WindowText,
         ["Z.SoonTint"] = Hc.Window, ["Z.RedTint"] = Hc.Window, ["Z.RedInk"] = Hc.WindowText, ["Z.Off"] = Hc.Gray,
@@ -90,7 +108,7 @@ internal static class HighContrastTheme
             return;
         }
         // Start from the light tokens (the merged Tokens.xaml), then lay dark or High Contrast over them as local values.
-        foreach (var key in Contrast.Keys)
+        foreach (var key in Contrast.Keys.Concat(Dark.Keys))
         {
             resources.Remove(key);
         }

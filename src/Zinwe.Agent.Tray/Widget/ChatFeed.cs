@@ -46,14 +46,14 @@ public sealed class ChatRow
     public Brush BubbleBrush => IsMine ? MineFill : AdminFill;
     /// <summary>Hairline border; an "Important" / "Urgent" admin message is outlined in its colour instead.</summary>
     public Brush BubbleBorder => IsImportant ? AccentBrush : IsMine ? MineLine : AdminLine;
-    private static readonly Brush MineLine = Freeze(Color.FromRgb(0xF6, 0xD3, 0xB6));
-    private static readonly Brush AdminLine = Freeze(Color.FromRgb(0xE6, 0xE6, 0xE1));
+    private static readonly Brush MineLine = Freeze(Color.FromRgb(0xF3, 0xCF, 0xAE));
+    private static readonly Brush AdminLine = Freeze(Color.FromRgb(0xE5, 0xE5, 0xE5));
     public double BubbleOpacity => IsPending ? 0.65 : 1.0;
     public Brush AccentBrush => !IsImportant ? Brushes.Transparent
         : Application.Current?.TryFindResource(Severity == "critical" ? "Zinwe.Bad" : "Zinwe.Warn") as Brush ?? Brushes.Orange;
 
     // Brand: the employee's own lines on the orange tint, the admin's on white (the chat sits on paper).
-    private static readonly Brush MineFill = Freeze(Color.FromRgb(0xFF, 0xF1, 0xE6));
+    private static readonly Brush MineFill = Freeze(Color.FromRgb(0xFD, 0xEB, 0xDC));
     private static readonly Brush AdminFill = Freeze(Color.FromRgb(0xFF, 0xFF, 0xFF));
 
     private static Brush Freeze(Color c)
