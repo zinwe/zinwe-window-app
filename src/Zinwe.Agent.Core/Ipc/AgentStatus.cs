@@ -71,7 +71,11 @@ public sealed record AgentStatus(
     PictureStatus? Picture = null,
     /// <summary>Goes up whenever the member's own to-dos the service holds change (ask with the "todos" request). Null =
     /// an older service without them: the widget writes no <c>todo</c> outbox items and its to-dos stay on this PC.</summary>
-    int? TodosVersion = null);
+    int? TodosVersion = null,
+    /// <summary>The member's day moved to another PC (from the last heartbeat): the tray stops its timer.</summary>
+    Backend.WorkDayMoved? DayMoved = null,
+    /// <summary>The member's day moved here (from the last heartbeat): the tray's timer carries on from it.</summary>
+    Backend.WorkDayCarry? DayCarry = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

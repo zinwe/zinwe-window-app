@@ -21,7 +21,7 @@ public sealed record DayHours(string Day, double Hours, bool IsToday);
 public static class DayLog
 {
     public sealed record Entry(DateTimeOffset At, string Action, string State, long WorkedSeconds, long BreakSeconds,
-        string? BreakReason = null, string? BreakNote = null, string? EndReason = null, string? EndNote = null);
+        string? BreakReason = null, string? BreakNote = null, string? EndReason = null, string? EndNote = null, string? Host = null);
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
@@ -91,10 +91,25 @@ public static class DayLog
                 case "end":
                     events.Add(new TimelineEvent(e.At, "Ended day" + (e.EndReason is { Length: > 0 } r ? " · " + r : ""), TimelineKind.Out));
                     break;
+                case "moved":
+                    events.Add(new TimelineEvent(e.At, "Moved to " + (e.Host ?? "another PC"), TimelineKind.Out));
+                    break;
+                case "carried":
+                    var so = HoursMinutes(TimeSpan.FromSeconds(e.WorkedSeconds));
+                    events.Add(new TimelineEvent(e.At, e.Host is { Length: > 0 } from ? $"Carried on from {from} · {so} so far" : $"Carried on · {so} so far", TimelineKind.In));
+                    break;
             }
         }
         return events;
     }
+
+    /// <summary>The day's breaks, wherever they were taken: those carried here, plus the ones since.</summary>
+    public static int BreaksToday(IEnumerable<TimelineEvent> today, WorkTimerState timer) =>
+        timer.CarriedBreaks + today.Count(e => e.Kind == TimelineKind.Break && !(e.At < timer.CarriedAtUtc));
+
+    /// <summary>When the day first started, wherever that was.</summary>
+    public static DateTimeOffset? FirstStart(IEnumerable<TimelineEvent> today, WorkTimerState timer) =>
+        timer.FirstStartUtc ?? today.FirstOrDefault(e => e.Kind == TimelineKind.In)?.At;
 
     /// <summary>
     /// The last five working days (days with worked time), oldest first; today last with <paramref name="today"/>

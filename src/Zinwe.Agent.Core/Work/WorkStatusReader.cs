@@ -57,6 +57,7 @@ public sealed class WorkStatusReader
             {
                 return WorkStatus.NotStarted;
             }
+            // "Moved" (the day went to another PC) reads as not started: this PC has no day of its own running.
             var wire = dto.State switch
             {
                 "Working" => "working",

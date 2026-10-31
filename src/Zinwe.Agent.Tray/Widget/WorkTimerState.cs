@@ -14,6 +14,9 @@ public enum WorkState
     OnBreak,
     /// <summary>The workday has been ended; nothing accumulates.</summary>
     Ended,
+    /// <summary>The member started their day on another PC, so it moved there; nothing accumulates here. Start day
+    /// takes it back. Not a log-out: no reason, no approval.</summary>
+    Moved,
 }
 
 /// <summary>
@@ -60,15 +63,36 @@ public sealed class WorkTimerState
     /// <summary>The message the employee added when logging out; null otherwise.</summary>
     public string? EndNote { get; set; }
 
+    /// <summary>Where the day went (hostname) while <see cref="State"/> is <see cref="WorkState.Moved"/>; null otherwise.</summary>
+    public string? MovedTo { get; set; }
+
+    /// <summary>When the last Start was pressed here. A move older than this is old news.</summary>
+    public DateTimeOffset? LastStartAtUtc { get; set; }
+
+    /// <summary>Settled worked seconds when the last Start was pressed: what's above it was earned since.</summary>
+    public long WorkedAtStart { get; set; }
+
+    /// <summary>Settled break seconds when the last Start was pressed.</summary>
+    public long BreakAtStart { get; set; }
+
+    /// <summary>The hand-over last taken in (its time is its identity, so each is taken once).</summary>
+    public DateTimeOffset? CarriedAtUtc { get; set; }
+
+    /// <summary>How many breaks the day had when it moved here.</summary>
+    public int CarriedBreaks { get; set; }
+
+    /// <summary>When the day first started, on whichever PC. Null unless it moved here.</summary>
+    public DateTimeOffset? FirstStartUtc { get; set; }
+
     /// <summary>Longest break reason we keep (matches the backend's limit).</summary>
     public const int MaxBreakReasonLength = 120;
 
     /// <summary>Longest break note we keep (matches the backend's limit).</summary>
     public const int MaxBreakNoteLength = 280;
 
-    /// <summary>True when the employee can press Start (fresh day or after End).</summary>
+    /// <summary>True when the employee can press Start (fresh day, after End, or to take a moved day back).</summary>
     [JsonIgnore]
-    public bool CanStart => State is WorkState.NotStarted or WorkState.Ended;
+    public bool CanStart => State is WorkState.NotStarted or WorkState.Ended or WorkState.Moved;
 
     /// <summary>True when Break/Resume is meaningful (clocked in).</summary>
     [JsonIgnore]
@@ -113,9 +137,73 @@ public sealed class WorkTimerState
         State = WorkState.Working;
         EndReason = null;
         EndNote = null;
+        MovedTo = null;
         LastTransitionAtUtc = now;
+        LastStartAtUtc = now;
+        WorkedAtStart = WorkedSeconds;
+        BreakAtStart = BreakSeconds;
         return true;
     }
+
+    /// <summary>
+    /// The member's day moved to <paramref name="hostname"/> at <paramref name="at"/>: the timer stops there, so the
+    /// minutes until this PC heard about it aren't counted twice. No reason, no approval. Returns false when there's
+    /// nothing to do: old news (Start was pressed here since, or it's about another day) or already showing it.
+    /// </summary>
+    public bool MoveAway(string hostname, DateTimeOffset at, DateTimeOffset now)
+    {
+        if (LastStartAtUtc > at || !IsToday(at))
+        {
+            return false;
+        }
+        if (State == WorkState.Moved)
+        {
+            var changed = MovedTo != hostname; // it moved on again, to a third PC
+            MovedTo = hostname;
+            return changed;
+        }
+        Settle(at < now ? at : now);
+        State = WorkState.Moved;
+        MovedTo = hostname;
+        BreakReason = null;
+        BreakNote = null;
+        EndReason = null;
+        EndNote = null;
+        LastTransitionAtUtc = at;
+        return true;
+    }
+
+    /// <summary>
+    /// The member's day moved here at <paramref name="at"/>: the day's totals become the server's, wherever they were
+    /// earned, plus what this PC has settled since Start was pressed. Returns false when already taken, about another
+    /// day, or the day isn't on this PC.
+    /// </summary>
+    public bool CarryOn(DateTimeOffset at, long worked, long onBreak, int breaks, DateTimeOffset? firstStart)
+    {
+        if (CarriedAtUtc == at || State is WorkState.NotStarted or WorkState.Moved || !IsToday(at))
+        {
+            return false;
+        }
+        var sinceStart = (Worked: 0L, Break: 0L);
+        if (LastStartAtUtc is not null)
+        {
+            sinceStart = (Math.Max(0, WorkedSeconds - WorkedAtStart), Math.Max(0, BreakSeconds - BreakAtStart));
+        }
+        WorkedSeconds = worked + sinceStart.Worked;
+        BreakSeconds = onBreak + sinceStart.Break;
+        WorkedAtStart = worked;
+        BreakAtStart = onBreak;
+        if (LastTransitionAtUtc < at && State is WorkState.Working or WorkState.OnBreak)
+        {
+            LastTransitionAtUtc = at; // time up to the move is in the totals
+        }
+        CarriedAtUtc = at;
+        CarriedBreaks = breaks;
+        FirstStartUtc = firstStart ?? FirstStartUtc;
+        return true;
+    }
+
+    private bool IsToday(DateTimeOffset at) => at.ToLocalTime().ToString("yyyy-MM-dd") == Date;
 
     /// <summary>
     /// Toggles between Working and OnBreak. Going on a break records <paramref name="reason"/>
@@ -208,6 +296,13 @@ public sealed class WorkTimerState
         BreakNote = null;
         EndReason = null;
         EndNote = null;
+        MovedTo = null;
+        LastStartAtUtc = null;
+        WorkedAtStart = 0;
+        BreakAtStart = 0;
+        CarriedAtUtc = null;
+        CarriedBreaks = 0;
+        FirstStartUtc = null;
         return true;
     }
 

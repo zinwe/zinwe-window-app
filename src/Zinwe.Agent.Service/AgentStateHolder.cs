@@ -70,6 +70,15 @@ internal sealed class AgentStateHolder
         }
     }
 
+    /// <summary>Where the member's day is, as the last heartbeat said (both null = nothing moved). Offline, the last word stays.</summary>
+    public void SetWorkDay(WorkDayMoved? moved, WorkDayCarry? carry)
+    {
+        lock (_lock)
+        {
+            Volatile.Write(ref _status, Current with { DayMoved = moved, DayCarry = carry });
+        }
+    }
+
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>

@@ -297,7 +297,7 @@ public partial class WidgetWindow : Window
         var clocked = state is WorkState.Working or WorkState.OnBreak;
         MiniText.Text = state switch
         {
-            WorkState.NotStarted => "Start day",
+            WorkState.NotStarted or WorkState.Moved => "Start day",
             WorkState.Ended => "Start again",
             _ => DayLog.Hm(m.Running),
         };
@@ -318,6 +318,7 @@ public partial class WidgetWindow : Window
             WorkState.Working => $"Working, {DayLog.HoursMinutes(m.Worked)}. Open work menu",
             WorkState.OnBreak => $"On break, {DayLog.HoursMinutes(m.Running)}. Open work menu",
             WorkState.Ended => "Day ended. Start again",
+            WorkState.Moved => WorkSummary.MovedLine(m.Timer) + ". Start day here",
             _ => "Not in. Start day",
         });
 
@@ -330,7 +331,7 @@ public partial class WidgetWindow : Window
         MenuPillText.Text = label;
         MenuSince.Text = state == WorkState.OnBreak
             ? (m.Timer.BreakReason is { Length: > 0 } r ? r + " break" : "On a break")
-            : m.Timeline.FirstOrDefault(e => e.Kind == TimelineKind.In) is { } first ? "Started " + first.Time : "";
+            : m.DayStarted is { } first ? "Started " + first.ToLocalTime().ToString("h:mm tt") : "";
         if (WorkMenu.IsOpen != m.WorkMenuOpen && clocked)
         {
             WorkMenu.IsOpen = m.WorkMenuOpen;
@@ -346,6 +347,7 @@ public partial class WidgetWindow : Window
         WorkState.Working => ("Working", "Z.OrangeTint", "Z.OrangeInk"),
         WorkState.OnBreak => ("On break", "Z.WarnTint", "Z.Warn"),
         WorkState.Ended => ("Day ended", "Z.Fill", "Z.Muted"),
+        WorkState.Moved => ("Moved", "Z.Fill", "Z.Muted"),
         _ => ("Not in", "Z.Fill", "Z.Muted"),
     };
 
@@ -361,7 +363,13 @@ public partial class WidgetWindow : Window
         Strip.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
         BigTime.Text = DayLog.Hm(m.Running);
         AutomationProperties.SetName(BigTime, (state == WorkState.OnBreak ? "Break time now: " : "Work time today: ") + DayLog.HoursMinutes(m.Running));
-        StartDayButton.Visibility = Show(state == WorkState.NotStarted);
+        var moved = state == WorkState.Moved;
+        StripMoved.Text = moved ? WorkSummary.MovedLine(m.Timer) : "";
+        StripMoved.ToolTip = moved ? StripMoved.Text : null;
+        StripMoved.Visibility = Show(moved);
+        StripPill.Visibility = Show(!moved);
+        BigTime.Visibility = Show(!moved);
+        StartDayButton.Visibility = Show(state is WorkState.NotStarted or WorkState.Moved);
         BreakButton.Visibility = Show(state == WorkState.Working);
         EndDayButton.Visibility = Show(state == WorkState.Working);
         EndBreakButton.Visibility = Show(state == WorkState.OnBreak);
