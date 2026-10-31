@@ -257,6 +257,7 @@ internal sealed partial class AgentWorker(
                         consent is null ? null : new ConsentDecision(consent.State, consent.Version)), ct);
                 workLog.Acknowledge(workEvents);
                 state.SetServerInfo(beat.CompanyName, beat.OwnerName, beat.ConsentState);
+                state.SetWorkDay(beat.DayMoved, beat.DayCarry); // one work day across PCs: the tray acts on it
                 pictures.OnHeartbeat(beat.Picture); // FR-44: no field = a backend without pictures
 
                 failures = 0;

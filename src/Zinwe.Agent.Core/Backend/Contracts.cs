@@ -60,6 +60,10 @@ public sealed record WorkEvent(DateTimeOffset At, string State, string? Reason =
 /// <param name="OwnerName">The owner's name, when the backend sends it ("Message Ravi").</param>
 /// <param name="Picture">FR-44: this PC's member's picture, raw (read it with <see cref="MemberPictures.Read"/>). The key
 /// missing (<see cref="JsonValueKind.Undefined"/>) = a backend without team pictures; JSON null = no picture.</param>
+/// <param name="DayMoved">The member started their day on another PC: this PC's work session has moved there. The PC
+/// itself stays connected and protected. Sent on every heartbeat of that day; null = the day isn't elsewhere.</param>
+/// <param name="DayCarry">The member's day moved to this PC: what its timer carries on from. Sent on every heartbeat of
+/// that day (the tray takes each one once); null = nothing to carry.</param>
 public sealed record HeartbeatResponse(
     long DeviceId,
     DateTimeOffset ServerTime,
@@ -72,7 +76,25 @@ public sealed record HeartbeatResponse(
     bool? UsbRestore = null,
     string? CompanyName = null,
     string? OwnerName = null,
-    JsonElement Picture = default);
+    JsonElement Picture = default,
+    WorkDayMoved? DayMoved = null,
+    WorkDayCarry? DayCarry = null);
+
+/// <summary>Where the member's day went, and when (<see cref="HeartbeatResponse.DayMoved"/>).</summary>
+public sealed record WorkDayMoved(string ToHostname, DateTimeOffset At);
+
+/// <summary>
+/// The member's day so far, wherever it ran, as it stood when it moved to this PC at <paramref name="At"/>
+/// (<see cref="HeartbeatResponse.DayCarry"/>). <paramref name="FromHostname"/> is empty when the day had ended elsewhere
+/// and this PC simply started again.
+/// </summary>
+public sealed record WorkDayCarry(
+    DateTimeOffset At,
+    long WorkedSeconds = 0,
+    long BreakSeconds = 0,
+    int Breaks = 0,
+    DateTimeOffset? FirstStart = null,
+    string? FromHostname = null);
 
 /// <summary>
 /// A newer Windows agent release the PC should install. <paramref name="DownloadUrl"/> is either a path on our own

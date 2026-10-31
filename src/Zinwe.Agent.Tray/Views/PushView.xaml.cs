@@ -67,12 +67,11 @@ public partial class PushView : UserControl
     private void RenderTime(TrayModel m)
     {
         var week = m.Week;
-        var started = m.Timeline.FirstOrDefault(e => e.Kind == TimelineKind.In);
         var tiles = new (string Label, string Value)[]
         {
             ("Worked today", DayLog.HoursMinutes(m.Worked)),
-            ("Breaks today", m.Timeline.Count(e => e.Kind == TimelineKind.Break).ToString()),
-            ("Started at", started?.Time ?? "—"),
+            ("Breaks today", m.BreaksToday.ToString()),
+            ("Started at", m.DayStarted?.ToLocalTime().ToString("h:mm tt") ?? "—"),
             ("Last 5 days", DayLog.HoursMinutes(TimeSpan.FromHours(week.Sum(d => d.Hours)))),
         };
         TimeTiles.Children.Clear();

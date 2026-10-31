@@ -67,8 +67,11 @@ public sealed class WorkTimerStore
         }
     }
 
-    /// <summary>Appends one action to the local log. <paramref name="action"/> is start|break|resume|end.</summary>
-    public void AppendLog(string action, WorkTimerState state, DateTimeOffset now)
+    /// <summary>
+    /// Appends one action to the local log. <paramref name="action"/> is start|break|resume|end, or moved|carried when
+    /// the day went to or came from <paramref name="host"/>.
+    /// </summary>
+    public void AppendLog(string action, WorkTimerState state, DateTimeOffset now, string? host = null)
     {
         try
         {
@@ -82,7 +85,8 @@ public sealed class WorkTimerStore
                 state.BreakReason,
                 state.BreakNote,
                 state.EndReason,
-                state.EndNote);
+                state.EndNote,
+                host);
             File.AppendAllText(WidgetPaths.WorkTimingLog,
                 JsonSerializer.Serialize(entry, LogJson) + Environment.NewLine, Encoding.UTF8);
         }
@@ -101,5 +105,6 @@ public sealed class WorkTimerStore
         string? BreakReason,
         string? BreakNote = null,
         string? EndReason = null,
-        string? EndNote = null);
+        string? EndNote = null,
+        string? Host = null);
 }

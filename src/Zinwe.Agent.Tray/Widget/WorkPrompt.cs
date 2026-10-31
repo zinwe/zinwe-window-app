@@ -105,9 +105,11 @@ public static class WorkSummary
     public static string Status(WorkTimerState t)
     {
         var since = t.LastTransitionAtUtc?.ToLocalTime().ToString("h:mm tt");
+        var first = t.FirstStartUtc?.ToLocalTime().ToString("h:mm tt") ?? since; // a day that moved here began elsewhere
         return t.State switch
         {
-            WorkState.Working => since is null ? "Worked today" : $"Worked today · logged in since {since}",
+            WorkState.Working => first is null ? "Worked today" : $"Worked today · logged in since {first}",
+            WorkState.Moved => MovedLine(t),
             WorkState.OnBreak => $"{BreakName(t.BreakReason)}{(since is null ? "" : $" · since {since}")}",
             WorkState.Ended => since is null ? "Worked today · logged out" : $"Worked today · logged out at {since}",
             _ => "Not logged in yet today",
@@ -127,6 +129,10 @@ public static class WorkSummary
 
     public static string Clock(TimeSpan t) => $"{(int)t.TotalHours}:{t.Minutes:D2}:{t.Seconds:D2}";
 
+    /// <summary>"Your day moved to LAPTOP-X": what the strip says on the PC the day left.</summary>
+    public static string MovedLine(WorkTimerState t) =>
+        string.IsNullOrWhiteSpace(t.MovedTo) ? "Your day moved to another PC" : $"Your day moved to {t.MovedTo}";
+
     private static string BreakName(string? reason) =>
         string.IsNullOrWhiteSpace(reason) ? "On a break"
         : reason.EndsWith("break", StringComparison.OrdinalIgnoreCase) ? reason
@@ -138,6 +144,7 @@ public static class WorkSummary
         WorkState.Working => "Working",
         WorkState.OnBreak => "On break",
         WorkState.Ended => "Logged out",
+        WorkState.Moved => "Moved",
         _ => "Not started",
     };
 }

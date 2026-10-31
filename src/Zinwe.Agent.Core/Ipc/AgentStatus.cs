@@ -68,7 +68,11 @@ public sealed record AgentStatus(
     int? TasksVersion = null,
     /// <summary>FR-44: the member's picture as the service holds it. Null = an older service without team pictures:
     /// the widget hides "Change picture" and shows initials.</summary>
-    PictureStatus? Picture = null);
+    PictureStatus? Picture = null,
+    /// <summary>The member's day moved to another PC (from the last heartbeat): the tray stops its timer.</summary>
+    Backend.WorkDayMoved? DayMoved = null,
+    /// <summary>The member's day moved here (from the last heartbeat): the tray's timer carries on from it.</summary>
+    Backend.WorkDayCarry? DayCarry = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

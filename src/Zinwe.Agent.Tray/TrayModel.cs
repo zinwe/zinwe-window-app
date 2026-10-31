@@ -331,8 +331,42 @@ public sealed class TrayModel : IDisposable
             UpdateRefused = null;
         }
         UpdateConnectMessage();
+        ApplyWorkDay();
         await RefreshTasksAsync();
         Raise();
+    }
+
+    /// <summary>
+    /// One work day across PCs: the server says the day moved away (the timer stops, the strip says where, no prompt)
+    /// or moved here (the timer carries on from the day so far). Offline, this happens when the PC reconnects.
+    /// </summary>
+    private void ApplyWorkDay()
+    {
+        if (Status?.DayMoved is { } moved)
+        {
+            CommitPendingEnd();
+            if (Timer.MoveAway(moved.ToHostname, moved.At, Now))
+            {
+                if (Sheet is Sheet.Break or Sheet.Out)
+                {
+                    Sheet = Sheet.None; // there's no day here to take a break from
+                }
+                WorkMenuOpen = false;
+                SaveWorkDay("moved", moved.At, moved.ToHostname);
+            }
+        }
+        else if (Status?.DayCarry is { } carry
+            && Timer.CarryOn(carry.At, carry.WorkedSeconds, carry.BreakSeconds, carry.Breaks, carry.FirstStart))
+        {
+            SaveWorkDay("carried", carry.At, carry.FromHostname);
+        }
+    }
+
+    private void SaveWorkDay(string action, DateTimeOffset at, string? host)
+    {
+        _timerStore.Save(Timer);
+        _timerStore.AppendLog(action, Timer, at, host);
+        Log = DayLog.Read();
     }
 
     // ---- The owner's tasks (FR-20 v2) ------------------------------------------------------------
@@ -776,6 +810,11 @@ public sealed class TrayModel : IDisposable
     public bool HadLunch => DayLog.Today(Log, Now).Any(e => e.Label.Contains("Lunch", StringComparison.Ordinal));
 
     public IReadOnlyList<TimelineEvent> Timeline => DayLog.Today(Log, Now);
+
+    /// <summary>When the day first started, on whichever PC (a day that moved here began elsewhere).</summary>
+    public DateTimeOffset? DayStarted => DayLog.FirstStart(Timeline, Timer);
+
+    public int BreaksToday => DayLog.BreaksToday(Timeline, Timer);
 
     public int OpenTasks => TaskList.Count(t => !TaskBoard.Finished(t));
 

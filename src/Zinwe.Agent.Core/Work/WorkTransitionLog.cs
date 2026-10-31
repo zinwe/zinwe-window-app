@@ -117,7 +117,8 @@ public sealed class WorkTransitionLog(IWidgetFolder folder, string dataDirectory
         return [.. events.OrderBy(e => e.At).TakeLast(MaxPerHeartbeat)];
     }
 
-    private static WorkEvent? ToWire(LogLine l) => l.State switch
+    // "carried" and "moved" lines are the backend's own news coming back: never reported as a change.
+    private static WorkEvent? ToWire(LogLine l) => l.Action == "carried" ? null : l.State switch
     {
         "Working" => new WorkEvent(l.At, "working"),
         "OnBreak" => new WorkEvent(l.At, "on_break", l.BreakReason, l.BreakNote),
@@ -129,6 +130,7 @@ public sealed class WorkTransitionLog(IWidgetFolder folder, string dataDirectory
     private sealed class LogLine
     {
         public DateTimeOffset At { get; set; }
+        public string Action { get; set; } = "";
         public string State { get; set; } = "";
         public string? BreakReason { get; set; }
         public string? BreakNote { get; set; }
