@@ -30,15 +30,22 @@ public static class TraySeams
 
 /// <summary>
 /// SEAM 1 · Tasks. The owner's tasks for this member and the member's own to-dos, and every change the member makes
-/// (start, done, ask, can't, notes, steps). Today: a local file. Later: the service syncs them with the server
-/// (needs a task API on /api/devices/ and a pipe request), and <see cref="Changed"/> fires when the owner sends one.
+/// (start, done, ask, can't, notes, steps). Own to-dos live in a local file first; shared ones also go through the
+/// outbox and the service (<see cref="OwnTodos"/>). <see cref="Changed"/> will fire when the owner sends one.
 /// </summary>
 public interface ITaskSource
 {
     /// <summary>True while the list is the board's sample data, not the member's real tasks.</summary>
     bool IsSample { get; }
 
+    /// <summary>What the member sees (no deleted to-dos waiting to reach the server).</summary>
     IReadOnlyList<MemberTask> Load();
+
+    /// <summary>Every row, deleted to-dos waiting to reach the server too.</summary>
+    IReadOnlyList<MemberTask> LoadAll();
+
+    /// <summary>Puts a merged list in place (<see cref="OwnTodos.Merge"/>).</summary>
+    void ReplaceAll(IEnumerable<MemberTask> tasks);
 
     /// <summary>Adds or replaces the task with the same id.</summary>
     void Save(MemberTask task);
@@ -80,7 +87,15 @@ public sealed class LocalTaskSource : ITaskSource
 
     public event Action? Changed;
 
-    public IReadOnlyList<MemberTask> Load() => [.. _tasks];
+    public IReadOnlyList<MemberTask> Load() => [.. _tasks.Where(t => t.DeletedAt is null)];
+
+    public IReadOnlyList<MemberTask> LoadAll() => [.. _tasks];
+
+    public void ReplaceAll(IEnumerable<MemberTask> tasks)
+    {
+        _tasks = [.. tasks];
+        Write();
+    }
 
     public void Save(MemberTask task)
     {

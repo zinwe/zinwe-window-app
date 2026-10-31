@@ -68,7 +68,10 @@ public sealed record AgentStatus(
     int? TasksVersion = null,
     /// <summary>FR-44: the member's picture as the service holds it. Null = an older service without team pictures:
     /// the widget hides "Change picture" and shows initials.</summary>
-    PictureStatus? Picture = null);
+    PictureStatus? Picture = null,
+    /// <summary>Goes up whenever the member's own to-dos the service holds change (ask with the "todos" request). Null =
+    /// an older service without them: the widget writes no <c>todo</c> outbox items and its to-dos stay on this PC.</summary>
+    int? TodosVersion = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

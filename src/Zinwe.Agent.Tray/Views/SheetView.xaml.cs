@@ -59,8 +59,8 @@ public partial class SheetView : UserControl
             Sheet.Cant => ("Can’t do this task", task is null ? ""
                 : $"About “{task.Title}”. Tell {owner} why, in a few words. They can hand it to someone else or reply in Chat."),
             Sheet.Note => ($"Add a note for {owner}", "It stays on the task card."),
-            Sheet.NewTask => m.Form.EditId is null ? ("Add a to-do", "Just for you: it stays on this PC, under My to-dos.")
-                : ("Edit your to-do", "Change the name, date or steps."),
+            Sheet.NewTask => (m.Form.EditId is null ? "Add a to-do" : "Edit your to-do",
+                TaskBoard.FormHint(m.TaskList.FirstOrDefault(t => t.Id == m.Form.EditId), m.TodoSharingOn)),
             Sheet.Photo => ("Your picture", "Optional. It shows on your team card, here and in your header."),
             _ => ("Send feedback", ""),
         };

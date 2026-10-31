@@ -217,7 +217,7 @@ internal static class TaskCard
         var rule = new Border { Height = 1, Margin = new Thickness(0, 0, 0, 8) };
         rule.SetResourceReference(Border.BackgroundProperty, "Z.LineSoft");
         body.Children.Add(rule);
-        body.Children.Add(Ui.Text(t.Mine ? "Your own to-do · kept on this PC only"
+        body.Children.Add(Ui.Text(t.Mine ? TaskBoard.OwnLine(t, m.TodoSharingOn)
             : $"From {owner} · {Sent(t.SentAt, m.Now)}{(t.NeedsOk ? $" · {owner} checks it when it’s done" : "")}", 12, fg: "Z.Muted", wrap: true));
         if (t.Details.Length > 0)
         {
@@ -253,7 +253,7 @@ internal static class TaskCard
             l.Margin = new Thickness(0, 8, 0, 0);
             body.Children.Add(l);
         }
-        if (t.Queued && m.Offline)
+        if (TaskBoard.WaitsToSend(t) && m.Offline)
         {
             var q = Ui.Text("Saved on this PC · sends when you're back online", 12, FontWeights.SemiBold, "Z.WarnText", wrap: true);
             q.Margin = new Thickness(0, 8, 0, 0);

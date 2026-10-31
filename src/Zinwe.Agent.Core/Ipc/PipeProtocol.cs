@@ -59,6 +59,11 @@ public static class PipeProtocol
         /// </summary>
         public const string Tasks = "tasks";
         /// <summary>
+        /// The member's own to-dos the service last synced (<see cref="TodosReply"/>). The tray asks when
+        /// <see cref="AgentStatus.TodosVersion"/> changes; a status without it is an older service, never asked.
+        /// </summary>
+        public const string Todos = "todos";
+        /// <summary>
         /// FR-44: set or remove the member's picture (<see cref="Request.Picture"/>). The service keeps it in the outbox
         /// (sent when online) and answers at once; the status's <see cref="AgentStatus.Picture"/> shows it. A status
         /// without <see cref="AgentStatus.Picture"/> is an older service: the tray never sends this request to it.
@@ -92,6 +97,11 @@ public static class PipeProtocol
     /// service that doesn't know tasks never breaks the tray.
     /// </summary>
     public static TasksReply? DeserializeTasks(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.TasksReply);
+
+    public static string Serialize(TodosReply reply) => JsonSerializer.Serialize(reply, PipeJsonContext.Default.TodosReply);
+
+    /// <summary>A "todos" reply. Like <see cref="DeserializeTasks"/>, a <see cref="NotSupported"/> ack reads as <c>Supported = false</c>.</summary>
+    public static TodosReply? DeserializeTodos(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.TodosReply);
 
     /// <summary>Server side: read one request line. Returns null on a malformed or empty request.</summary>
     public static async Task<Request?> ReadRequestAsync(StreamReader reader, CancellationToken ct)
@@ -154,6 +164,23 @@ public static class AgentPipeClient
         try
         {
             return line is null ? null : PipeProtocol.DeserializeTasks(line) is { Supported: true } reply ? reply : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The member's own to-dos the service holds. Null when it isn't reachable or doesn't know them.</summary>
+    public static async Task<TodosReply?> GetTodosAsync(TimeSpan timeout, CancellationToken ct = default) =>
+        ParseTodos(await ExchangeAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Todos), timeout, ct));
+
+    /// <summary>A reply line → to-dos; null for nothing, garbage or a "not supported" answer.</summary>
+    internal static TodosReply? ParseTodos(string? line)
+    {
+        try
+        {
+            return line is null ? null : PipeProtocol.DeserializeTodos(line) is { Supported: true } reply ? reply : null;
         }
         catch (JsonException)
         {
@@ -227,6 +254,7 @@ public static class AgentPipeClient
 [JsonSerializable(typeof(PipeProtocol.EnrollAck))]
 [JsonSerializable(typeof(AgentStatus))]
 [JsonSerializable(typeof(TasksReply))]
+[JsonSerializable(typeof(TodosReply))]
 [JsonSerializable(typeof(PictureStatus))]
 [JsonSerializable(typeof(PictureChoice))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;

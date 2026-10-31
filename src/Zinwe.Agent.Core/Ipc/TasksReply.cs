@@ -28,3 +28,21 @@ public sealed record TasksReply(
     IReadOnlyList<DeviceTask>? Tasks = null,
     DateTimeOffset? SyncedAt = null,
     int Version = 0);
+
+/// <summary>
+/// The service's reply to a "todos" pipe request: the member's own to-dos as the backend last sent them, deleted ones
+/// included. Every member has a default, so a "not supported" ack reads as <see cref="Supported"/> = false. Add new
+/// members only as optional trailing parameters.
+/// </summary>
+/// <param name="Supported">True from a service that knows to-dos.</param>
+/// <param name="Backend">See <see cref="TaskBackend"/>. Off: an older backend or a plan without tasks; they stay on this PC.</param>
+/// <param name="MemberId">Whose list it is. Null until the first sync.</param>
+/// <param name="SyncedAt">When the agent last fetched them (after sending what was queued).</param>
+/// <param name="Version">Goes up whenever the list changes; also on the status (<see cref="AgentStatus.TodosVersion"/>).</param>
+public sealed record TodosReply(
+    bool Supported = false,
+    string Backend = TaskBackend.Unknown,
+    IReadOnlyList<DeviceTodo>? Todos = null,
+    long? MemberId = null,
+    DateTimeOffset? SyncedAt = null,
+    int Version = 0);

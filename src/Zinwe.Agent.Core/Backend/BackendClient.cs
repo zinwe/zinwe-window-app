@@ -155,6 +155,51 @@ public sealed class BackendClient
     }
 
     /// <summary>
+    /// GET /api/devices/todos/: the member's own to-dos, deleted ones included. Null when this backend has none for the
+    /// PC: an older backend (404), or a plan without tasks (403): they then stay on this PC. Throws on network errors,
+    /// 429 and 5xx so it's retried.
+    /// </summary>
+    public async Task<DeviceTodoList?> GetTodosAsync(string deviceToken, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(HttpMethod.Get, "api/devices/todos/", deviceToken, null, ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.MethodNotAllowed)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        var list = await ReadAsync(response, BackendJsonContext.Default.DeviceTodoList, ct);
+        return list with { Todos = [.. (list.Todos ?? []).Where(t => t is not null && t.ClientId.Length > 0)] };
+    }
+
+    /// <summary>
+    /// PUT or DELETE /api/devices/todos/&lt;client id&gt;/: one to-do as it stands now. Safe to send twice. See
+    /// <see cref="TodoWriteOutcome"/>; throws on network errors, 429 and 5xx so the outbox keeps it and retries.
+    /// </summary>
+    public async Task<TodoWriteOutcome> SendTodoAsync(string deviceToken, DeviceTodo todo, CancellationToken ct = default)
+    {
+        var path = $"api/devices/todos/{Uri.EscapeDataString(todo.ClientId)}/";
+        using var response = todo.Deleted
+            ? await SendAsDeviceAsync(
+                HttpMethod.Delete, path, deviceToken,
+                JsonBody(new TodoDeleteRequest(todo.UpdatedAt), BackendJsonContext.Default.TodoDeleteRequest), ct)
+            : await SendAsDeviceAsync(
+                HttpMethod.Put, path, deviceToken,
+                JsonBody(new TodoSaveRequest(todo.Title, todo.DueDate, todo.Steps ?? [], todo.Status, todo.UpdatedAt),
+                    BackendJsonContext.Default.TodoSaveRequest), ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.MethodNotAllowed)
+        {
+            return TodoWriteOutcome.Off;
+        }
+        var code = (int)response.StatusCode;
+        if (code is >= 400 and < 500 and not 429)
+        {
+            return TodoWriteOutcome.Refused;
+        }
+        response.EnsureSuccessStatusCode();
+        return TodoWriteOutcome.Done;
+    }
+
+    /// <summary>
     /// FR-44 · <c>PUT /api/devices/me/picture/</c> with a library avatar (<c>{"kind":"avatar","key":"a07"}</c>).
     /// See <see cref="PictureOutcome"/>; throws on network errors, 429 and 5xx so the outbox keeps it and retries.
     /// </summary>

@@ -1,7 +1,7 @@
 <UserControl x:Class="Zinwe.Agent.Tray.Views.TasksView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Tasks: Todo (overdue and today) + Status, Date and From dropdowns; groups Doing / To do / With {owner} / Done for the owner's tasks, then My to-dos (this PC only). -->
+    <!-- Tasks: Todo (overdue and today) + Status, Date and From dropdowns; groups Doing / To do / With {owner} / Done for the owner's tasks, then My to-dos. -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

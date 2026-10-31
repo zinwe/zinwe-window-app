@@ -74,6 +74,21 @@ public sealed record MemberTask
     public bool Mine { get; init; }
     public MemberTaskStatus Status { get; init; } = MemberTaskStatus.New;
     public DateTimeOffset SentAt { get; init; }
+    /// <summary>The day "Today" / "Tomorrow" meant when picked (they carry no <see cref="DueDate"/>): what the server gets.</summary>
+    public DateOnly? DueOn { get; init; }
+    /// <summary>
+    /// An own to-do's id on the server. Set = shared: the member's admin can see it and it follows them to a new PC.
+    /// Null = it stays on this PC (see <see cref="OwnTodos"/>).
+    /// </summary>
+    public string? ClientId { get; init; }
+    /// <summary>When the member last changed a shared to-do; the newest change wins.</summary>
+    public DateTimeOffset? UpdatedAt { get; init; }
+    /// <summary>The <see cref="UpdatedAt"/> the server last confirmed.</summary>
+    public DateTimeOffset? SyncedAt { get; init; }
+    /// <summary>The member (server id) a shared to-do belongs to; null until the first list from the server.</summary>
+    public long? SyncedFor { get; init; }
+    /// <summary>Deleted, and the server doesn't know yet: hidden, kept so the next pull doesn't bring it back.</summary>
+    public DateTimeOffset? DeletedAt { get; init; }
 }
 
 /// <summary>A filter on the Tasks tab. Every part combines with the others.</summary>
@@ -273,8 +288,26 @@ public static class TaskBoard
     public static int ChipCount(IEnumerable<MemberTask> tasks, string status, TaskFilter f, DateTimeOffset now) =>
         status == "all" ? 0 : tasks.Count(t => PassesStatus(t, status) && PassesOthers(t, f, now));
 
-    /// <summary>The group the member's own to-dos go in: kept apart from the owner's tasks (they stay on this PC).</summary>
+    /// <summary>The group the member's own to-dos go in: kept apart from the owner's tasks.</summary>
     public const string MyTodos = "My to-dos";
+
+    public const string SharedTodoHint = "Just for you and your admin: your admin can see it, and it follows you to a new PC.";
+    public const string LocalTodoHint = "Just for you: it stays on this PC, under My to-dos.";
+    public const string SharedTodoLine = "Your own to-do · your admin can see this";
+    public const string LocalTodoLine = "Your own to-do · kept on this PC only";
+
+    /// <summary>The line on an own to-do's card. One that reached the server stays visible to the admin even with sharing off.</summary>
+    public static string OwnLine(MemberTask t, bool sharingOn) =>
+        t.ClientId is not null && (sharingOn || t.SyncedAt is not null) ? SharedTodoLine : LocalTodoLine;
+
+    /// <summary>The add / edit sheet's line, said before the member saves. <paramref name="editing"/> is null for a new to-do.</summary>
+    public static string FormHint(MemberTask? editing, bool sharingOn) => editing is null
+        ? sharingOn ? SharedTodoHint : LocalTodoHint
+        : sharingOn && editing.ClientId is null ? "Save a change and your admin can see it, and it follows you to a new PC."
+        : "Change the name, date or steps.";
+
+    /// <summary>True when this task's waiting change really goes somewhere (an own to-do on this PC only never does).</summary>
+    public static bool WaitsToSend(MemberTask t) => t.Queued && (!t.Mine || t.ClientId is not null);
 
     public static IReadOnlyList<TaskGroup> Groups(IReadOnlyList<MemberTask> shown, string statusFilter, string ownerFirst)
     {
