@@ -305,9 +305,9 @@ public partial class WidgetWindow : Window
         MiniChevron.Visibility = Show(clocked);
         var (bg, border, fg, dot) = state switch
         {
-            WorkState.OnBreak => ("Z.WarnSoft", "Z.WarnLine", "Z.Ink", "Z.Warn"),
-            WorkState.Working => ("Z.Surface", "Z.Line", "Z.Ink", "Z.Ok"),
-            _ => ("Z.Orange", "Z.Orange", "Z.OnOrange", "Z.Ink3"),
+            WorkState.OnBreak => ("Z.Surface", "Z.Line2", "Z.Ink", "Z.Warn"),
+            WorkState.Working => ("Z.Surface", "Z.Line2", "Z.Ink", "Z.Orange"),
+            _ => ("Z.Inv", "Z.Inv", "Z.OnInv", "Z.Muted"),
         };
         MiniPill.SetResourceReference(BackgroundProperty, bg);
         MiniPill.SetResourceReference(BorderBrushProperty, border);
@@ -343,7 +343,7 @@ public partial class WidgetWindow : Window
 
     private static (string Label, string Bg, string Fg) Pill(WorkState state) => state switch
     {
-        WorkState.Working => ("Working", "Z.OkTint", "Z.Ok"),
+        WorkState.Working => ("Working", "Z.OrangeTint", "Z.OrangeInk"),
         WorkState.OnBreak => ("On break", "Z.WarnTint", "Z.Warn"),
         WorkState.Ended => ("Day ended", "Z.Fill", "Z.Muted"),
         _ => ("Not in", "Z.Fill", "Z.Muted"),
@@ -357,8 +357,8 @@ public partial class WidgetWindow : Window
         StripPillText.Text = label;
         StripPill.SetResourceReference(Border.BackgroundProperty, bg);
         StripPillText.SetResourceReference(TextBlock.ForegroundProperty, fg);
-        Strip.SetResourceReference(Border.BackgroundProperty, state == WorkState.OnBreak ? "Z.WarnSoft" : "Z.Surface");
-        Strip.SetResourceReference(Border.BorderBrushProperty, state == WorkState.OnBreak ? "Z.WarnLine" : "Z.Line");
+        Strip.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
+        Strip.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
         BigTime.Text = DayLog.Hm(m.Running);
         AutomationProperties.SetName(BigTime, (state == WorkState.OnBreak ? "Break time now: " : "Work time today: ") + DayLog.HoursMinutes(m.Running));
         StartDayButton.Visibility = Show(state == WorkState.NotStarted);
@@ -390,8 +390,8 @@ public partial class WidgetWindow : Window
         {
             return;
         }
-        FocusKicker.Text = _focusNow ? "NOW" : "UP NEXT";
-        FocusKicker.SetResourceReference(TextBlock.ForegroundProperty, _focusNow ? "Z.Link" : "Z.Muted");
+        FocusKicker.Text = _focusNow ? "Now" : "Up next";
+        FocusKicker.SetResourceReference(TextBlock.ForegroundProperty, "Z.Muted");
         var tone = TaskBoard.DueToneOf(t, m.Now);
         FocusDue.Text = TaskBoard.DueLabel(t, m.Now);
         FocusDue.FontWeight = tone == DueTone.Late ? FontWeights.Bold : tone == DueTone.Soon ? FontWeights.SemiBold : FontWeights.Normal;
@@ -399,10 +399,10 @@ public partial class WidgetWindow : Window
         FocusTitle.Content = t.Title;
         AutomationProperties.SetName(FocusTitle, "Open " + t.Title);
         FocusCta.Content = _focusNow ? "Mark done" : TaskBoard.NeedsConfirm(t) ? "Confirm & start" : "Start";
-        FocusCta.Style = (Style)FindResource(_focusNow ? "Z.BtnSm.Pri" : "Z.BtnSm.Dark");
+        FocusCta.Style = (Style)FindResource("Z.BtnSm.Pri");
         AutomationProperties.SetName(FocusCta, FocusCta.Content + ": " + t.Title);
-        FocusCard.SetResourceReference(Border.BackgroundProperty, _focusNow ? "Z.AccentSoft" : "Z.Surface");
-        FocusCard.SetResourceReference(Border.BorderBrushProperty, _focusNow ? "Z.AccentLine" : "Z.Line2");
+        FocusCard.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
+        FocusCard.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
         FocusSteps.Visibility = Show(t.Steps.Count > 0);
         if (t.Steps.Count > 0)
         {

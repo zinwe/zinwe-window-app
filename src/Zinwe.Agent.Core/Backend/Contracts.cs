@@ -104,9 +104,10 @@ public sealed record EventUploadRequest(EventUpload[] Events);
 /// <param name="ReadByMember">Server-side "the member has read it" (only meaningful for owner lines).</param>
 /// <param name="Kind">"task" on the line the owner's new task created (FR-20 v2); null/other on older backends.</param>
 /// <param name="Task">The task that line carries (FR-20 v2): the widget draws a task card instead of a bubble.</param>
+/// <param name="ReadByOwner">Server-side "the owner has read it" (only meaningful for the member's lines): "Seen" in the chat.</param>
 public sealed record AgentMessage(
     long Id, string Title, string? Body, string Severity, DateTimeOffset CreatedAt, string Sender = "owner",
-    bool ReadByMember = false, string? Kind = null, DeviceTask? Task = null);
+    bool ReadByMember = false, string? Kind = null, DeviceTask? Task = null, bool ReadByOwner = false);
 
 /// <summary>
 /// A task the owner gave this PC's member (FR-20 v2, GET /api/devices/tasks/). Status: sent → seen → accepted →

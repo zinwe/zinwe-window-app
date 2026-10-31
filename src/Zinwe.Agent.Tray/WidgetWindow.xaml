@@ -16,7 +16,7 @@
 
     <!--
         Zinwe for Windows, tray app v2 (prototype board "WinApp"): a phone-width window that opens above the taskbar,
-        bottom right, and minimizes to its taskbar icon. Bottom tabs Home · Chat · Tasks · Me; pushed screens
+        bottom right, and minimizes to its taskbar icon. Theme: the admin panel's (hairlines, black primary buttons, orange for state only). Bottom tabs Home · Chat · Tasks · Me; pushed screens
         (My time, Policies & terms, Settings, Notifications, Help) with a Back arrow; reasons, task questions and the
         profile photo as bottom sheets. The views (Views/*) render from one TrayModel.
     -->
@@ -48,13 +48,13 @@
         </Grid.RowDefinitions>
 
         <!-- Title bar: the official Zinwe wordmark, minimize and close (both keep Zinwe running in the taskbar). -->
-        <Grid Background="{DynamicResource Z.Fill}">
+        <Grid Background="{DynamicResource Z.Surface}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
                 <Image x:Name="TitleLogo" Source="{DynamicResource Z.Wordmark}" Height="14" Stretch="Uniform"
                        RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" AutomationProperties.Name="Zinwe" />
                 <TextBlock x:Name="TitleText" FontSize="12" Margin="6,0,0,0" Foreground="{DynamicResource Z.Ink2}"
@@ -73,7 +73,7 @@
         </Grid>
 
         <!-- Header: Back or the official Zinwe mark, the screen title with one useful line under it, the work pill + menu. -->
-        <Border Grid.Row="1" Height="56" Margin="0,0,0,8" Background="{DynamicResource Z.Bg}"
+        <Border Grid.Row="1" Height="56" Margin="0,0,0,8" Background="{DynamicResource Z.Surface}"
                 BorderBrush="{DynamicResource Z.Line}" BorderThickness="0,0,0,1" Padding="14,0,12,0">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -102,11 +102,11 @@
                 </StackPanel>
                 <!-- The compact work pill (every screen but Home): time + a small menu. -->
                 <Button x:Name="MiniPill" Grid.Column="2" Click="OnMiniPill" Cursor="Hand" Visibility="Collapsed"
-                        FocusVisualStyle="{StaticResource Z.FocusRing}" MinHeight="44">
+                        FocusVisualStyle="{StaticResource Z.FocusRing}" MinHeight="44" FontFamily="{DynamicResource Z.Mono}">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Grid Background="Transparent">
-                                <Border x:Name="b" MinHeight="34" CornerRadius="17" Padding="11,0,10,0" VerticalAlignment="Center"
+                                <Border x:Name="b" MinHeight="34" CornerRadius="8" Padding="10,0,10,0" VerticalAlignment="Center"
                                         Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                         BorderThickness="1">
                                     <ContentPresenter VerticalAlignment="Center" />
@@ -115,8 +115,8 @@
                         </ControlTemplate>
                     </Button.Template>
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="MiniDot" Width="9" Height="9" VerticalAlignment="Center" />
-                        <TextBlock x:Name="MiniText" FontSize="13" FontWeight="Bold" Margin="7,0,0,0" VerticalAlignment="Center" />
+                        <Ellipse x:Name="MiniDot" Width="7" Height="7" VerticalAlignment="Center" />
+                        <TextBlock x:Name="MiniText" FontSize="12" FontWeight="SemiBold" Margin="7,0,0,0" VerticalAlignment="Center" />
                         <Path x:Name="MiniChevron" Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource Z.Muted}" StrokeThickness="2"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Margin="7,1,0,0" VerticalAlignment="Center" />
                     </StackPanel>
@@ -124,14 +124,14 @@
                 <Popup x:Name="WorkMenu" Grid.Column="2" PlacementTarget="{Binding ElementName=MiniPill}" Placement="Custom"
                        StaysOpen="False" AllowsTransparency="True" Closed="OnWorkMenuClosed">
                     <Border Width="236" Margin="0,0,8,12" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}"
-                            BorderThickness="1" CornerRadius="14" Padding="6" KeyDown="OnWorkMenuKey">
+                            BorderThickness="1" CornerRadius="12" Padding="4" KeyDown="OnWorkMenuKey">
                         <Border.Effect>
                             <DropShadowEffect BlurRadius="24" ShadowDepth="8" Opacity="0.18" Direction="270" Color="#141210" />
                         </Border.Effect>
                         <StackPanel x:Name="WorkMenuItems" KeyboardNavigation.DirectionalNavigation="Cycle">
                             <WrapPanel Margin="8,6,8,8">
-                                <Border x:Name="MenuPill" CornerRadius="10" Padding="9,2" Margin="0,0,8,0">
-                                    <TextBlock x:Name="MenuPillText" FontSize="12" FontWeight="Bold" />
+                                <Border x:Name="MenuPill" CornerRadius="6" Padding="7,2" Margin="0,0,8,0">
+                                    <TextBlock x:Name="MenuPillText" FontSize="12" FontWeight="SemiBold" />
                                 </Border>
                                 <TextBlock x:Name="MenuSince" FontSize="12" Foreground="{DynamicResource Z.Muted}" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis" />
@@ -157,11 +157,11 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="62" />
+                    <RowDefinition Height="60" />
                 </Grid.RowDefinitions>
 
                 <!-- The work strip (Home only): pill, hours and minutes, the buttons that make sense now. -->
-                <Border x:Name="Strip" Margin="12,0,12,10" CornerRadius="14" Padding="12,4,4,4" BorderThickness="1">
+                <Border x:Name="Strip" Margin="12,4,12,12" CornerRadius="12" Padding="12,4,8,4" BorderThickness="1">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -169,10 +169,10 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Border x:Name="StripPill" CornerRadius="10" Padding="9,2" VerticalAlignment="Center">
-                            <TextBlock x:Name="StripPillText" FontSize="12" FontWeight="Bold" />
+                        <Border x:Name="StripPill" CornerRadius="6" Padding="7,2" VerticalAlignment="Center">
+                            <TextBlock x:Name="StripPillText" FontSize="12" FontWeight="SemiBold" />
                         </Border>
-                        <TextBlock x:Name="BigTime" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="18" FontWeight="Bold"
+                        <TextBlock x:Name="BigTime" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="18" FontWeight="SemiBold"
                                    Margin="8,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
                         <StackPanel Grid.Column="3" Orientation="Horizontal">
                             <Button x:Name="StartDayButton" Style="{StaticResource Z.BtnSm.Pri}" Content="Start day" Click="OnStartDay" />
@@ -204,7 +204,7 @@
                 </StackPanel>
 
                 <!-- The task in focus (Home only): NOW / UP NEXT. -->
-                <Border x:Name="FocusCard" Grid.Row="2" Margin="12,0,12,10" CornerRadius="14" Padding="12,9,10,10" BorderThickness="1">
+                <Border x:Name="FocusCard" Grid.Row="2" Margin="12,0,12,12" CornerRadius="12" Padding="12,10,8,10" BorderThickness="1">
                     <StackPanel>
                         <Grid>
                             <TextBlock x:Name="FocusKicker" Style="{StaticResource Z.Lbl}" />
@@ -220,7 +220,7 @@
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Grid Background="Transparent">
-                                            <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" FontWeight="Bold"
+                                            <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" FontWeight="SemiBold"
                                                        FontSize="13.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                         </Grid>
                                     </ControlTemplate>
@@ -233,8 +233,8 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Height="5" CornerRadius="3" Background="{DynamicResource Z.ProgressTrack}" VerticalAlignment="Center" ClipToBounds="True">
-                                <Border x:Name="FocusBar" HorizontalAlignment="Left" CornerRadius="3" Background="{DynamicResource Z.Progress}" />
+                            <Border Height="4" CornerRadius="2" Background="{DynamicResource Z.LineSoft}" VerticalAlignment="Center" ClipToBounds="True">
+                                <Border x:Name="FocusBar" HorizontalAlignment="Left" CornerRadius="2" Background="{DynamicResource Z.Progress}" />
                             </Border>
                             <TextBlock x:Name="FocusStepsText" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="12"
                                        Foreground="{DynamicResource Z.Muted}" Margin="8,0,0,0" />

@@ -8,7 +8,9 @@ namespace Zinwe.Agent.Core.Messages;
 /// widget's notification file, and reports "read" once the member has opened the admin's messages.
 /// Run on its own short loop (see AgentWorker), not on the heartbeat.
 /// Best-effort: network/HTTP failures are logged and retried next round (a real 401 is handled by the
-/// heartbeat path, which owns the device-rejected state). Never throws to the caller except on cancellation.
+/// heartbeat path, which owns the device-rejected state). Sending and fetching are independent: a reply that can't be
+/// posted never stops the owner's messages arriving. A reply the backend refuses for good stays in the outbox as
+/// "Not sent" for the member to retry or delete. Never throws to the caller except on cancellation.
 /// </summary>
 public sealed class MessageSync(BackendClient backend, NotificationWriter writer, MessageOutbox outbox, ILogger<MessageSync> logger)
 {
@@ -31,7 +33,14 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
 
             // 1) Push any replies the member typed in the widget, so they reach the admin...
             await DrainOutboxAsync(deviceToken, ct);
+        }
+        catch (Exception e) when (IsDeferred(e, ct))
+        {
+            logger.LogDebug("Message send deferred: {Error}", e.Message);
+        }
 
+        try
+        {
             // 2) ...then pull the whole conversation (both directions) into the widget.
             var messages = await backend.GetMessagesAsync(deviceToken, ct);
             var added = writer.MergeChat(messages);
@@ -52,7 +61,7 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
                 await backend.MarkMessagesReadAsync(deviceToken, ct);
             }
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception e) when (IsDeferred(e, ct))
         {
             logger.LogDebug("Message sync deferred: {Error}", e.Message);
         }
@@ -61,6 +70,17 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
             logger.LogError(e, "Could not write delivered messages to the widget file");
         }
     }
+
+    private static bool IsDeferred(Exception e, CancellationToken ct) =>
+        e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested;
+
+    /// <summary>
+    /// A 4xx that sending again won't fix (not linked to a member, the plan has no chat, bad text). Not 401 (the
+    /// heartbeat handles it), 408 or 429 (try again later).
+    /// </summary>
+    private static bool IsRefused(HttpRequestException e) =>
+        e.StatusCode is { } code && (int)code is >= 400 and < 500
+        && code is not (System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests);
 
     private async Task DrainFeedbackAsync(string deviceToken, CancellationToken ct)
     {
@@ -86,27 +106,40 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
         }
     }
 
-    /// <summary>Post each pending member reply; remove the ones that went through. Stops on the first network error.</summary>
+    /// <summary>
+    /// Post each sendable member reply and remove the ones that went through. A refused reply is marked and the next one
+    /// still goes; a network error stops the round (the rest wait for the next one, in order).
+    /// </summary>
     private async Task DrainOutboxAsync(string deviceToken, CancellationToken ct)
     {
-        var pending = outbox.Pending();
+        var pending = outbox.Sendable();
         if (pending.Count == 0)
         {
             return;
         }
         var posted = new List<string>();
+        var refused = new List<string>();
         try
         {
             foreach (var reply in pending)
             {
-                await backend.ReplyAsync(deviceToken, reply.Body, ct);
-                posted.Add(reply.Id); // only after a confirmed 2xx, so we never double-send
+                try
+                {
+                    await backend.ReplyAsync(deviceToken, reply.Body, ct);
+                    posted.Add(reply.Id); // only after a confirmed 2xx, so we never double-send
+                }
+                catch (HttpRequestException e) when (IsRefused(e))
+                {
+                    logger.LogWarning("The backend refused a member reply ({Status}); shown as not sent", (int?)e.StatusCode);
+                    refused.Add(reply.Id);
+                }
             }
         }
         finally
         {
             // Remove everything confirmed-sent even if a later one failed (prevents re-sending duplicates).
             outbox.Remove(posted);
+            outbox.MarkRefused(refused);
             if (posted.Count > 0)
             {
                 logger.LogInformation("Sent {Count} member reply(ies)", posted.Count);

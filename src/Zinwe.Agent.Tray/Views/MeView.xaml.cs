@@ -69,6 +69,7 @@ public partial class MeView : UserControl
         {
             Items.Children.Add(Ui.ListRow(Ui.Tile(icon, 32, "Z.Bg", "Z.Ink3"), label, sub, run));
         }
+        Ui.EndList(Items);
 
         Update.Model = m;
         Update.Render();

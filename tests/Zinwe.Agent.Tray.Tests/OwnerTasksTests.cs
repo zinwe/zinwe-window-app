@@ -238,12 +238,12 @@ public sealed class OwnerTasksTests : IDisposable
 
         var groups = TaskBoard.Groups(TaskBoard.Shown(tasks, TaskFilter.None, Now), "all", "Ananya");
 
-        Assert.Equal(["DOING", "DONE", TaskBoard.MyTodos], groups.Select(g => g.Label));
+        Assert.Equal(["Doing", "Done", TaskBoard.MyTodos], groups.Select(g => g.Label));
         Assert.Equal([1, 2], groups[^1].Items.Select(t => t.Id)); // open first
         Assert.All(groups.Take(2).SelectMany(g => g.Items), t => Assert.False(t.Mine));
 
         var done = TaskBoard.Groups(TaskBoard.Shown(tasks, new TaskFilter(Status: "done"), Now), "done", "Ananya");
-        Assert.Equal(["DONE", TaskBoard.MyTodos], done.Select(g => g.Label));
+        Assert.Equal(["Done", TaskBoard.MyTodos], done.Select(g => g.Label));
     }
 
     [Fact]

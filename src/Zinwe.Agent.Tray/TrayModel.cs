@@ -162,6 +162,8 @@ public sealed class TrayModel : IDisposable
     // Tasks
     public TaskFilter Filter { get; private set; } = TaskFilter.None;
     public int? OpenCard { get; private set; }
+    /// <summary>The task whose Log is open.</summary>
+    public int? OpenLog { get; private set; }
     public int? FocusId { get; private set; }
     public int? SelTask { get; private set; }
     public string TaskReason { get; private set; } = "";
@@ -1329,6 +1331,28 @@ public sealed class TrayModel : IDisposable
     public void CancelReply()
     {
         ReplyTo = null;
+        Raise();
+    }
+
+    /// <summary>A reply the backend refused: post it again on the agent's next round.</summary>
+    public void RetryReply(ThreadRow row)
+    {
+        _outbox.Retry(OutboxId(row));
+        Raise();
+    }
+
+    /// <summary>A reply the backend refused: the member gives up on it.</summary>
+    public void DeleteReply(ThreadRow row)
+    {
+        _outbox.TryRemove(OutboxId(row));
+        Raise();
+    }
+
+    private static string OutboxId(ThreadRow row) => row.Key["pending:".Length..];
+
+    public void ToggleLog(int id)
+    {
+        OpenLog = OpenLog == id ? null : id;
         Raise();
     }
 

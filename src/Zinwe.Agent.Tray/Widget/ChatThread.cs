@@ -16,13 +16,17 @@ public sealed record ThreadRow
     public ThreadKind Kind { get; init; }
     public bool Mine { get; init; }
     public string Text { get; init; } = "";
-    /// <summary>"Ananya · 10:02 AM", "You · 1:10 PM", "You · Sending…".</summary>
+    /// <summary>"10:02 AM", "1:10 PM · Seen", "Sending…", "Not sent".</summary>
     public string Meta { get; init; } = "";
-    /// <summary>Last bubble of a run from the same person: the avatar shows next to it.</summary>
+    /// <summary>Last bubble of a run from the owner: their avatar shows next to it (the member's own bubbles have none).</summary>
     public bool HasAvatar { get; init; }
     public Quote? Quote { get; init; }
     public MemberTask? Task { get; init; }
     public bool Pending { get; init; }
+    /// <summary>The backend refused this reply: "Not sent", with Retry and Delete.</summary>
+    public bool Failed { get; init; }
+    /// <summary>The owner has read this line of the member's.</summary>
+    public bool Seen { get; init; }
     /// <summary>Sys lines: false = an approval ("ok"), true = a decision against ("no").</summary>
     public bool ToneNo { get; init; }
     /// <summary>An "Important" / "Urgent" admin message.</summary>
@@ -64,8 +68,7 @@ public static class ChatThread
             if (i.TaskId is { } taskId && owners.FirstOrDefault(t => t.RemoteId == taskId) is { } live)
             {
                 carded.Add(live.Id);
-                rows.Add(new ThreadRow { Key = "task:" + live.Id, Kind = ThreadKind.Task, Task = live, At = i.CreatedAtUtc,
-                    Meta = ownerFirst + " · " + i.CreatedAtUtc.ToLocalTime().ToString("h:mm tt") });
+                rows.Add(new ThreadRow { Key = "task:" + live.Id, Kind = ThreadKind.Task, Task = live, At = i.CreatedAtUtc });
                 continue;
             }
             if (i.IsFromAdmin && ChatFeed.IsBreakNotApproved(i))
@@ -82,28 +85,30 @@ public static class ChatThread
             {
                 Key = i.Id, Kind = ThreadKind.Text, Mine = mine, At = i.CreatedAtUtc,
                 Text = head.Length > 0 ? head + "\n" + body : body,
-                Meta = (mine ? "You" : ownerFirst) + " · " + i.CreatedAtUtc.ToLocalTime().ToString("h:mm tt"),
+                Meta = i.CreatedAtUtc.ToLocalTime().ToString("h:mm tt"), Seen = mine && i.ReadByOwner,
                 Quote = mine ? ReplyQuotes.Find(quotes, body, i.CreatedAtUtc) : null,
                 Importance = !mine && severity is "warning" or "critical" ? (severity == "critical" ? "Urgent" : "Important") : null,
             });
         }
         foreach (var t in owners.Where(t => !carded.Contains(t.Id)))
         {
-            rows.Add(new ThreadRow { Key = "task:" + t.Id, Kind = ThreadKind.Task, Task = t, At = t.SentAt,
-                Meta = ownerFirst + " · " + t.SentAt.ToLocalTime().ToString("h:mm tt") });
+            rows.Add(new ThreadRow { Key = "task:" + t.Id, Kind = ThreadKind.Task, Task = t, At = t.SentAt });
         }
         rows = [.. rows.OrderBy(r => r.At)];
         foreach (var p in pending.OrderBy(p => p.CreatedAtUtc))
         {
             rows.Add(new ThreadRow
             {
-                Key = "pending:" + p.Id, Kind = ThreadKind.Text, Mine = true, Pending = true, At = p.CreatedAtUtc, Text = p.Body,
-                Meta = "You · " + (offline ? p.CreatedAtUtc.ToLocalTime().ToString("h:mm tt") + " · sends when online" : "Sending…"),
+                Key = "pending:" + p.Id, Kind = ThreadKind.Text, Mine = true, Pending = !p.Refused, Failed = p.Refused, At = p.CreatedAtUtc, Text = p.Body,
+                Meta = p.Refused ? "Not sent" : offline ? p.CreatedAtUtc.ToLocalTime().ToString("h:mm tt") + " · sends when online" : "Sending…",
                 Quote = ReplyQuotes.Find(quotes, p.Body, p.CreatedAtUtc),
             });
         }
 
-        // Date chips, and the avatar on the last bubble of each run.
+        // "Seen" belongs to the newest line the owner has read, not to every line above it.
+        var seenAt = rows.FindLastIndex(r => r.Seen);
+
+        // Date lines, and the owner's avatar on the last bubble of each run.
         var result = new List<ThreadRow>(rows.Count + 4);
         DateTime? day = null;
         for (var n = 0; n < rows.Count; n++)
@@ -117,9 +122,8 @@ public static class ChatThread
                     Text = ChatFeed.DayLabel(rowDay, now.ToLocalTime().Date) });
             }
             var next = n + 1 < rows.Count ? rows[n + 1] : null;
-            var sameRun = next is not null && next.At.ToLocalTime().Date == rowDay && next.Mine == row.Mine && next.Kind != ThreadKind.Sys
-                && row.Kind != ThreadKind.Sys;
-            result.Add(row with { HasAvatar = row.Kind != ThreadKind.Sys && !sameRun });
+            var sameRun = next is not null && next.At.ToLocalTime().Date == rowDay && next.Mine == row.Mine && next.Kind == ThreadKind.Text;
+            result.Add(row with { HasAvatar = row.Kind == ThreadKind.Text && !row.Mine && !sameRun, Meta = n == seenAt ? row.Meta + " · Seen" : row.Meta });
         }
         return result;
     }

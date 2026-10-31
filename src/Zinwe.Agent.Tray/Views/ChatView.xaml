@@ -1,7 +1,7 @@
 <UserControl x:Class="Zinwe.Agent.Tray.Views.ChatView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Chat (WhatsApp style): date chips, avatars on the last bubble of a run, reply with a quote, task cards. -->
+    <!-- Chat: date lines, the owner's avatar on the last bubble of a run, "Reply" as plain text, task cards. -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -14,50 +14,53 @@
                        AutomationProperties.LiveSetting="Polite" />
         </Border>
         <ScrollViewer x:Name="Scroller" Grid.Row="1" Style="{StaticResource Z.Scroll}" ScrollChanged="OnScrollChanged">
-            <StackPanel x:Name="Log" Margin="12,10,12,10" AutomationProperties.Name="Chat" AutomationProperties.LiveSetting="Polite" />
+            <StackPanel x:Name="Log" Margin="12,4,12,0" AutomationProperties.Name="Chat" AutomationProperties.LiveSetting="Polite" />
         </ScrollViewer>
         <TextBlock x:Name="EmptyState" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                    TextWrapping="Wrap" Margin="28,0" FontSize="12.5" Foreground="{DynamicResource Z.Muted}" Visibility="Collapsed" />
+        <Button x:Name="JumpButton" Grid.Row="1" Style="{StaticResource Z.JumpBtn}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,10" Click="OnJump" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="JumpText" VerticalAlignment="Center" />
+                <Path Data="M12 5v14M6 13l6 6 6-6" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="12" Height="12" Stretch="Uniform"
+                      Margin="6,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
 
         <Border Grid.Row="2" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}" BorderThickness="0,1,0,0"
-                Padding="10,8,10,10">
+                Padding="12,4,12,12">
             <StackPanel>
-                <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
-                    <StackPanel x:Name="QuickReplies" Orientation="Horizontal" AutomationProperties.Name="Quick replies" />
-                </ScrollViewer>
-                <Border x:Name="ReplyBar" CornerRadius="12" Background="{DynamicResource Z.Bg}" Padding="12,4,4,4" Margin="0,6,0,0" Visibility="Collapsed">
+                <Border x:Name="QuickHost" Height="0" Opacity="0" ClipToBounds="True">
+                    <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                        <StackPanel x:Name="QuickReplies" Orientation="Horizontal" AutomationProperties.Name="Quick replies" />
+                    </ScrollViewer>
+                </Border>
+                <Border x:Name="ReplyBar" CornerRadius="8" Background="{DynamicResource Z.Fill}" Padding="12,4,4,4" Margin="0,4,0,4" Visibility="Collapsed">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock x:Name="ReplyWho" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource Z.Link}" />
-                            <TextBlock x:Name="ReplyText" FontSize="12.5" Foreground="{DynamicResource Z.Ink2}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ReplyWho" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink}" />
+                            <TextBlock x:Name="ReplyText" FontSize="12" Foreground="{DynamicResource Z.Ink2}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <Button Grid.Column="1" Style="{StaticResource Z.IconBtn}" Width="40" Height="40" Content="×" FontSize="18"
+                        <Button Grid.Column="1" Style="{StaticResource Z.IconBtn}" Width="34" Height="34" Content="×" FontSize="18"
                                 AutomationProperties.Name="Cancel reply" Click="OnCancelReply" />
                     </Grid>
                 </Border>
                 <!-- Composer -->
-                <Border x:Name="Composer" CornerRadius="22" BorderThickness="1" BorderBrush="{DynamicResource Z.Line2}" Background="{DynamicResource Z.Surface}"
-                        Padding="4" Margin="0,8,0,0">
+                <Border x:Name="Composer" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource Z.Line2}" Background="{DynamicResource Z.Surface}"
+                        Padding="12,3,3,3" Margin="0,4,0,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="AttachButton" Style="{StaticResource Z.IconBtn}" Width="40" Height="40" VerticalAlignment="Bottom"
-                                IsEnabled="False" AutomationProperties.Name="Attach a file (coming with a later update)"
-                                ToolTip="Sending files comes with a later Zinwe update" ToolTipService.ShowOnDisabled="True">
-                            <Path Data="m21 11-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L15 7.6"
-                                  Stroke="{DynamicResource Z.Ink3}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  StrokeLineJoin="Round" Width="18" Height="18" Stretch="Uniform" />
-                        </Button>
-                        <TextBox x:Name="Input" Grid.Column="1" BorderThickness="0" Background="Transparent" MinHeight="36" MaxHeight="96"
+                        <TextBox x:Name="Input" BorderThickness="0" Background="Transparent" MinHeight="32" MaxHeight="96"
                                  AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MaxLength="2000"
-                                 VerticalContentAlignment="Center" Padding="2,8" FontSize="13.5" Foreground="{DynamicResource Z.Ink}"
+                                 VerticalContentAlignment="Center" Padding="0,6" FontSize="13.5" Foreground="{DynamicResource Z.Ink}"
                                  CaretBrush="{DynamicResource Z.Ink}" FocusVisualStyle="{x:Null}"
                                  PreviewKeyDown="OnInputKeyDown" TextChanged="OnInputChanged" GotKeyboardFocus="OnInputFocus" LostKeyboardFocus="OnInputFocus">
                             <TextBox.Template>
@@ -77,30 +80,16 @@
                                 </ControlTemplate>
                             </TextBox.Template>
                         </TextBox>
-                        <Button x:Name="SendButton" Grid.Column="2" Width="40" Height="40" VerticalAlignment="Bottom" Click="OnSend"
-                                AutomationProperties.Name="Send" Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}" IsEnabled="False">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Grid Background="Transparent">
-                                        <Border x:Name="b" Width="36" Height="36" CornerRadius="18" Background="{DynamicResource Z.Orange}">
-                                            <Path x:Name="p" Data="M22 2 11 13M22 2l-7 20-4-9-9-4z" Stroke="{DynamicResource Z.OnOrange}" StrokeThickness="2.2"
-                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="17" Height="17"
-                                                  Stretch="Uniform" />
-                                        </Border>
-                                    </Grid>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsEnabled" Value="False">
-                                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Z.Fill}" />
-                                            <Setter TargetName="p" Property="Stroke" Value="{DynamicResource Z.Muted}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Button.Template>
+                        <Button x:Name="SendButton" Grid.Column="1" Style="{StaticResource Z.SendBtn}" VerticalAlignment="Bottom" Margin="6,0,0,0" Click="OnSend"
+                                AutomationProperties.Name="Send" IsEnabled="False">
+                            <Path x:Name="SendGlyph" Data="M12 19V5M6 11l6-6 6 6" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16"
+                                  Stretch="Uniform" />
                         </Button>
                     </Grid>
                 </Border>
-                <TextBlock x:Name="ComposerNote" FontSize="12" Foreground="{DynamicResource Z.Muted}" Margin="14,6,0,0" />
-                <TextBlock x:Name="SendError" FontSize="12" Foreground="{DynamicResource Z.RedText}" Margin="14,4,0,0" Visibility="Collapsed"
+                <TextBlock x:Name="ComposerNote" FontSize="12" Foreground="{DynamicResource Z.Muted}" Margin="0,6,0,0" Visibility="Collapsed" />
+                <TextBlock x:Name="SendError" FontSize="12" Foreground="{DynamicResource Z.RedText}" Margin="0,4,0,0" Visibility="Collapsed"
                            AutomationProperties.LiveSetting="Assertive" />
             </StackPanel>
         </Border>

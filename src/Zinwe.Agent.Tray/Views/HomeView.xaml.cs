@@ -40,6 +40,7 @@ public partial class HomeView : UserControl
             };
             NeedsList.Children.Add(Ui.ListRow(Ui.Tile(icon, 34, bg, fg, 10), title, sub, run));
         }
+        Ui.EndList(NeedsList);
         NeedsCount.Text = needs.Count > 0 ? needs.Count.ToString() : "";
         NoNeeds.Visibility = needs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 

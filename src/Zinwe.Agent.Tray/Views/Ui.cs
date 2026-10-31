@@ -68,6 +68,14 @@ internal static class Ui
         return t;
     }
 
+    /// <summary>Centres a piece of a line on its row, with space either side (the "·" between two words).</summary>
+    public static TextBlock Centered(this TextBlock t, double side = 0)
+    {
+        t.VerticalAlignment = VerticalAlignment.Center;
+        t.Margin = new Thickness(side, 0, side, 0);
+        return t;
+    }
+
     /// <summary>A stroked 24-unit icon drawn at <paramref name="size"/> px.</summary>
     public static FrameworkElement Glyph(string data, double size, string strokeKey = "Z.Ink3", double thickness = 2)
     {
@@ -93,7 +101,7 @@ internal static class Ui
             Child = Glyph(icon, iconSize, fgKey, 2.1),
         }.Res(Border.BackgroundProperty, bgKey);
 
-    public static Border Card(UIElement child, double radius = 16, Thickness? padding = null) =>
+    public static Border Card(UIElement child, double radius = 12, Thickness? padding = null) =>
         new Border
         {
             CornerRadius = new CornerRadius(radius), BorderThickness = new Thickness(1), Child = child,
@@ -144,6 +152,15 @@ internal static class Ui
         return b;
     }
 
+    /// <summary>The last row of a card's list: no rule under it (it would poke past the card's rounded corners).</summary>
+    public static void EndList(Panel list)
+    {
+        if (list.Children.Count > 0 && list.Children[^1] is Control last)
+        {
+            last.BorderThickness = new Thickness(0);
+        }
+    }
+
     public static Ellipse Dot(double size, string key)
     {
         var e = new Ellipse { Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
@@ -155,8 +172,8 @@ internal static class Ui
     public static Border Pill(string text, string bgKey, string fgKey, double size = 12, FontWeight? weight = null) =>
         new Border
         {
-            CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 1, 8, 1), VerticalAlignment = VerticalAlignment.Center,
-            Child = Text(text, size, weight ?? FontWeights.Bold, fgKey),
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(7, 1, 7, 1), VerticalAlignment = VerticalAlignment.Center,
+            Child = Text(text, size, weight ?? FontWeights.SemiBold, fgKey),
         }.Res(Border.BackgroundProperty, bgKey);
 
     /// <summary>

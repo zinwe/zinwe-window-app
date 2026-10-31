@@ -12,10 +12,12 @@ namespace Zinwe.Agent.Core.Messages;
 /// avatar key or the photo's JPEG as base64; only the newest one is kept, and only the service writes it).
 /// The task fields are trailing and optional, so files written by older builds still read; builds before 1.3.1
 /// posted every kind they didn't know as chat, which is why picture items are written only by a service that knows them.
+/// <see cref="Refused"/> marks a chat reply the backend turned down for good: it stays here, shown as "Not sent", and
+/// isn't posted again until the member presses Retry.
 /// </summary>
 public sealed record OutboxReply(
     string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null,
-    long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null)
+    long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null, bool Refused = false)
 {
     public const string ReplyKind = "reply";
     public const string FeedbackKind = "feedback";
@@ -111,7 +113,7 @@ public sealed class MessageOutbox
     public void RemovePictures() => Remove([.. All().Where(i => i.IsPicture).Select(i => i.Id)]);
 
     /// <summary>True while anything but a picture change waits (pictures keep their own retry pace).</summary>
-    public bool HasPendingOtherThanPicture => All().Any(i => !i.IsPicture);
+    public bool HasPendingOtherThanPicture => All().Any(i => !i.IsPicture && !i.Refused);
 
     /// <summary>Task actions still waiting to be posted, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingTaskActions() => [.. All().Where(i => i.IsTaskAction)];
@@ -156,6 +158,35 @@ public sealed class MessageOutbox
 
     /// <summary>Chat replies still waiting to be posted, oldest first (feedback and task actions are not part of the chat).</summary>
     public IReadOnlyList<OutboxReply> Pending() => [.. All().Where(i => i.IsChatReply)];
+
+    /// <summary>Chat replies the agent should post now: <see cref="Pending"/> without the ones the backend refused.</summary>
+    public IReadOnlyList<OutboxReply> Sendable() => [.. Pending().Where(i => !i.Refused)];
+
+    /// <summary>The backend turned these replies down: keep them for the member, don't post them again.</summary>
+    public void MarkRefused(IEnumerable<string> ids) => SetRefused(ids, true);
+
+    /// <summary>The member pressed Retry: the agent posts this reply again on its next round.</summary>
+    public void Retry(string id) => SetRefused([id], false);
+
+    private void SetRefused(IEnumerable<string> ids, bool refused)
+    {
+        var set = new HashSet<string>(ids, StringComparer.Ordinal);
+        if (set.Count == 0)
+        {
+            return;
+        }
+        lock (_lock)
+        {
+            _folder.Use(dir =>
+            {
+                var path = Path.Combine(dir, FileName);
+                var file = Load(path);
+                file.Items = [.. file.Items.Select(i => set.Contains(i.Id) ? i with { Refused = refused } : i)];
+                Save(path, file);
+                return true;
+            }, false);
+        }
+    }
 
     /// <summary>Feedback still waiting to be posted, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingFeedback() => [.. All().Where(i => i.IsFeedback)];

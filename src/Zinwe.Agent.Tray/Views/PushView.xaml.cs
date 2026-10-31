@@ -220,6 +220,7 @@ public partial class PushView : UserControl
             () => TrayModel.OpenLink("https://zinwe.io/help"), "↗"));
         HelpList.Children.Add(Ui.ListRow(null, "Write to the Zinwe team", "hello@zinwe.io · read by Zinwe, not your employer",
             () => TrayModel.OpenLink("mailto:hello@zinwe.io"), "↗"));
+        Ui.EndList(HelpList);
     }
 
     // ---- Policies & terms ----------------------------------------------------------------

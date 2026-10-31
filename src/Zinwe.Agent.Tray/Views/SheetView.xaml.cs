@@ -61,7 +61,7 @@ public partial class SheetView : UserControl
             Sheet.Note => ($"Add a note for {owner}", "It stays on the task card."),
             Sheet.NewTask => m.Form.EditId is null ? ("Add a to-do", "Just for you: it stays on this PC, under My to-dos.")
                 : ("Edit your to-do", "Change the name, date or steps."),
-            Sheet.Photo => ("Your picture", "Optional. It shows on your team card, here and next to your messages in Chat."),
+            Sheet.Photo => ("Your picture", "Optional. It shows on your team card, here and in your header."),
             _ => ("Send feedback", ""),
         };
         Hint.Visibility = Show(Hint.Text.Length > 0);

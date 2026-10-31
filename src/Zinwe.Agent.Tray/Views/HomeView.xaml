@@ -33,7 +33,7 @@
                 <StackPanel>
                     <Grid>
                         <TextBlock Text="Today so far" Style="{StaticResource Z.H2}" VerticalAlignment="Center" />
-                        <Button Style="{StaticResource Z.LinkBtn}" Content="My time" HorizontalAlignment="Right" Click="OnMyTime" />
+                        <Button Style="{StaticResource Z.LinkBtn}" MinHeight="28" FontSize="12" Content="My time" HorizontalAlignment="Right" Click="OnMyTime" />
                     </Grid>
                     <StackPanel x:Name="Timeline" Margin="0,2,0,0" />
                     <TextBlock x:Name="NoTimeline" Text="Nothing yet. Press Start day when you begin work." FontSize="12.5"

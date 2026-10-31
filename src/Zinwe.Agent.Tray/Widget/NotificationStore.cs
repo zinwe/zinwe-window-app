@@ -25,7 +25,9 @@ public sealed record NotificationItem(
     string? Kind = null,
     // FR-20 v2: the chat line the owner's new task created (the server's task id); the chat draws the task card
     // here, and the task's own notice stands for it (no second "new message"). Null on every other line.
-    long? TaskId = null)
+    long? TaskId = null,
+    // The owner has read this line of the employee's ("Seen").
+    bool ReadByOwner = false)
 {
     public const string ChatKind = "chat";
 

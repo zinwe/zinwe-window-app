@@ -14,8 +14,9 @@
         blue states (waiting, admin notes, chat tile) are grey. Key names stay (Warn*, Info*) so views and
         the High Contrast map don't change; their values follow the rule.
 
-        Brand rules: orange #F26A0A is a FILL and always carries ink text #141210 (never white on orange).
-        Orange as text uses Z.Link (#A84505). Focus rings are 2 px orange.
+        Brand rules (the admin panel's): primary buttons are ink, not orange. Orange #F26A0A marks state only: the active
+        tab, progress, badges, switches, focus rings; as a fill it always carries ink text #141210, never white.
+        Orange as text uses Z.Link (#A84505). The member's chat bubbles use the tint.
     -->
 
     <!-- Surfaces and lines -->

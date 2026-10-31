@@ -77,13 +77,13 @@ public sealed record MemberTask
 }
 
 /// <summary>A filter on the Tasks tab. Every part combines with the others.</summary>
-public sealed record TaskFilter(string Status = "all", string Due = "any", string From = "any", bool High = false)
+public sealed record TaskFilter(string Status = "all", string Due = "any", string From = "any", bool High = false, bool Todo = false)
 {
-    public bool IsFiltered => Status != "all" || Due != "any" || From != "any" || High;
+    public bool IsFiltered => Status != "all" || Due != "any" || From != "any" || High || Todo;
     public static readonly TaskFilter None = new();
 }
 
-/// <summary>A group on the Tasks tab ("DOING", "TO DO", "WITH {OWNER}", "DONE").</summary>
+/// <summary>A group on the Tasks tab ("Doing", "To do", "With {owner}", "Done").</summary>
 public sealed record TaskGroup(string Label, IReadOnlyList<MemberTask> Items);
 
 /// <summary>The one action shown on a closed card, so the common case is a single tap.</summary>
@@ -95,8 +95,9 @@ public sealed record QuickAction(string Label, bool Primary, string Aria);
 /// </summary>
 public static class TaskBoard
 {
-    public static readonly (string Key, string Label)[] StatusChips =
-        [("all", "All"), ("new", "New"), ("todo", "To do"), ("doing", "In progress"), ("waiting", "Needs help"), ("done", "Done")];
+    /// <summary>The Status dropdown. "high" isn't a lane: it sets <see cref="TaskFilter.High"/> (see <see cref="WithStatus"/>).</summary>
+    public static (string Key, string Label)[] StatusOptions(string ownerFirst) =>
+        [("all", "All status"), ("new", "New"), ("doing", "Doing"), ("todo", "To do"), ("waiting", "With " + ownerFirst), ("done", "Done"), ("high", "High priority")];
 
     public static readonly (string Key, string Label)[] DueOptions =
         [("any", "Any date"), ("overdue", "Overdue"), ("today", "Today"), ("tomorrow", "Tomorrow"), ("week", "This week"), ("later", "Later")];
@@ -246,7 +247,24 @@ public static class TaskBoard
     };
 
     private static bool PassesOthers(MemberTask t, TaskFilter f, DateTimeOffset now) =>
-        PassesDue(t, f.Due, now) && PassesFrom(t, f.From) && (!f.High || t.High);
+        PassesDue(t, f.Due, now) && PassesFrom(t, f.From) && (!f.High || t.High) && (!f.Todo || IsTodo(t, now));
+
+    /// <summary>What's left to do by today: not finished, and due today or overdue, so late work is never hidden.</summary>
+    public static bool IsTodo(MemberTask t, DateTimeOffset now) => !Finished(t) && PassesDue(t, "today", now);
+
+    /// <summary>The Todo button's count: what pressing it lists, given the Status and From filters.</summary>
+    public static int TodoCount(IEnumerable<MemberTask> tasks, TaskFilter f, DateTimeOffset now) =>
+        tasks.Count(t => IsTodo(t, now) && PassesStatus(t, f.Status) && PassesFrom(t, f.From) && (!f.High || t.High));
+
+    /// <summary>Todo on or off. Turning it on clears what can't combine with it: a date, and Done.</summary>
+    public static TaskFilter ToggleTodo(TaskFilter f) => f.Todo
+        ? f with { Todo = false }
+        : f with { Todo = true, Due = "any", Status = f.Status == "done" ? "all" : f.Status };
+
+    /// <summary>The Status dropdown's choice. Done turns Todo off: nothing finished is left to do.</summary>
+    public static TaskFilter WithStatus(TaskFilter f, string key) => key == "high"
+        ? f with { Status = "all", High = true }
+        : f with { Status = key, High = false, Todo = f.Todo && key != "done" };
 
     public static IReadOnlyList<MemberTask> Shown(IEnumerable<MemberTask> tasks, TaskFilter f, DateTimeOffset now) =>
         [.. tasks.Where(t => PassesStatus(t, f.Status) && PassesOthers(t, f, now)).OrderBy(t => Rank(t, now)).ThenBy(t => t.Id)];
@@ -256,7 +274,7 @@ public static class TaskBoard
         status == "all" ? 0 : tasks.Count(t => PassesStatus(t, status) && PassesOthers(t, f, now));
 
     /// <summary>The group the member's own to-dos go in: kept apart from the owner's tasks (they stay on this PC).</summary>
-    public const string MyTodos = "MY TO-DOS";
+    public const string MyTodos = "My to-dos";
 
     public static IReadOnlyList<TaskGroup> Groups(IReadOnlyList<MemberTask> shown, string statusFilter, string ownerFirst)
     {
@@ -265,14 +283,14 @@ public static class TaskBoard
         var groups = new List<TaskGroup>();
         if (statusFilter == "done")
         {
-            Add("DONE", owners);
+            Add("Done", owners);
         }
         else
         {
-            Add("DOING", owners.Where(t => LaneOf(t) == TaskLane.Doing));
-            Add("TO DO", owners.Where(t => LaneOf(t) == TaskLane.Todo));
-            Add("WITH " + ownerFirst.ToUpperInvariant(), owners.Where(t => LaneOf(t) == TaskLane.Waiting));
-            Add("DONE", owners.Where(Finished));
+            Add("Doing", owners.Where(t => LaneOf(t) == TaskLane.Doing));
+            Add("To do", owners.Where(t => LaneOf(t) == TaskLane.Todo));
+            Add("With " + ownerFirst, owners.Where(t => LaneOf(t) == TaskLane.Waiting));
+            Add("Done", owners.Where(Finished));
         }
         // Own to-dos last, open ones first (the order Shown gave them within each half).
         Add(MyTodos, mine.Where(t => !Finished(t)).Concat(mine.Where(Finished)));
@@ -289,7 +307,8 @@ public static class TaskBoard
     }
 
     public static string EmptyText(TaskFilter f, string ownerFirst) =>
-        f.Due != "any" || f.From != "any" || f.High ? "No tasks match these filters."
+        f is { Todo: true, Status: "all", From: "any", High: false } ? "Nothing left for today."
+        : f.Due != "any" || f.From != "any" || f.High || f.Todo ? "No tasks match these filters."
         : f.Status switch
         {
             "new" => $"Nothing new. You’ve opened everything {ownerFirst} sent.",

@@ -13,9 +13,10 @@ namespace Zinwe.Agent.Core.Messages;
 // "notice" = a note from Zinwe's own protection (USB blocked, ...). Null in files written before chat existed.
 // TaskId (FR-20 v2): the chat line the owner's new task created; the widget draws the task card there. Left out
 // (null) on every other line, so trays that don't know it read the file exactly as before.
+// ReadByOwner: the owner has read this line of the member's ("Seen" in the chat). Older trays ignore it.
 internal sealed record WidgetNotification(
     string Id, DateTimeOffset CreatedAtUtc, string Severity, string Title, string? Body, bool Read, string Sender = "owner",
-    string? Kind = null, long? TaskId = null);
+    string? Kind = null, long? TaskId = null, bool ReadByOwner = false);
 
 internal sealed class WidgetNotificationFile
 {
@@ -80,6 +81,18 @@ public sealed class NotificationWriter
         var file = Load(path);
         var seen = new HashSet<string>(file.Items.Select(i => i.Id), StringComparer.Ordinal);
 
+        // A line already here can only change one way: the owner has now read it.
+        var readByOwner = messages.Where(m => m.ReadByOwner).Select(m => m.Id.ToString(CultureInfo.InvariantCulture)).ToHashSet(StringComparer.Ordinal);
+        var nowRead = false;
+        for (var i = 0; i < file.Items.Count; i++)
+        {
+            if (!file.Items[i].ReadByOwner && readByOwner.Contains(file.Items[i].Id))
+            {
+                file.Items[i] = file.Items[i] with { ReadByOwner = true };
+                nowRead = true;
+            }
+        }
+
         var added = 0;
         foreach (var m in messages)
         {
@@ -89,7 +102,7 @@ public sealed class NotificationWriter
                 // The member's own replies arrive "already read" (they wrote them); admin lines start unread.
                 var isMember = string.Equals(m.Sender, "member", StringComparison.OrdinalIgnoreCase);
                 file.Items.Add(new WidgetNotification(id, m.CreatedAt, m.Severity, m.Title, m.Body, Read: isMember, Sender: m.Sender, Kind: kind,
-                    TaskId: m.Task is { Id: > 0 } task ? task.Id : null));
+                    TaskId: m.Task is { Id: > 0 } task ? task.Id : null, ReadByOwner: m.ReadByOwner));
                 added++;
             }
         }
@@ -97,6 +110,10 @@ public sealed class NotificationWriter
         {
             // Keep the newest MaxItems so the file can't grow without bound.
             file.Items = [.. file.Items.OrderByDescending(i => i.CreatedAtUtc).Take(MaxItems)];
+            Save(path, file);
+        }
+        else if (nowRead)
+        {
             Save(path, file);
         }
         return added;

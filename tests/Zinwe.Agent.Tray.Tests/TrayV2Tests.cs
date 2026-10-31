@@ -145,7 +145,7 @@ public sealed class TrayV2Tests : IDisposable
         Assert.False(TaskFilter.None.IsFiltered);
 
         var groups = TaskBoard.Groups(TaskBoard.Shown(tasks, TaskFilter.None, Now), "all", "Ananya");
-        Assert.Equal(["DOING", "TO DO", "WITH ANANYA", "DONE", TaskBoard.MyTodos], groups.Select(g => g.Label));
+        Assert.Equal(["Doing", "To do", "With Ananya", "Done", TaskBoard.MyTodos], groups.Select(g => g.Label));
         Assert.Equal([5], groups[^1].Items.Select(t => t.Id)); // own to-dos stay apart
         Assert.Equal("No tasks match these filters.", TaskBoard.EmptyText(new TaskFilter(High: true), "Ananya"));
         Assert.Equal("Nothing to start.", TaskBoard.EmptyText(new TaskFilter(Status: "todo"), "Ananya"));
@@ -333,11 +333,12 @@ public sealed class TrayV2Tests : IDisposable
             rows.Select(r => r.Key));
         Assert.Equal(["Yesterday", "Today"], rows.Where(r => r.Kind == ThreadKind.Day).Select(r => r.Text));
         Assert.False(rows.Single(r => r.Key == "2").HasAvatar); // same person next: the avatar waits for the last bubble
-        Assert.True(rows.Single(r => r.Key == "task:7").HasAvatar);
+        Assert.True(rows.Single(r => r.Key == "3").HasAvatar); // a task card ends the run: the card itself has no avatar
+        Assert.False(rows.Single(r => r.Key == "task:7").HasAvatar);
         Assert.Equal("Ananya Rao", rows.Single(r => r.Key == "4").Quote?.Who);
         Assert.Equal(ThreadKind.Sys, rows.Single(r => r.Key == "5").Kind);
         Assert.True(rows.Single(r => r.Key == "5").ToneNo);
-        Assert.Equal("You · Sending…", rows[^1].Meta);
+        Assert.Equal("Sending…", rows[^1].Meta);
         Assert.Equal("Task: Task 7", rows.Single(r => r.Key == "task:7").Snippet);
     }
 
