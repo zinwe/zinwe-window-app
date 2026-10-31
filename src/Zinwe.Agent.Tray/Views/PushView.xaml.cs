@@ -238,6 +238,7 @@ public partial class PushView : UserControl
                 Section("Who controls your data", $"{company} decides what Zinwe records on this PC and who can see it. SKYTECHNO, the company behind Zinwe, runs the service for them.");
                 Section("See, correct or delete it", $"Ask {company} ({m.OwnerName}). They can see, correct or delete what Zinwe holds about you. You can withdraw your agreement at any time below.");
                 Section("How long it's kept", $"While {company}'s account is active, unless they ask Zinwe to delete it sooner.");
+                Section("Your own to-dos", $"The to-dos you add or edit in Zinwe are stored so they follow you to a new PC, and {company}'s admins can read them. To-dos from before this update stay on this PC until you edit one. Deleting a to-do erases its text.");
                 Section("Never sold", $"Zinwe never sells your data or uses it for advertising. It is encrypted on the way, and only {company}'s Zinwe admins can see it.");
                 Link("Full Privacy Policy", "https://zinwe.io/legal/privacy");
                 break;
