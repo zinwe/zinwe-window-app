@@ -26,7 +26,7 @@ namespace Zinwe.Agent.Service;
 /// </summary>
 internal sealed partial class PipeServer(
     AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger,
-    Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Pictures.PictureSync pictures,
+    Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Tasks.TodoSync todos, Zinwe.Agent.Core.Pictures.PictureSync pictures,
     Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
     : BackgroundService
 {
@@ -96,12 +96,17 @@ internal sealed partial class PipeServer(
                 {
                     // TasksVersion says "this service knows tasks" and lets the tray fetch only when they changed.
                     // Picture (FR-44) says "this service knows pictures"; its Version lets the tray redraw only on change.
-                    var status = state.Current with { TasksVersion = tasks.Version, Picture = pictures.Status };
+                    // TodosVersion says "this service sends own to-dos": only then does the tray queue them.
+                    var status = state.Current with { TasksVersion = tasks.Version, Picture = pictures.Status, TodosVersion = todos.Version };
                     await writer.WriteLineAsync(PipeProtocol.Serialize(status).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Tasks)
                 {
                     await writer.WriteLineAsync(PipeProtocol.Serialize(tasks.Snapshot).AsMemory(), cts.Token);
+                }
+                else if (request.Type == PipeProtocol.RequestTypes.Todos)
+                {
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(todos.Snapshot).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Picture)
                 {

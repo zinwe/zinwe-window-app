@@ -67,6 +67,12 @@ public sealed class TrayModel : IDisposable
     private List<OutboxReply> _actions = [];
     private readonly TaskSeenStore _taskSeen = new();
 
+    // The member's own to-dos: the service's last list (pipe "todos"), the version it was fetched at, and which change
+    // of each to-do this run of the tray already handed to the outbox.
+    private TodosReply? _todos;
+    private int? _todosVersion;
+    private readonly Dictionary<string, DateTimeOffset> _handed = new(StringComparer.Ordinal);
+
     // FR-44 · the member's picture: their fresh pick (drawn at once), and how it reaches the service (pipe "picture").
     private readonly PicturePick _pick = new();
     private readonly Func<PictureChoice, Task<PipeProtocol.EnrollAck?>> _sendPicture;
@@ -196,7 +202,7 @@ public sealed class TrayModel : IDisposable
     public string Company => ConsentText.Employer(Status?.CompanyName);
     public string CompanyStart => ConsentText.Employer(Status?.CompanyName, sentenceStart: true);
     /// <summary>
-    /// Every task the Tasks tab shows: the member's own to-dos (this PC only) and, from a service + backend that have
+    /// Every task the Tasks tab shows: the member's own to-dos and, from a service + backend that have
     /// them, the owner's tasks with the member's unconfirmed actions applied. While the owner's real tasks are on,
     /// the board's sample owner tasks (Debug) are left out.
     /// </summary>
@@ -217,6 +223,12 @@ public sealed class TrayModel : IDisposable
 
     /// <summary>True when the service and the backend both have the owner's tasks (FR-20 v2).</summary>
     public bool RemoteOn => _remote is { Supported: true, Backend: TaskBackend.On };
+
+    /// <summary>
+    /// True when an own to-do saved now reaches the member's admin: a service that knows them is running and the
+    /// backend hasn't said no (older backend, plan without tasks). Off, the app says they stay on this PC, and they do.
+    /// </summary>
+    public bool TodoSharingOn => !Tasks.IsSample && Status?.TodosVersion is not null && _todos?.Backend != TaskBackend.Off;
 
     // Task ids with an action still waiting in the outbox (the "sends when you're back online" line).
     private HashSet<long> PendingInOutbox { get; set; } = [];
@@ -332,6 +344,7 @@ public sealed class TrayModel : IDisposable
         }
         UpdateConnectMessage();
         await RefreshTasksAsync();
+        await RefreshTodosAsync();
         Raise();
     }
 
@@ -431,6 +444,96 @@ public sealed class TrayModel : IDisposable
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    // ---- The member's own to-dos ------------------------------------------------------------------
+
+    /// <summary>
+    /// Merges the service's list into this PC's copy when it changed (status TodosVersion), then queues what still has
+    /// to go up. An older service has no TodosVersion: nothing is asked and nothing is queued.
+    /// </summary>
+    private async Task RefreshTodosAsync()
+    {
+        if (Tasks.IsSample || Status is null)
+        {
+            return; // samples never leave this PC; service away: keep what we have
+        }
+        if (Status.TodosVersion is not { } version)
+        {
+            _todos = null; // an older service
+            _todosVersion = null;
+            return;
+        }
+        if (version != _todosVersion || _todos is null)
+        {
+            if (await AgentPipeClient.GetTodosAsync(TimeSpan.FromSeconds(3)) is not { } reply)
+            {
+                return; // not reachable right now: keep what we have
+            }
+            if (reply.Backend == TaskBackend.On && _todos?.Backend != TaskBackend.On)
+            {
+                _handed.Clear(); // back on: anything dropped while it was off goes up again
+            }
+            _todos = reply;
+            _todosVersion = reply.Version;
+            if (reply.Backend == TaskBackend.On)
+            {
+                var all = Tasks.LoadAll();
+                var merged = OwnTodos.Merge(all, reply.Todos ?? [], reply.MemberId, Now);
+                if (!merged.SequenceEqual(all))
+                {
+                    Tasks.ReplaceAll(merged);
+                }
+            }
+        }
+        if (_todos.Backend == TaskBackend.On)
+        {
+            foreach (var t in OwnTodos.Unsent(Tasks.LoadAll(), _handed, _todos.MemberId))
+            {
+                QueueTodo(t);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Saves an own to-do or a sample on this PC. A shared to-do also gets this change's time and goes to the outbox;
+    /// while it can't (an older service, offline at first start), it stays marked unsent and goes up later.
+    /// </summary>
+    private void SaveOwn(MemberTask t)
+    {
+        if (t.ClientId is null)
+        {
+            Tasks.Save(t.Mine ? t with { Queued = false } : t);
+            return;
+        }
+        var last = Tasks.LoadAll().FirstOrDefault(x => x.Id == t.Id)?.UpdatedAt;
+        var stamped = t with
+        {
+            UpdatedAt = OwnTodos.Stamp(Now, last > t.UpdatedAt || t.UpdatedAt is null ? last : t.UpdatedAt),
+            Queued = Offline,
+        };
+        Tasks.Save(stamped);
+        QueueTodo(stamped);
+    }
+
+    /// <summary>The newest state of a shared to-do into the outbox, only while a service that knows them is running.</summary>
+    private void QueueTodo(MemberTask t)
+    {
+        if (!TodoSharingOn || t.ClientId is null || t.UpdatedAt is not { } at || (t.SyncedFor is { } member && member != _todos?.MemberId))
+        {
+            return;
+        }
+        try
+        {
+            if (_outbox.ReplaceTodo(OwnTodos.ToWire(t)) is not null)
+            {
+                _handed[t.ClientId] = at;
+            }
+        }
+        catch (Exception)
+        {
+            // Stays marked unsent: the next refresh tries again.
         }
     }
 
@@ -943,8 +1046,8 @@ public sealed class TrayModel : IDisposable
     }
 
     /// <summary>
-    /// A change to a task: an own to-do (or a sample) is saved on this PC; an owner's task becomes the contract's
-    /// action (<paramref name="action"/>), queued for the agent and shown at once.
+    /// A change to a task: an own to-do (or a sample) is saved on this PC, and a shared one queued; an owner's task
+    /// becomes the contract's action (<paramref name="action"/>), queued for the agent and shown at once.
     /// </summary>
     private OutboxReply? Change(MemberTask t, Func<MemberTask, MemberTask> fn, string? action = null, string? note = null)
     {
@@ -958,8 +1061,7 @@ public sealed class TrayModel : IDisposable
         }
         else
         {
-            var updated = fn(t) with { IsNew = false, Queued = Offline || t.Queued };
-            Tasks.Save(updated);
+            SaveOwn(fn(t) with { IsNew = false, Queued = Offline || t.Queued });
         }
         History.MarkRead(e => e.Go == "task:" + t.Id);
         Sheet = Sheet.None;
@@ -1020,7 +1122,7 @@ public sealed class TrayModel : IDisposable
             {
                 if (before.RemoteId is null)
                 {
-                    Tasks.Save(before);
+                    SaveOwn(before);
                 }
                 else if (sent is not null && _outbox.TryRemove(sent.Id))
                 {
@@ -1064,7 +1166,7 @@ public sealed class TrayModel : IDisposable
         }
         else
         {
-            Tasks.Save(updated);
+            SaveOwn(updated);
         }
         if (t.Status is MemberTaskStatus.New or MemberTaskStatus.Confirmed)
         {
@@ -1223,32 +1325,37 @@ public sealed class TrayModel : IDisposable
         {
             return false;
         }
-        var (due, key, date) = f.Due switch
+        var (due, key, date, on) = f.Due switch
         {
-            "tomorrow" => ("Tomorrow", DueKey.Tomorrow, (DateOnly?)null),
-            "later" => (NextFriday(today).ToString("ddd d MMM"), DueKey.Later, NextFriday(today)),
+            "tomorrow" => ("Tomorrow", DueKey.Tomorrow, (DateOnly?)null, today.AddDays(1)),
+            "later" => (NextFriday(today).ToString("ddd d MMM"), DueKey.Later, NextFriday(today), NextFriday(today)),
             "date" => DateDue(f.Date!.Value, today),
-            _ => ("Today", DueKey.Today, (DateOnly?)null),
+            _ => ("Today", DueKey.Today, (DateOnly?)null, today),
         };
         var title = f.Title.Trim();
         if (f.EditId is { } id && TaskList.FirstOrDefault(t => t.Id == id) is { } old)
         {
-            Tasks.Save(old with
+            var edited = old with
             {
-                Title = title, Due = due, DueKey = key, DueDate = date, Queued = Offline || old.Queued,
+                Title = title, Due = due, DueKey = key, DueDate = date, DueOn = on, Queued = Offline || old.Queued,
                 Steps = [.. f.StepList.Select(l => new TaskStep(l, old.Steps.FirstOrDefault(s => s.Label == l)?.Done ?? false))],
-            });
+            };
+            if (old.ClientId is null || OwnTodos.Changed(old, edited))
+            {
+                SaveOwn(OwnTodos.AfterEdit(old, edited, TodoSharingOn, _todos?.MemberId));
+            }
             OpenCard = id;
             Sheet = Sheet.None;
             ShowSnack("Saved: " + title, [("OK", CloseSnack)]);
             return true;
         }
         var next = Tasks.NextId();
-        Tasks.Save(new MemberTask
+        var added = new MemberTask
         {
-            Id = next, Title = title, Due = due, DueKey = key, DueDate = date, Mine = true, Status = MemberTaskStatus.New,
-            Queued = Offline, SentAt = Now, Steps = [.. f.StepList.Select(l => new TaskStep(l, false))],
-        });
+            Id = next, Title = title, Due = due, DueKey = key, DueDate = date, DueOn = on, Mine = true, Status = MemberTaskStatus.New,
+            SentAt = Now, Steps = [.. f.StepList.Select(l => new TaskStep(l, false))],
+        };
+        SaveOwn(TodoSharingOn ? OwnTodos.Share(added, _todos?.MemberId) : added);
         Filter = TaskFilter.None;
         OpenCard = next;
         Sheet = Sheet.None;
@@ -1262,22 +1369,29 @@ public sealed class TrayModel : IDisposable
         return today.AddDays(add == 0 ? 7 : add);
     }
 
-    private static (string, DueKey, DateOnly?) DateDue(DateOnly date, DateOnly today)
+    private static (string, DueKey, DateOnly?, DateOnly) DateDue(DateOnly date, DateOnly today)
     {
-        var days = date.DayNumber - today.DayNumber;
-        return days switch
-        {
-            0 => ("Today", DueKey.Today, date),
-            1 => ("Tomorrow", DueKey.Tomorrow, date),
-            _ => (date.ToString("ddd d MMM"), DueKey.Later, date),
-        };
+        var (label, key) = OwnTodos.DueOf(date, today);
+        return (label, key, date, date);
     }
 
     public void DeleteOwn(MemberTask t)
     {
+        OpenCard = null;
+        if (t.ClientId is not null)
+        {
+            // A shared to-do stays as a hidden row until the server confirms, so a pull can't bring it back.
+            SaveOwn(t with { DeletedAt = Now });
+            ShowSnack("Deleted: " + t.Title, [("Undo", () =>
+            {
+                SaveOwn(t with { DeletedAt = null }); // a newer write than the delete, so it wins everywhere
+                Snack = null;
+                Raise();
+            })]);
+            return;
+        }
         var at = Tasks.Load().ToList().FindIndex(x => x.Id == t.Id); // its place among the to-dos on this PC
         Tasks.Remove(t.Id);
-        OpenCard = null;
         ShowSnack("Deleted: " + t.Title, [("Undo", () =>
         {
             Tasks.Insert(at, t);

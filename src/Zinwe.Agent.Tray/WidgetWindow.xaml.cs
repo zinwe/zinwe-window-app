@@ -374,7 +374,7 @@ public partial class WidgetWindow : Window
         NotRunningTitle.Text = Strings.NotRunningTitle;
         NotRunningBody.Text = Strings.Format(Strings.NotRunningBody, m.OwnerName);
         OfflineBanner.Visibility = Show(m.Offline);
-        var queued = m.TaskList.Count(t => t.Queued);
+        var queued = m.TaskList.Count(TaskBoard.WaitsToSend);
         OfflineText.Text = "Offline. Your times" + (queued > 0 ? $" and {queued} task update{(queued == 1 ? "" : "s")}" : "")
             + " are saved on this PC and sent when you’re back.";
     }

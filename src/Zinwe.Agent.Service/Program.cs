@@ -93,6 +93,10 @@ builder.Services.AddSingleton<MessageSync>();
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TaskSync(
     sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),
     sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Tasks.TaskSync>>(), DataDirectory(sp)));
+// The member's own to-dos - what the tray queued (outbox kind todo) out, GET todos/ in, served on the pipe.
+builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TodoSync(
+    sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),
+    sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Tasks.TodoSync>>(), DataDirectory(sp)));
 // FR-44: the member's picture - heartbeat in, the tray's choice (pipe "picture" → outbox kind picture) out via
 // PUT/DELETE me/picture/, photos cached in the data folder and copied into the member's widget folder for the tray.
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Pictures.PictureSync(

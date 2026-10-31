@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Zinwe.Agent.Core.Backend;
 
 namespace Zinwe.Agent.Core.Messages;
 
@@ -9,20 +10,25 @@ namespace Zinwe.Agent.Core.Messages;
 /// "task_action" (FR-20 v2: what the member did on an owner's task - <see cref="TaskId"/>, <see cref="Action"/>,
 /// <see cref="Body"/> = the note, and for a step tick <see cref="StepId"/> + <see cref="StepDone"/>) or "picture"
 /// (FR-44: the member's new picture - <see cref="Action"/> "avatar" / "photo" / "remove", <see cref="Body"/> = the
-/// avatar key or the photo's JPEG as base64; only the newest one is kept, and only the service writes it).
+/// avatar key or the photo's JPEG as base64; only the newest one is kept, and only the service writes it) or "todo"
+/// (one of the member's own to-dos as it stands now - <see cref="TodoId"/> = its client id, <see cref="Body"/> = the
+/// <see cref="DeviceTodo"/> as JSON; only the newest state of each to-do is kept).
 /// The task fields are trailing and optional, so files written by older builds still read; builds before 1.3.1
-/// posted every kind they didn't know as chat, which is why picture items are written only by a service that knows them.
+/// posted every kind they didn't know as chat, which is why picture and todo items are written only while a service
+/// that knows them is running.
 /// <see cref="Refused"/> marks a chat reply the backend turned down for good: it stays here, shown as "Not sent", and
 /// isn't posted again until the member presses Retry.
 /// </summary>
 public sealed record OutboxReply(
     string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null,
-    long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null, bool Refused = false)
+    long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null, bool Refused = false,
+    string? TodoId = null)
 {
     public const string ReplyKind = "reply";
     public const string FeedbackKind = "feedback";
     public const string TaskActionKind = "task_action";
     public const string PictureKind = "picture";
+    public const string TodoKind = "todo";
 
     public bool IsFeedback => string.Equals(Kind, FeedbackKind, StringComparison.Ordinal);
 
@@ -31,6 +37,9 @@ public sealed record OutboxReply(
 
     [JsonIgnore]
     public bool IsPicture => string.Equals(Kind, PictureKind, StringComparison.Ordinal);
+
+    [JsonIgnore]
+    public bool IsTodo => string.Equals(Kind, TodoKind, StringComparison.Ordinal);
 
     /// <summary>A line of the chat (not feedback, not a task action, nor a kind a newer build added).</summary>
     [JsonIgnore]
@@ -117,6 +126,47 @@ public sealed class MessageOutbox
 
     /// <summary>Task actions still waiting to be posted, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingTaskActions() => [.. All().Where(i => i.IsTaskAction)];
+
+    /// <summary>
+    /// Queue one of the member's own to-dos as it stands now, replacing any older state of it still waiting (ten ticks
+    /// offline are one write). Returns the item, or null when it couldn't be written (nobody signed in, or the file is
+    /// locked). Only the tray calls this, and only while a service that knows to-dos is running.
+    /// </summary>
+    public OutboxReply? ReplaceTodo(DeviceTodo todo)
+    {
+        var body = JsonSerializer.Serialize(todo, BackendJsonContext.Default.DeviceTodo);
+        var item = new OutboxReply(Guid.NewGuid().ToString("N"), body, DateTimeOffset.UtcNow, OutboxReply.TodoKind, TodoId: todo.ClientId);
+        lock (_lock)
+        {
+            return _folder.Use(dir =>
+            {
+                var path = Path.Combine(dir, FileName);
+                var file = Load(path);
+                file.Items.RemoveAll(i => i.IsTodo && i.TodoId == todo.ClientId);
+                file.Items.Add(item);
+                return Save(path, file) ? item : null;
+            }, null);
+        }
+    }
+
+    /// <summary>To-dos still waiting to be sent, oldest first.</summary>
+    public IReadOnlyList<OutboxReply> PendingTodos() => [.. All().Where(i => i.IsTodo)];
+
+    /// <summary>The to-do in a queued item; null when the item can't be read.</summary>
+    public static DeviceTodo? ReadTodo(OutboxReply item)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(item.Body, BackendJsonContext.Default.DeviceTodo) is { ClientId.Length: > 0 } todo ? todo : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Drop every waiting to-do (the PC was removed or connected as someone else, or the plan has no tasks).</summary>
+    public void RemoveTodos() => Remove([.. All().Where(i => i.IsTodo).Select(i => i.Id)]);
 
     /// <summary>
     /// Take back a task action that hasn't been posted yet (Undo). True when it was still waiting: once the agent

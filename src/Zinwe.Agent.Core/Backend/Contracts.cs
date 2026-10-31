@@ -171,6 +171,51 @@ public enum TaskActionOutcome
 }
 
 /// <summary>
+/// One of the member's own to-dos as the device API has it (GET /api/devices/todos/), also what the tray queues in the
+/// outbox. <see cref="ClientId"/> is the Windows app's id; <see cref="UpdatedAt"/> the member's own change time, which
+/// decides who wins (last write wins, a delete wins over older edits). Unknown extra fields are ignored.
+/// </summary>
+/// <param name="Status">"open" or "done".</param>
+/// <param name="Deleted">Deleted on one of the member's PCs: the others drop it.</param>
+public sealed record DeviceTodo(
+    string ClientId = "",
+    string Title = "",
+    DateOnly? DueDate = null,
+    IReadOnlyList<DeviceTodoStep>? Steps = null,
+    string Status = DeviceTodo.Open,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset UpdatedAt = default,
+    bool Deleted = false)
+{
+    public const string Open = "open";
+    public const string Done = "done";
+}
+
+/// <summary>One step of a <see cref="DeviceTodo"/>.</summary>
+public sealed record DeviceTodoStep(string Title = "", bool Done = false);
+
+/// <summary>GET /api/devices/todos/ (device). <see cref="MemberId"/> says whose list it is, so the tray never mixes two members' to-dos.</summary>
+public sealed record DeviceTodoList(long? MemberId = null, IReadOnlyList<DeviceTodo>? Todos = null);
+
+/// <summary>PUT /api/devices/todos/&lt;client id&gt;/.</summary>
+public sealed record TodoSaveRequest(
+    string Title, DateOnly? DueDate, IReadOnlyList<DeviceTodoStep> Steps, string Status, DateTimeOffset UpdatedAt);
+
+/// <summary>DELETE /api/devices/todos/&lt;client id&gt;/.</summary>
+public sealed record TodoDeleteRequest(DateTimeOffset UpdatedAt);
+
+/// <summary>What happened to a to-do the agent sent.</summary>
+public enum TodoWriteOutcome
+{
+    /// <summary>Stored, or older than what the backend has: either way, done with it.</summary>
+    Done,
+    /// <summary>Refused for good (a 4xx other than 403/404/405/429): sending it again won't help.</summary>
+    Refused,
+    /// <summary>403/404/405: an older backend, or a plan without tasks. The to-dos stay on this PC.</summary>
+    Off,
+}
+
+/// <summary>
 /// FR-44: a member's picture. <see cref="Kind"/> "avatar" = one of the library's drawn people (<see cref="Key"/>, e.g.
 /// "a07"); "photo" = an uploaded 256 × 256 JPEG at <see cref="Url"/> (signed, no auth header; the URL changes whenever
 /// the picture changes, so it doubles as the cache key). No picture at all is null.
@@ -272,6 +317,11 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(DeviceTask))]
 [JsonSerializable(typeof(DeviceTask[]))]
 [JsonSerializable(typeof(TaskActionRequest))]
+[JsonSerializable(typeof(DeviceTodo))]
+[JsonSerializable(typeof(DeviceTodo[]))]
+[JsonSerializable(typeof(DeviceTodoList))]
+[JsonSerializable(typeof(TodoSaveRequest))]
+[JsonSerializable(typeof(TodoDeleteRequest))]
 [JsonSerializable(typeof(AvatarPictureRequest))]
 [JsonSerializable(typeof(MetricUploadRequest))]
 [JsonSerializable(typeof(MetricUploadResponse))]

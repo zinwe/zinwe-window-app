@@ -29,6 +29,7 @@ internal sealed partial class AgentWorker(
     PolicySync policy,
     MessageSync messages,
     Zinwe.Agent.Core.Tasks.TaskSync tasks,
+    Zinwe.Agent.Core.Tasks.TodoSync todos,
     Zinwe.Agent.Core.Pictures.PictureSync pictures,
     MetricsUploadPump metrics,
     WorkStatusReader work,
@@ -119,6 +120,7 @@ internal sealed partial class AgentWorker(
             keySource.Consume(credential);
             removal.Delete();
             tasks.Clear(); // a (re)connect may be another member: never show the last one's tasks
+            todos.Clear(); // ... nor send their to-dos as the new member's
             pictures.Clear(); // ... nor their picture
             LogEnrolled(response.DeviceId, response.ReEnrolled);
             return identity;
@@ -178,10 +180,10 @@ internal sealed partial class AgentWorker(
     }
 
     /// <summary>
-    /// Owner↔member chat, the owner's tasks and the member's picture (FR-44): pulls them every <see cref="AgentOptions.MessagePollSeconds"/>, and
+    /// Owner↔member chat, the owner's tasks, the member's own to-dos and picture (FR-44): pulls them every <see cref="AgentOptions.MessagePollSeconds"/>, and
     /// sooner (within ~2s) when the member has typed a reply or acted on a task in the widget (the outbox has
-    /// something). The only caller of <see cref="MessageSync"/> and <see cref="Zinwe.Agent.Core.Tasks.TaskSync"/>, so
-    /// outbox drains never overlap.
+    /// something). The only caller of <see cref="MessageSync"/>, <see cref="Zinwe.Agent.Core.Tasks.TaskSync"/> and
+    /// <see cref="Zinwe.Agent.Core.Tasks.TodoSync"/>, so outbox drains never overlap.
     /// </summary>
     private async Task MessageLoopAsync(DeviceIdentity identity, CancellationToken ct)
     {
@@ -195,6 +197,7 @@ internal sealed partial class AgentWorker(
                 {
                     await messages.SyncAsync(identity.DeviceToken, ct);
                     await tasks.SyncAsync(identity.DeviceToken, ct);
+                    await todos.SyncAsync(identity.DeviceToken, ct);
                     await pictures.SyncAsync(identity.DeviceToken, ct);
                     next = DateTimeOffset.UtcNow + interval;
                 }
@@ -300,6 +303,7 @@ internal sealed partial class AgentWorker(
                 identityStore.Delete();
                 removal.Save(new RemovalRecord(company, DateTimeOffset.UtcNow));
                 tasks.Clear();
+                todos.Clear();
                 pictures.Clear();
                 state.Set(AgentState.Rejected, message: RemovedMessage(company), removed: true);
                 LogDeviceRejected(identity.DeviceId, e.Message);
