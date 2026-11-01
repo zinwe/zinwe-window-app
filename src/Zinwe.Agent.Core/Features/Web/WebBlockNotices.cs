@@ -36,6 +36,7 @@ public static class WebBlockWording
         "adult" => "adult sites",
         "gambling" => "gambling sites",
         "social" or "social_media" => "social media",
+        "video" => "video streaming sites",
         "custom" or "" => "sites your company added",
         var other => other.Replace('_', ' ') + " sites",
     };
@@ -59,15 +60,18 @@ public static class WebBlockWording
          $"This website is on your company's block list ({CategoryLabel(category)}), so it won't open on this PC. "
          + "Your internet is fine and other sites still work. If you need it for work, message your admin.");
 
-    /// <summary>The same negative id for the same list, so re-applying it never adds a second note.</summary>
+    /// <summary>
+    /// The same negative id for the same kinds of site, so re-applying a list never adds a second note, and neither
+    /// does the weekly list refresh or one more site: the note names the kinds, so it only changes when they do.
+    /// </summary>
     public static long StableId(Blocklist list)
     {
         unchecked
         {
-            var hash = 1469598103934665603L; // FNV-1a over the sorted domains
-            foreach (var rule in list.Rules)
+            var hash = 1469598103934665603L; // FNV-1a over the sorted categories
+            foreach (var category in list.Categories)
             {
-                foreach (var c in rule.Domain + "|" + rule.Category + ";")
+                foreach (var c in category + ";")
                 {
                     hash = (hash ^ c) * 1099511628211L;
                 }

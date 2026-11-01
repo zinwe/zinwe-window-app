@@ -23,9 +23,12 @@ public static class WebPolicyMap
             CollectForegroundUsage = defaults.CollectForegroundUsage,
             IncludeDetails = defaults.IncludeDetails,
             BlockingEnabled = block.Mode == WebMode.Block,
-            UseBuiltInSampleList = true,
+            // An older backend names no set: the agent keeps its built-in sample and the owner's own sites.
+            UseBuiltInSampleList = block.ListVersion is null,
             Categories = [.. block.Categories],
             CustomDomains = [.. block.CustomDomains],
+            AllowDomains = [.. block.AllowDomains ?? []],
+            ListVersion = block.ListVersion,
         };
     }
 }

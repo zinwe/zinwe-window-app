@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Zinwe.Agent.Core.Features.Web;
@@ -38,13 +39,19 @@ public static class HostsBlock
     public const string Sink = "0.0.0.0";
 
     /// <summary>
+    /// Names per line. Windows reads at most nine on one line. Grouping them keeps a list of thousands to a fraction of
+    /// the lines, and the DNS Client service has to re-read every line each time the file changes.
+    /// </summary>
+    public const int HostsPerLine = 9;
+
+    /// <summary>
     /// Returns <paramref name="existing"/> with the managed block set to <paramref name="hostnames"/>, or removed
     /// when the list is empty. Any previous managed block is replaced; everything outside the fences is preserved.
     /// </summary>
     public static string ApplyToHosts(string existing, IReadOnlyList<string> hostnames)
     {
         var newline = existing.Contains("\r\n", StringComparison.Ordinal) || !existing.Contains('\n') ? "\r\n" : "\n";
-        var kept = StripManagedBlock(existing).TrimEnd('\r', '\n');
+        var kept = StripManagedBlock(existing).TrimEnd('\r', '\n').Replace("\n", newline, StringComparison.Ordinal);
 
         if (hostnames.Count == 0)
         {
@@ -52,7 +59,7 @@ public static class HostsBlock
         }
 
         var block = new List<string> { Begin };
-        block.AddRange(hostnames.Select(h => $"{Sink} {h}"));
+        block.AddRange(hostnames.Chunk(HostsPerLine).Select(group => $"{Sink} {string.Join(' ', group)}"));
         block.Add(End);
 
         var body = kept.Length == 0 ? "" : kept + newline + newline;
@@ -83,6 +90,49 @@ public static class HostsBlock
             result.Add(line);
         }
         return string.Join("\n", result);
+    }
+}
+
+/// <summary>
+/// Replaces a file in one step, so a reader (the DNS Client service, or a crash mid-way) only ever sees the whole old
+/// file or the whole new one, and the original's permissions stay. Takes a few tries: the DNS Client and antivirus hold
+/// the hosts file open for moments at a time. Throws <see cref="IOException"/> or
+/// <see cref="UnauthorizedAccessException"/> if it stays locked; nothing is left behind.
+/// </summary>
+public static class AtomicFile
+{
+    private const int Attempts = 5;
+
+    public static void Replace(string path, string content, Encoding encoding, TimeSpan? retryDelay = null)
+    {
+        var temp = path + ".zinwe.tmp";
+        File.WriteAllText(temp, content, encoding);
+        try
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                    {
+                        File.Replace(temp, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
+                    }
+                    else
+                    {
+                        File.Move(temp, path);
+                    }
+                    return;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException && attempt < Attempts)
+                {
+                    Thread.Sleep(retryDelay ?? TimeSpan.FromMilliseconds(300));
+                }
+            }
+        }
+        finally
+        {
+            File.Delete(temp); // already gone after a success
+        }
     }
 }
 
@@ -117,8 +167,9 @@ public sealed class DryRunWebBlocker(ILogger<DryRunWebBlocker> logger) : IWebBlo
             logger.LogInformation("[dry run] would clear the website blocklist");
             return;
         }
-        logger.LogInformation("[dry run] would sinkhole {Count} host(s) to {Sink} in the hosts file: {Hosts}",
-            list.Hostnames.Count, HostsBlock.Sink, string.Join(", ", list.Hostnames));
+        // The first few only: a real list is thousands of names, and the log is not the place for them.
+        logger.LogInformation("[dry run] would sinkhole {Count} host(s) to {Sink} in the hosts file, starting: {Hosts}",
+            list.Hostnames.Count, HostsBlock.Sink, string.Join(", ", list.Hostnames.Take(5)));
     }
 }
 

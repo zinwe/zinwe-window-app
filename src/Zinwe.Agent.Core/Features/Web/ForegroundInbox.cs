@@ -27,6 +27,13 @@ public sealed class ForegroundInbox(TimeProvider? clock = null)
     private readonly ConcurrentQueue<ForegroundReport> _queue = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private long _lastPostTicks;
+    private LastSite? _lastSiteBox;
+
+    private sealed record LastSite(string Domain, long Ticks);
+
+    /// <summary>The site in the browser in front, if the tray reported one within <paramref name="window"/>; else null.</summary>
+    public string? RecentSite(TimeSpan window) =>
+        Volatile.Read(ref _lastSiteBox) is { } site && _clock.GetUtcNow().UtcTicks - site.Ticks <= window.Ticks ? site.Domain : null;
 
     /// <summary>When the tray last reported (null: never in this service run).</summary>
     public DateTimeOffset? LastPostAt
@@ -55,6 +62,10 @@ public sealed class ForegroundInbox(TimeProvider? clock = null)
             }
             var domain = string.IsNullOrWhiteSpace(r.Domain) || r.Domain.Length > MaxDomainLength ? null : r.Domain.Trim().ToLowerInvariant();
             _queue.Enqueue(r with { App = r.App.Trim(), Domain = domain });
+            if (domain is not null)
+            {
+                Volatile.Write(ref _lastSiteBox, new LastSite(domain, _clock.GetUtcNow().UtcTicks));
+            }
             accepted++;
             while (_queue.Count > MaxQueued && _queue.TryDequeue(out _))
             {

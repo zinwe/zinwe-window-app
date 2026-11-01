@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Features;
+using Zinwe.Agent.Core.Features.Web;
 using Zinwe.Agent.Core.Usb;
 
 namespace Zinwe.Agent.Core.Policy;
@@ -9,6 +10,7 @@ namespace Zinwe.Agent.Core.Policy;
 /// Keeps this PC on the owner's latest policy.
 ///   startup:          policy.json → apply USB + feature config   (no network; protection is on before the first heartbeat)
 ///   every heartbeat:  policy_version differs → GET policy/current/ → save policy.json → apply USB + features → usb.policy_applied
+///                     web_list_version differs → GET policy/blocklist/ → save the set → apply features
 ///
 /// USB is applied directly (<see cref="UsbProtection"/>); the other features are (re)configured through
 /// <see cref="IFeaturePolicyApply"/>, which rebuilds their scope so each restarts on the new per-feature block.
@@ -18,7 +20,8 @@ public sealed class PolicySync(
     PolicyStore store,
     UsbProtection usb,
     ILogger<PolicySync> logger,
-    IFeaturePolicyApply? features = null)
+    IFeaturePolicyApply? features = null,
+    WebBlockSetStore? blockSets = null)
 {
     private AgentPolicy? _current;
     private volatile bool _applyPending;
@@ -29,6 +32,7 @@ public sealed class PolicySync(
     /// <summary>Call once at startup, before any network call.</summary>
     public AgentPolicy? ApplyCached()
     {
+        blockSets?.Load(); // before the features start: blocking must not wait for the network
         var cached = store.Load();
         if (cached is null)
         {
@@ -76,6 +80,7 @@ public sealed class PolicySync(
         try
         {
             store.Delete();
+            blockSets?.Delete();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -97,18 +102,27 @@ public sealed class PolicySync(
     }
 
     /// <summary>
-    /// Call after every successful heartbeat. Returns true when a new policy was fetched and applied.
-    /// Network failures are logged and retried on the next heartbeat (the current policy stays in force);
+    /// Call after every successful heartbeat. Returns true when a new policy or set of blocked sites was fetched and
+    /// applied. Network failures are logged and retried on the next heartbeat (what's in force stays in force);
     /// <see cref="DeviceRejectedException"/> propagates so the worker's removal path handles it.
     /// </summary>
-    public async Task<bool> SyncAsync(string deviceToken, int serverVersion, CancellationToken ct)
+    /// <param name="webListVersion">The heartbeat's name for the set of sites; null = an older backend.</param>
+    public async Task<bool> SyncAsync(string deviceToken, int serverVersion, CancellationToken ct, string? webListVersion = null)
     {
         var current = Current;
-        if (current is not null && current.Version == serverVersion)
+        // Updated from an agent older than the lists: the cached policy has this version but not the new fields, and
+        // nothing on the server will change to tell us. Without this it would stay on the sample until the owner saved.
+        var cachedBeforeLists = webListVersion is not null && current?.Web is { ListVersion: null };
+        if (current is not null && current.Version == serverVersion && !cachedBeforeLists)
         {
             if (_applyPending)
             {
                 _applyPending = !usb.Apply(current.Usb.Mode, report: true);
+            }
+            if (await RefreshBlockSetAsync(deviceToken, webListVersion ?? current.Web?.ListVersion, ct))
+            {
+                ApplyToFeatures(current, ct);
+                return true;
             }
             return false;
         }
@@ -137,8 +151,50 @@ public sealed class PolicySync(
 
         Volatile.Write(ref _current, fetched);
         _applyPending = !usb.Apply(fetched.Usb.Mode, report: true);
+        await RefreshBlockSetAsync(deviceToken, fetched.Web?.ListVersion, ct);
         ApplyToFeatures(fetched, ct);
         logger.LogInformation("Policy v{Version} received (USB {Mode})", fetched.Version, fetched.Usb.Mode.ToWire());
+        return true;
+    }
+
+    /// <summary>
+    /// Fetch the set of blocked sites when <paramref name="wanted"/> names another one. Returns true when a new set is
+    /// in force. A failure keeps the set we have (the policy's allow list and own sites still apply) and the next
+    /// heartbeat tries again. Null (older backend) and "" (this PC blocks nothing) fetch nothing.
+    /// </summary>
+    private async Task<bool> RefreshBlockSetAsync(string deviceToken, string? wanted, CancellationToken ct)
+    {
+        if (blockSets is null || string.IsNullOrEmpty(wanted) || blockSets.Current?.Version == wanted)
+        {
+            return false;
+        }
+
+        WebBlockSet set;
+        try
+        {
+            set = await backend.GetWebBlockSetAsync(deviceToken, ct);
+        }
+        catch (Exception e) when (e is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning("Could not fetch the blocked sites {Version}; keeping {Current}: {Error}",
+                wanted, blockSets.Current?.Version ?? "none", e.Message);
+            return false;
+        }
+        if (!set.IsWellFormed)
+        {
+            return false; // blocking was switched off between the two calls: the next heartbeat says so
+        }
+
+        try
+        {
+            blockSets.Save(set);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // In force now; a restart before the next save falls back to the older cache.
+            logger.LogError(e, "Could not cache the blocked sites {Version}", set.Version);
+        }
+        logger.LogInformation("Blocked sites {Version} received", set.Version);
         return true;
     }
 }

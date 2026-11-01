@@ -80,6 +80,8 @@ builder.Services.AddSingleton<IUsbEnforcer>(sp => UsbEnforcerSelector.Select(
     sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<UsbProtection>();
 builder.Services.AddSingleton<IUsbDeviceWatcher, WmiUsbDeviceWatcher>();
+// The sites this PC blocks, kept on disk so blocking works offline. PolicySync fetches it when its name moves.
+builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Features.Web.WebBlockSetStore(DataDirectory(sp)));
 builder.Services.AddSingleton<PolicySync>();
 // The widget folder (%LOCALAPPDATA%\Zinwe) of whoever is signed in: the dev console agent's own, or - as the
 // LocalSystem service - the signed-in user's, with every file operation done AS that user.

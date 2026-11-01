@@ -56,11 +56,16 @@ public enum WebMode
 }
 
 /// <summary>Owner's internet-usage + website-blocking rule. Null block ⇒ the agent keeps its local defaults.</summary>
+/// <param name="AllowDomains">Sites that stay open whatever a list says. Optional/trailing: an older backend omits it.</param>
+/// <param name="ListVersion">Names the set of sites this PC should hold ("" = none). Null = an older backend with no
+/// lists: the agent stays on its built-in sample, as before.</param>
 public sealed record WebPolicy(
     bool Enabled,
     WebMode Mode,
     IReadOnlyList<string> Categories,
-    IReadOnlyList<string> CustomDomains);
+    IReadOnlyList<string> CustomDomains,
+    IReadOnlyList<string>? AllowDomains = null,
+    string? ListVersion = null);
 
 /// <summary>Owner's data-transfer visibility rule (sizes & counts only unless details are turned on).</summary>
 public sealed record DataTransferPolicy(
@@ -70,7 +75,9 @@ public sealed record DataTransferPolicy(
     long EmailWarnBytes,
     bool IncludeDetails,
     // Optional/trailing for back-compat: an older backend that omits it leaves lockdown off.
-    bool UsbLockdown = false);
+    bool UsbLockdown = false,
+    // The website uploads limit. Optional/trailing: an older backend omits it, and then there's no upload alert.
+    long? WebUploadWarnBytes = null);
 
 /// <summary>Owner's remote-software rule: always detects; may also block the listed tools (dry-run aware).</summary>
 public sealed record RemoteSoftwarePolicy(

@@ -10,12 +10,14 @@ namespace Zinwe.Agent.Core.Features.Network;
 /// </summary>
 public static class NetworkPolicyMap
 {
-    public static NetworkFeatureOptions FromPolicy(NetworkFeatureOptions defaults, WebPolicy? web) => new()
+    public static NetworkFeatureOptions FromPolicy(NetworkFeatureOptions defaults, WebPolicy? web, DataTransferPolicy? transfer = null) => new()
     {
         Enabled = defaults.Enabled || web?.Enabled == true,
         FlushSeconds = defaults.FlushSeconds,
         MaxTrackedHosts = defaults.MaxTrackedHosts,
         Apps = [.. defaults.Apps],
-        WarnBytes = defaults.WarnBytes,
+        // The owner's website uploads limit, unless data transfer is off for this PC (plan, consent).
+        WarnBytes = transfer is { Enabled: true, WebUploadWarnBytes: { } limit } ? limit : defaults.WarnBytes,
+        WarnWindowMinutes = defaults.WarnWindowMinutes,
     };
 }

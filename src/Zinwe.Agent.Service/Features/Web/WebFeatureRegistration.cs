@@ -21,7 +21,8 @@ public sealed class WebFeatureRegistration : IFeatureRegistration
         // Scoped: a new policy rebuilds the scope with options mapped from its web block (or defaults if absent).
         services.AddScoped(sp => WebPolicyMap.FromPolicy(defaults, sp.GetRequiredService<FeaturePolicyState>().Current?.Web));
 
-        services.AddScoped(sp => Blocklist.FromOptions(sp.GetRequiredService<WebFeatureOptions>()));
+        services.AddScoped(sp => Blocklist.FromOptions(
+            sp.GetRequiredService<WebFeatureOptions>(), sp.GetRequiredService<WebBlockSetStore>().Current));
         services.AddScoped<IForegroundWindowSource, Win32ForegroundWindowSource>();
         services.AddScoped<IActiveTabSource, UiaActiveTabSource>();
         services.AddScoped<BrowserDomainSampler>();
