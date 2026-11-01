@@ -22,10 +22,11 @@ internal sealed class HostsFileWriter : IHostsFileWriter
         var path = HostsPath;
         var existing = File.Exists(path) ? File.ReadAllText(path) : "";
         var updated = HostsBlock.ApplyToHosts(existing, hostnames);
+        // Only on a real change: every write makes the DNS Client service re-read the whole file.
         if (!string.Equals(existing, updated, StringComparison.Ordinal))
         {
             // No BOM: the hosts file must stay plain ASCII/UTF-8 without a byte-order mark.
-            File.WriteAllText(path, updated, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            AtomicFile.Replace(path, updated, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
     }
 }

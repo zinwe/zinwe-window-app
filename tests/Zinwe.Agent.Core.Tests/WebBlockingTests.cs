@@ -42,8 +42,7 @@ public sealed class WebBlockingTests
         var result = HostsBlock.ApplyToHosts("", ["a.test", "www.a.test"]);
 
         Assert.Contains(Begin, result, StringComparison.Ordinal);
-        Assert.Contains("0.0.0.0 a.test", result, StringComparison.Ordinal);
-        Assert.Contains("0.0.0.0 www.a.test", result, StringComparison.Ordinal);
+        Assert.Contains("0.0.0.0 a.test www.a.test", result, StringComparison.Ordinal); // names share a line, up to nine
         Assert.Contains(End, result, StringComparison.Ordinal);
     }
 

@@ -64,6 +64,8 @@ public sealed record WorkEvent(DateTimeOffset At, string State, string? Reason =
 /// itself stays connected and protected. Sent on every heartbeat of that day; null = the day isn't elsewhere.</param>
 /// <param name="DayCarry">The member's day moved to this PC: what its timer carries on from. Sent on every heartbeat of
 /// that day (the tray takes each one once); null = nothing to carry.</param>
+/// <param name="WebListVersion">Names the set of sites this PC should hold ("" = none). It moves when a new list version
+/// ships, which the policy version doesn't show. Null = an older backend.</param>
 public sealed record HeartbeatResponse(
     long DeviceId,
     DateTimeOffset ServerTime,
@@ -78,7 +80,8 @@ public sealed record HeartbeatResponse(
     string? OwnerName = null,
     JsonElement Picture = default,
     WorkDayMoved? DayMoved = null,
-    WorkDayCarry? DayCarry = null);
+    WorkDayCarry? DayCarry = null,
+    string? WebListVersion = null);
 
 /// <summary>Where the member's day went, and when (<see cref="HeartbeatResponse.DayMoved"/>).</summary>
 public sealed record WorkDayMoved(string ToHostname, DateTimeOffset At);
@@ -331,6 +334,7 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(HeartbeatRequest))]
 [JsonSerializable(typeof(HeartbeatResponse))]
 [JsonSerializable(typeof(AgentPolicy))]
+[JsonSerializable(typeof(Zinwe.Agent.Core.Features.Web.WebBlockSet))]
 [JsonSerializable(typeof(EventUploadRequest))]
 [JsonSerializable(typeof(EventUploadResponse))]
 [JsonSerializable(typeof(AgentMessage[]))]

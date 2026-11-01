@@ -382,6 +382,14 @@ public sealed class BackendClient
             : throw new HttpRequestException("The backend returned a malformed policy.");
     }
 
+    /// <summary>GET /api/devices/policy/blocklist/ -- the sites this PC blocks. Asked only when the set's name moves.</summary>
+    public async Task<Features.Web.WebBlockSet> GetWebBlockSetAsync(string deviceToken, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(HttpMethod.Get, "api/devices/policy/blocklist/", deviceToken, null, ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadAsync(response, BackendJsonContext.Default.WebBlockSet, ct);
+    }
+
     /// <summary>
     /// POST /api/devices/events/upload/ (1..100 events). Idempotent on event id: re-sent events come back as duplicates.
     /// A 400 (the backend refused the batch's content) throws <see cref="EventsRejectedException"/>.

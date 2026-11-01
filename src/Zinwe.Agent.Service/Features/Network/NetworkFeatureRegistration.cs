@@ -23,7 +23,11 @@ public sealed class NetworkFeatureRegistration : IFeatureRegistration
         // On whenever the owner's Online protection (policy "web" block) is on for this PC — it's off when the plan
         // lacks it or the member declined consent — or when config forces it (FR-04: it used to be config-only and
         // off, so no PC measured anything). A new policy rebuilds the scope.
-        services.AddScoped(sp => NetworkPolicyMap.FromPolicy(defaults, sp.GetRequiredService<FeaturePolicyState>().Current?.Web));
+        services.AddScoped(sp =>
+        {
+            var policy = sp.GetRequiredService<FeaturePolicyState>().Current;
+            return NetworkPolicyMap.FromPolicy(defaults, policy?.Web, policy?.DataTransfer);
+        });
         services.AddScoped<NetworkUploadCollector>();
         services.AddScoped<NetworkUsageCollector>();
 

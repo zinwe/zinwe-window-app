@@ -25,8 +25,14 @@ public sealed class NetworkFeatureOptions
     public List<string> Apps { get; set; } = [];
 
     /// <summary>
-    /// When &gt; 0, uploads to a single domain over this many bytes (since the agent started) raise one warning
-    /// event. 0 disables the alert (monitoring only). Default 0.
+    /// When &gt; 0, sending this many bytes to one site within <see cref="WarnWindowMinutes"/> raises one warning
+    /// event. 0 disables the alert (monitoring only). Comes from the owner's website uploads limit.
     /// </summary>
     public long WarnBytes { get; set; }
+
+    /// <summary>
+    /// The rolling window of <see cref="WarnBytes"/>. Long enough for one big upload on a slow office line (1 GB takes
+    /// about 25 minutes at 5 Mbps), short enough that a day of small sends never adds up to an alert.
+    /// </summary>
+    public int WarnWindowMinutes { get; set; } = 60;
 }

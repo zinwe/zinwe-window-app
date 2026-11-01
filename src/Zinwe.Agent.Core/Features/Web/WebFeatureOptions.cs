@@ -38,16 +38,28 @@ public sealed class WebFeatureOptions
     /// <summary>Apply the blocklist on start (dry-run aware) and report blocked attempts.</summary>
     public bool BlockingEnabled { get; set; } = true;
 
-    /// <summary>Seed the blocklist with the small built-in sample categories (placeholders until the backend feeds real lists).</summary>
+    /// <summary>
+    /// Seed the blocklist with the small built-in sample (reserved .test names), for a backend too old to have real
+    /// lists. A policy with a <see cref="ListVersion"/> turns it off.
+    /// </summary>
     public bool UseBuiltInSampleList { get; set; } = true;
 
     /// <summary>
-    /// When non-empty, only these built-in category names are enabled (e.g. "malware", "phishing"). Empty = all
-    /// built-in categories. Category membership is what "illegal/blocked" means here — a maintained list, never a
-    /// content judgement made on the device.
+    /// With the built-in sample: when non-empty, only these category names are enabled; empty = all of them. With the
+    /// backend's lists: exactly the lists the owner switched on, so an empty list means none. Category membership is
+    /// what "illegal/blocked" means here — a maintained list, never a content judgement made on the device.
     /// </summary>
     public List<string> Categories { get; set; } = [];
 
     /// <summary>Extra admin-supplied domains to block, recorded under the "custom" category.</summary>
     public List<string> CustomDomains { get; set; } = [];
+
+    /// <summary>Sites never blocked by a list, subdomains included. Wins over everything else on this PC.</summary>
+    public List<string> AllowDomains { get; set; } = [];
+
+    /// <summary>
+    /// The set of sites the policy names ("" = none). Null = no policy from a backend with lists: the sites then come
+    /// from the built-in sample rather than <see cref="WebBlockSet"/>.
+    /// </summary>
+    public string? ListVersion { get; set; }
 }

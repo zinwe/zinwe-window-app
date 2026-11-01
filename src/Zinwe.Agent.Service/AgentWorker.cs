@@ -283,7 +283,7 @@ internal sealed partial class AgentWorker(
                 LogHeartbeat(identity.DeviceId, beat.PolicyVersion, (int)interval.TotalSeconds);
 
                 // Fetch failures are logged inside and retried next beat; a 401 here lands in the catch below.
-                if (await policy.SyncAsync(identity.DeviceToken, beat.PolicyVersion, ct))
+                if (await policy.SyncAsync(identity.DeviceToken, beat.PolicyVersion, ct, beat.WebListVersion))
                 {
                     state.SetPolicy(policy.Current);
                 }
