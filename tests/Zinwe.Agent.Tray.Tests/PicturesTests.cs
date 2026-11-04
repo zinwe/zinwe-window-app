@@ -14,6 +14,7 @@ namespace Zinwe.Agent.Tray.Tests;
 /// the photo compression (≤ 60 KB, 256 px, no EXIF, upright, on white), the optimistic pick, and no control without
 /// a service + backend that have pictures.
 /// </summary>
+[Collection(WpfCollection.Name)]
 public sealed class PicturesTests : IDisposable
 {
     /// <summary>

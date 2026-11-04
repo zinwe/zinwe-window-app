@@ -24,6 +24,25 @@ public static class IssueReport
         };
     }
 
+    /// <summary>The scales a screenshot is tried at, largest first, until its PNG fits the backend's 5 MB.</summary>
+    public static IReadOnlyList<double> ShotScales { get; } = [1, 0.75, 0.5, 0.35, 0.25];
+
+    /// <summary>
+    /// The window's PNG at the largest of <see cref="ShotScales"/> that fits <see cref="MemberIssueRequest.MaxScreenshotBytes"/>
+    /// (<paramref name="encode"/> draws it at a scale); null when none fits or it can't be drawn.
+    /// </summary>
+    public static byte[]? Fit(Func<double, byte[]?> encode)
+    {
+        foreach (var scale in ShotScales)
+        {
+            if (encode(scale) is { Length: > 0 } png && png.Length <= MemberIssueRequest.MaxScreenshotBytes)
+            {
+                return png;
+            }
+        }
+        return null;
+    }
+
     /// <summary>
     /// The request the agent posts. The description is trimmed and capped at the backend's limit; a screenshot over
     /// <see cref="MemberIssueRequest.MaxScreenshotBytes"/> is left out rather than refused with the report.

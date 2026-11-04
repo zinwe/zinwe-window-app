@@ -18,13 +18,19 @@ public partial class IssuePanel : UserControl
     /// <summary>The panel asks to be closed (Cancel / Close).</summary>
     public event EventHandler? Closed;
 
-    /// <summary>A fresh, empty form (each time it's opened); the screenshot is off until the member ticks it.</summary>
+    /// <summary>
+    /// A fresh, empty form (each time it's opened). With a screenshot of the screen the member was on (taken before
+    /// this form showed) "Attach a screenshot of this window" is ticked, its preview showing, and can be unticked;
+    /// without one the option isn't offered at all.
+    /// </summary>
     public void Reset()
     {
         Description.Text = "";
-        Attach.IsChecked = false;
-        Attach.IsEnabled = Model?.IssueShot is not null;
         Shot.Source = Model?.IssueShot is { } png ? Load(png) : null;
+        var offered = Shot.Source is not null;
+        Attach.Visibility = offered ? Visibility.Visible : Visibility.Collapsed;
+        Attach.IsEnabled = offered;
+        Attach.IsChecked = offered;
         Error.Visibility = Visibility.Collapsed;
         SendButton.IsEnabled = false;
         Form.Visibility = Visibility.Visible;
@@ -65,7 +71,7 @@ public partial class IssuePanel : UserControl
         {
             return;
         }
-        if (m.SendIssue(Description.Text, Attach.IsChecked == true) is { } problem)
+        if (m.SendIssue(Description.Text, Attach.IsChecked == true && Shot.Source is not null) is { } problem)
         {
             Error.Text = problem;
             Error.Visibility = Visibility.Visible;

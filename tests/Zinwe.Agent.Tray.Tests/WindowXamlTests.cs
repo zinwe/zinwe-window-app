@@ -8,6 +8,7 @@ namespace Zinwe.Agent.Tray.Tests;
 /// (e.g. after moving the button styles to App.xaml) fails here instead of on an employee's PC.
 /// The windows are only constructed, never shown or closed (closing the widget would save timing files).
 /// </summary>
+[Collection(WpfCollection.Name)]
 public sealed class WindowXamlTests
 {
     [Fact]

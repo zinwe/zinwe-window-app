@@ -732,33 +732,58 @@ public partial class WidgetWindow : Window
         {
             return;
         }
-        // After the window has drawn itself (it may have just come up from the taskbar), so the capture shows it.
-        Dispatcher.BeginInvoke(_model.OpenIssue, DispatcherPriority.Loaded);
+        // At once: the capture draws the window's own screen (laid out off-screen when it was hidden or minimized), so
+        // it never waits for, or depends on, what is on the desktop.
+        _model.OpenIssue();
     }
 
-    /// <summary>The window's content as a PNG at the screen's scale ("Attach a screenshot of this window"); null on failure.</summary>
-    private byte[]? Capture()
+    /// <summary>
+    /// "Attach a screenshot of this window": the screen the member is on, as a PNG at the screen's scale (smaller when
+    /// it would pass 5 MB); null when it can't be drawn. Only this window's own visuals are drawn (never the desktop or
+    /// another app), without the bottom sheet and its dim, so a sheet open at that moment (or the Report form) never
+    /// shows. A hidden or minimized window keeps its last layout; one never shown yet is laid out off-screen first.
+    /// </summary>
+    internal byte[]? Capture()
     {
+        var sheet = SheetSlot.Visibility;
         try
         {
-            if (!IsVisible || Root.ActualWidth <= 0 || Root.ActualHeight <= 0)
+            SheetSlot.Visibility = Visibility.Hidden;
+            Root.UpdateLayout();
+            if (Root.ActualWidth <= 0 || Root.ActualHeight <= 0)
+            {
+                var size = new Size(PanelWidth, double.IsNaN(Height) || Height <= 0 ? PanelHeight : Height);
+                Root.Measure(size);
+                Root.Arrange(new Rect(size));
+                Root.UpdateLayout();
+            }
+            if (Root.ActualWidth <= 0 || Root.ActualHeight <= 0)
             {
                 return null;
             }
             var dpi = VisualTreeHelper.GetDpi(Root);
-            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(Root.ActualWidth * dpi.DpiScaleX),
-                (int)Math.Ceiling(Root.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
-            bitmap.Render(Root);
-            var png = new PngBitmapEncoder();
-            png.Frames.Add(BitmapFrame.Create(bitmap));
-            using var stream = new System.IO.MemoryStream();
-            png.Save(stream);
-            return stream.ToArray();
+            return IssueReport.Fit(scale => Draw(Root, dpi.DpiScaleX * scale, dpi.DpiScaleY * scale));
         }
         catch (Exception)
         {
             return null; // the report still goes, without the picture
         }
+        finally
+        {
+            SheetSlot.Visibility = sheet;
+        }
+    }
+
+    private static byte[] Draw(FrameworkElement root, double scaleX, double scaleY)
+    {
+        var bitmap = new RenderTargetBitmap(Math.Max(1, (int)Math.Ceiling(root.ActualWidth * scaleX)),
+            Math.Max(1, (int)Math.Ceiling(root.ActualHeight * scaleY)), 96 * scaleX, 96 * scaleY, PixelFormats.Pbgra32);
+        bitmap.Render(root);
+        var png = new PngBitmapEncoder();
+        png.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = new System.IO.MemoryStream();
+        png.Save(stream);
+        return stream.ToArray();
     }
 
     // ---- Window lifetime -----------------------------------------------------------------------
