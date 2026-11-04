@@ -48,17 +48,7 @@ internal static class TaskCard
                 Template = TickTemplate(), FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
             };
             AutomationProperties.SetName(tick, (finished ? "Mark not done: " : "Mark done: ") + t.Title);
-            tick.Click += (_, _) =>
-            {
-                if (finished)
-                {
-                    m.ReopenTask(t);
-                }
-                else
-                {
-                    m.DoneTask(t);
-                }
-            };
+            tick.Click += (_, _) => m.ToggleTick(t);
             tick.VerticalAlignment = VerticalAlignment.Center;
             head.Children.Add(tick);
         }
@@ -83,11 +73,14 @@ internal static class TaskCard
         texts.Children.Add(heading);
         var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
         line.Children.Add(Ui.Text(TaskBoard.LaneLabel(t, owner), 12, FontWeights.SemiBold, stKey));
-        line.Children.Add(Ui.Text(" · ", 12, fg: "Z.Muted"));
-        var tone = TaskBoard.DueToneOf(t, now);
-        line.Children.Add(Ui.Text(TaskBoard.DueLabel(t, now), 12,
-            tone == DueTone.Late ? FontWeights.Bold : tone == DueTone.Soon ? FontWeights.SemiBold : FontWeights.Normal,
-            tone == DueTone.Late ? "Z.RedText" : tone == DueTone.Soon ? "Z.StDoing" : "Z.Muted"));
+        if (TaskBoard.DueLabel(t, now) is { Length: > 0 } dueText)
+        {
+            line.Children.Add(Ui.Text(" · ", 12, fg: "Z.Muted"));
+            var tone = TaskBoard.DueToneOf(t, now);
+            line.Children.Add(Ui.Text(dueText, 12,
+                tone == DueTone.Late ? FontWeights.Bold : tone == DueTone.Soon ? FontWeights.SemiBold : FontWeights.Normal,
+                tone == DueTone.Late ? "Z.RedText" : tone == DueTone.Soon ? "Z.StDoing" : "Z.Muted"));
+        }
         if (t.Steps.Count > 0)
         {
             line.Children.Add(Ui.Text($" · {t.Steps.Count(s => s.Done)}/{t.Steps.Count}", 12, fg: "Z.Muted"));
@@ -175,7 +168,7 @@ internal static class TaskCard
     }
 
     /// <summary>What happened on the task: the Log text under its title opens this.</summary>
-    private static StackPanel LogPanel(MemberTask t, TrayModel m)
+    internal static StackPanel LogPanel(MemberTask t, TrayModel m)
     {
         var body = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
         body.Children.Add(new Border { Height = 1, Margin = new Thickness(0, 0, 0, 8) }.Res(Border.BackgroundProperty, "Z.LineSoft"));
@@ -211,7 +204,7 @@ internal static class TaskCard
         return body;
     }
 
-    private static StackPanel Details(MemberTask t, TrayModel m, string owner)
+    internal static StackPanel Details(MemberTask t, TrayModel m, string owner)
     {
         var body = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
         var rule = new Border { Height = 1, Margin = new Thickness(0, 0, 0, 8) };
@@ -353,7 +346,7 @@ internal static class TaskCard
         return b;
     }
 
-    private static string Sent(DateTimeOffset at, DateTimeOffset now)
+    internal static string Sent(DateTimeOffset at, DateTimeOffset now)
     {
         var day = at.ToLocalTime().Date;
         return day == now.ToLocalTime().Date ? at.ToLocalTime().ToString("h:mm tt")

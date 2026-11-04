@@ -31,6 +31,14 @@ public sealed class TrayV2Tests : IDisposable
     {
         Id = id, Title = "Task " + id, Status = status, DueKey = due, Due = due.ToString(), Mine = mine, IsNew = isNew, NeedsOk = needsOk,
         Confirm = confirm, High = high, DueAt = dueAt, SentAt = Now.AddHours(-id),
+        // The real day the key meant, as every row saved since DueOn existed carries it.
+        DueOn = due switch
+        {
+            DueKey.Overdue => DateOnly.FromDateTime(Now.Date.AddDays(-1)),
+            DueKey.Today => DateOnly.FromDateTime(Now.Date),
+            DueKey.Tomorrow => DateOnly.FromDateTime(Now.Date.AddDays(1)),
+            _ => null,
+        },
         Steps = [.. Enumerable.Range(1, steps).Select(i => new TaskStep("Step " + i, false))],
     };
 
@@ -115,40 +123,13 @@ public sealed class TrayV2Tests : IDisposable
     {
         var late = Task(1, due: DueKey.Today, dueAt: Now.AddMinutes(-5));
         Assert.True(TaskBoard.IsLate(late, Now));
-        Assert.Equal("Overdue · Today", TaskBoard.DueLabel(late, Now));
+        Assert.Equal("Was due " + TaskBoard.TimeLabel(Now.AddMinutes(-5)), TaskBoard.DueLabel(late, Now));
         Assert.Equal(DueTone.Late, TaskBoard.DueToneOf(late, Now));
 
         var soon = Task(2, due: DueKey.Today, dueAt: Now.AddMinutes(12));
         Assert.Equal("Due in 12 min", TaskBoard.DueLabel(soon, Now));
         Assert.Equal(DueTone.Soon, TaskBoard.DueToneOf(soon, Now));
         Assert.Equal(DueTone.Normal, TaskBoard.DueToneOf(Task(3, due: DueKey.Tomorrow), Now));
-    }
-
-    [Fact]
-    public void Filters_combine_and_chips_count_with_the_other_filters()
-    {
-        var tasks = new[]
-        {
-            Task(1, MemberTaskStatus.New, DueKey.Today, isNew: true, high: true),
-            Task(2, MemberTaskStatus.Progress, DueKey.Tomorrow),
-            Task(3, MemberTaskStatus.Help, DueKey.Today),
-            Task(4, MemberTaskStatus.Done, DueKey.Today),
-            Task(5, MemberTaskStatus.New, DueKey.Today, mine: true),
-        };
-        Assert.Equal([1, 3, 4, 5], TaskBoard.Shown(tasks, new TaskFilter(Due: "today"), Now).Select(t => t.Id).Order());
-        Assert.Equal([1], TaskBoard.Shown(tasks, new TaskFilter(High: true), Now).Select(t => t.Id));
-        Assert.Equal([5], TaskBoard.Shown(tasks, new TaskFilter(From: "me"), Now).Select(t => t.Id));
-        Assert.Equal(2, TaskBoard.ChipCount(tasks, "todo", TaskFilter.None, Now));
-        Assert.Equal(1, TaskBoard.ChipCount(tasks, "todo", new TaskFilter(From: "owner"), Now));
-        Assert.Equal(0, TaskBoard.ChipCount(tasks, "all", TaskFilter.None, Now));
-        Assert.True(new TaskFilter(Status: "done").IsFiltered);
-        Assert.False(TaskFilter.None.IsFiltered);
-
-        var groups = TaskBoard.Groups(TaskBoard.Shown(tasks, TaskFilter.None, Now), "all", "Ananya");
-        Assert.Equal(["Doing", "To do", "With Ananya", "Done", TaskBoard.MyTodos], groups.Select(g => g.Label));
-        Assert.Equal([5], groups[^1].Items.Select(t => t.Id)); // own to-dos stay apart
-        Assert.Equal("No tasks match these filters.", TaskBoard.EmptyText(new TaskFilter(High: true), "Ananya"));
-        Assert.Equal("Nothing to start.", TaskBoard.EmptyText(new TaskFilter(Status: "todo"), "Ananya"));
     }
 
     [Fact]

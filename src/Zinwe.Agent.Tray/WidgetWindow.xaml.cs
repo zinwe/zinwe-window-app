@@ -29,6 +29,7 @@ public partial class WidgetWindow : Window
 
     private readonly TrayModel _model;
     private int _lastMinute = -1;
+    private int _lastClockMinute = -1;
 
     private readonly Views.OnboardView Onboard = new() { Visibility = Visibility.Collapsed };
     private readonly Views.HomeView Home = new();
@@ -469,12 +470,15 @@ public partial class WidgetWindow : Window
             return;
         }
         var minute = (int)_model.Running.TotalMinutes;
-        if (minute == _lastMinute)
+        var clock = DateTime.Now.Minute;
+        if (minute == _lastMinute && clock == _lastClockMinute)
         {
             return;
         }
         // Hours and minutes only: the clock text changes once a minute (no ticking seconds in the corner of the eye).
+        // The wall clock too, off the clock: due words ("Due in 25 min") and the Tasks clock follow it.
         _lastMinute = minute;
+        _lastClockMinute = clock;
         Render();
     }
 

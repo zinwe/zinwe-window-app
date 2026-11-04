@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace Zinwe.Agent.Tray.Widget;
@@ -52,8 +53,13 @@ public sealed record MemberTask
     public IReadOnlyList<TaskActivityLine> Activity { get; init; } = [];
     public string Title { get; init; } = "";
     public string Details { get; init; } = "";
-    /// <summary>The due label as the board shows it ("Today, 4:00 PM", "Fri 30 Oct", "Tomorrow").</summary>
+    /// <summary>
+    /// The due words as they read when the task was saved ("Today", "Tomorrow"). Kept in tasks.json for older builds,
+    /// never shown: words go stale overnight, so the board works them out from the real date every time
+    /// (<see cref="TaskBoard.DueLabel"/>).
+    /// </summary>
     public string Due { get; init; } = "";
+    /// <summary>The group as it was when saved; like <see cref="Due"/>, only for older builds (see <see cref="TaskBoard.KeyOf"/>).</summary>
     public DueKey DueKey { get; init; } = DueKey.Later;
     /// <summary>Exact due time when there is one (drives "Due in 12 min" and the due-soon reminder).</summary>
     public DateTimeOffset? DueAt { get; init; }
@@ -89,38 +95,40 @@ public sealed record MemberTask
     public long? SyncedFor { get; init; }
     /// <summary>Deleted, and the server doesn't know yet: hidden, kept so the next pull doesn't bring it back.</summary>
     public DateTimeOffset? DeletedAt { get; init; }
+    /// <summary>When it was ticked (the Done view, "Done today"); null while it's open.</summary>
+    public DateTimeOffset? DoneAt { get; init; }
 }
 
-/// <summary>A filter on the Tasks tab. Every part combines with the others.</summary>
-public sealed record TaskFilter(string Status = "all", string Due = "any", string From = "any", bool High = false, bool Todo = false)
-{
-    public bool IsFiltered => Status != "all" || Due != "any" || From != "any" || High || Todo;
-    public static readonly TaskFilter None = new();
-}
+/// <summary>The Tasks tab's four views (F-16): due by today, coming later, everything open, and what's ticked.</summary>
+public enum TaskView { Today, Upcoming, All, Done }
 
-/// <summary>A group on the Tasks tab ("Doing", "To do", "With {owner}", "Done").</summary>
-public sealed record TaskGroup(string Label, IReadOnlyList<MemberTask> Items);
+/// <summary>
+/// A dated heading on the Tasks tab and the tasks under it: "Overdue", "Today · Wed 4 Nov", "Tomorrow · Thu 5 Nov",
+/// "Friday · Fri 6 Nov", "No date"; in Done, "Done today" and "Earlier".
+/// </summary>
+/// <param name="Sub">The date after the name ("Wed 4 Nov"), or "".</param>
+/// <param name="Late">Overdue: the heading reads in the late colour.</param>
+public sealed record TaskSection(string Name, string Sub, bool Late, IReadOnlyList<MemberTask> Items);
+
+/// <summary>The quick add's due choice (F-16): Today, Tomorrow or a picked date, and an optional "by" time.</summary>
+public sealed record QuickAdd(string Due = "today", DateOnly? Date = null, TimeOnly? Time = null);
 
 /// <summary>The one action shown on a closed card, so the common case is a single tap.</summary>
 public sealed record QuickAction(string Label, bool Primary, string Aria);
 
 /// <summary>
-/// The Tasks rules from the prototype board, pure so they're unit-tested: four plain lanes, one-tap Done (with
-/// Undo at the call site), filters, groups, due labels and which task Home puts in focus.
+/// The Tasks rules, pure so they're unit-tested: four plain lanes, one-tap Done (with Undo at the call site), the four
+/// views with their dated headings, due words worked out from the clock, and which task Home puts in focus.
 /// </summary>
 public static class TaskBoard
 {
-    /// <summary>The Status dropdown. "high" isn't a lane: it sets <see cref="TaskFilter.High"/> (see <see cref="WithStatus"/>).</summary>
-    public static (string Key, string Label)[] StatusOptions(string ownerFirst) =>
-        [("all", "All status"), ("new", "New"), ("doing", "Doing"), ("todo", "To do"), ("waiting", "With " + ownerFirst), ("done", "Done"), ("high", "High priority")];
-
-    public static readonly (string Key, string Label)[] DueOptions =
-        [("any", "Any date"), ("overdue", "Overdue"), ("today", "Today"), ("tomorrow", "Tomorrow"), ("week", "This week"), ("later", "Later")];
-
-    public static (string Key, string Label)[] FromOptions(string ownerFirst) =>
-        [("any", "Anyone"), ("owner", "From " + ownerFirst), ("me", "Added by me")];
+    /// <summary>How long a ticked task stays where it was, greyed with Undo, before it moves to Done.</summary>
+    public static readonly TimeSpan TickHold = TimeSpan.FromSeconds(3);
 
     public static bool Finished(MemberTask t) => t.Status is MemberTaskStatus.Done or MemberTaskStatus.Approved or MemberTaskStatus.Cancelled;
+
+    /// <summary>Done on the member's side: finished, or an owner's task waiting for the owner's OK (Review).</summary>
+    public static bool Ticked(MemberTask t) => Finished(t) || t.Status == MemberTaskStatus.Review;
 
     public static TaskLane LaneOf(MemberTask t) => t.Status switch
     {
@@ -150,34 +158,114 @@ public static class TaskBoard
         },
     };
 
-    /// <summary>Sorting by due: exact time first, then overdue, today, tomorrow, later.</summary>
-    public static double Rank(MemberTask t, DateTimeOffset now) =>
-        t.DueAt is { } at ? (at - now.Date).TotalSeconds
-        : t.DueDate is { } d ? (d.ToDateTime(TimeOnly.MinValue) - now.Date).TotalSeconds + 1
-        : t.DueKey switch
+    // ---- When it's due, from the real date -------------------------------------------------
+
+    /// <summary>
+    /// The day a task is due and, when it has one, the exact time. From the owner's due time (a midnight or end-of-day
+    /// time means a date only), else the picked date, else the day "Today" / "Tomorrow" meant when it was saved
+    /// (<see cref="MemberTask.DueOn"/>). A row from before DueOn existed falls back to its saved word, counted from the
+    /// day it was made, so it still moves along with the calendar.
+    /// </summary>
+    public static (DateOnly? Day, DateTimeOffset? At) When(MemberTask t)
+    {
+        if (t.DueAt is { } at)
         {
-            DueKey.Overdue => -1,
-            DueKey.Today => 86_000,
-            DueKey.Tomorrow => 172_800,
-            _ => 432_000,
+            var local = at.ToLocalTime();
+            var dateOnly = local.TimeOfDay == TimeSpan.Zero || local.TimeOfDay >= new TimeSpan(23, 59, 0);
+            return (DateOnly.FromDateTime(local.DateTime), dateOnly ? null : at);
+        }
+        if ((t.DueDate ?? t.DueOn) is { } day)
+        {
+            return (day, null);
+        }
+        if (t.SentAt == default)
+        {
+            return (null, null);
+        }
+        var made = DateOnly.FromDateTime(t.SentAt.LocalDateTime);
+        return t.DueKey switch
+        {
+            DueKey.Today or DueKey.Overdue => (made, null),
+            DueKey.Tomorrow => (made.AddDays(1), null),
+            _ => (null, null),
         };
+    }
 
-    public static bool IsLate(MemberTask t, DateTimeOffset now) =>
-        !Finished(t) && (t.DueKey == DueKey.Overdue || (t.DueAt is { } at && at <= now));
+    public static DateOnly Today(DateTimeOffset now) => DateOnly.FromDateTime(now.LocalDateTime);
 
-    /// <summary>Due within 30 minutes (not late yet).</summary>
+    /// <summary>Days from today to the due day (negative = past); null without a date.</summary>
+    public static int? DaysFrom(MemberTask t, DateTimeOffset now) => When(t).Day is { } d ? d.DayNumber - Today(now).DayNumber : null;
+
+    /// <summary>The group as of <paramref name="now"/>: yesterday's "Tomorrow" is Today after midnight. No date reads as Later.</summary>
+    public static DueKey KeyOf(MemberTask t, DateTimeOffset now) => DaysFrom(t, now) switch
+    {
+        null => DueKey.Later,
+        < 0 => DueKey.Overdue,
+        0 => DueKey.Today,
+        1 => DueKey.Tomorrow,
+        _ => DueKey.Later,
+    };
+
+    /// <summary>Sorting by due: exact time first within a day, then the rest of the day, later days, no date last.</summary>
+    public static double Rank(MemberTask t, DateTimeOffset now)
+    {
+        var (day, at) = When(t);
+        var start = Today(now).ToDateTime(TimeOnly.MinValue);
+        return at is { } x ? (x.LocalDateTime - start).TotalSeconds
+            : day is { } d ? (d.ToDateTime(TimeOnly.MinValue) - start).TotalSeconds + 86_399
+            : double.MaxValue;
+    }
+
+    /// <summary>Past its time (or, without one, past its day) and not ticked yet.</summary>
+    public static bool IsLate(MemberTask t, DateTimeOffset now)
+    {
+        if (Ticked(t))
+        {
+            return false;
+        }
+        var (day, at) = When(t);
+        return at is { } x ? x <= now : day is { } d && d < Today(now);
+    }
+
+    /// <summary>Due within the hour (not late yet).</summary>
     public static bool IsSoon(MemberTask t, DateTimeOffset now) =>
-        !Finished(t) && !IsLate(t, now) && t.DueAt is { } at && at - now <= TimeSpan.FromMinutes(30);
+        !Ticked(t) && !IsLate(t, now) && When(t).At is { } at && at - now <= TimeSpan.FromHours(1);
 
-    public static string DueLabel(MemberTask t, DateTimeOffset now) =>
-        IsLate(t, now) ? "Overdue · " + t.Due
-        : IsSoon(t, now) ? $"Due in {Math.Max(1, (int)Math.Ceiling((t.DueAt!.Value - now).TotalMinutes))} min"
-        : t.Due;
+    /// <summary>"Wed 4 Nov".</summary>
+    public static string DayLabel(DateOnly day) => day.ToString("ddd d MMM", CultureInfo.InvariantCulture);
 
-    /// <summary>How the due label reads: late (red, bold), soon or today (orange), else muted.</summary>
+    /// <summary>"4:00 PM".</summary>
+    public static string TimeLabel(DateTimeOffset at) => at.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The due words, worked out from the clock: "By 4:00 PM", "Due in 25 min", "Was due 4:00 PM", "Overdue · yesterday",
+    /// "Today", "Tomorrow · Thu 5 Nov", "Fri 6 Nov · 11:00 AM"; "" without a date.
+    /// </summary>
+    public static string DueLabel(MemberTask t, DateTimeOffset now)
+    {
+        var (day, at) = When(t);
+        if (day is not { } d)
+        {
+            return "";
+        }
+        var n = d.DayNumber - Today(now).DayNumber;
+        if (IsLate(t, now))
+        {
+            return n == 0 && at is { } due ? "Was due " + TimeLabel(due) : "Overdue · " + (n == -1 ? "yesterday" : DayLabel(d));
+        }
+        if (n == 0 && at is { } x)
+        {
+            var minutes = (int)Math.Ceiling((x - now).TotalMinutes);
+            return minutes <= 60 && !Ticked(t) ? $"Due in {Math.Max(1, minutes)} min" : "By " + TimeLabel(x);
+        }
+        var word = n == 0 ? "Today" : n == 1 ? "Tomorrow · " + DayLabel(d) : DayLabel(d);
+        return at is { } y ? word + " · " + TimeLabel(y) : word;
+    }
+
+    /// <summary>How the due words read: late (bold), soon or due today (accent), else muted.</summary>
     public static DueTone DueToneOf(MemberTask t, DateTimeOffset now) =>
         IsLate(t, now) ? DueTone.Late
-        : IsSoon(t, now) || (!Finished(t) && t.DueKey == DueKey.Today) ? DueTone.Soon
+        : IsSoon(t, now) || (!Ticked(t) && DaysFrom(t, now) == 0) ? DueTone.Soon
         : DueTone.Normal;
 
     // ---- What the member does ---------------------------------------------------
@@ -185,11 +273,12 @@ public static class TaskBoard
     public static MemberTask Start(MemberTask t) => t with { Status = MemberTaskStatus.Progress, IsNew = false };
 
     /// <summary>One-tap Done: every step ticked; a "needs OK" task waits for the owner first.</summary>
-    public static MemberTask MarkDone(MemberTask t) => t with
+    public static MemberTask MarkDone(MemberTask t, DateTimeOffset? at = null) => t with
     {
         Status = t.NeedsOk ? MemberTaskStatus.Review : MemberTaskStatus.Done,
         Steps = [.. t.Steps.Select(s => s with { Done = true })],
         IsNew = false,
+        DoneAt = at ?? t.DoneAt,
     };
 
     /// <summary>The own-task tick un-done: back to new, steps cleared.</summary>
@@ -197,6 +286,7 @@ public static class TaskBoard
     {
         Status = MemberTaskStatus.New,
         Steps = [.. t.Steps.Select(s => s with { Done = false })],
+        DoneAt = null,
     };
 
     /// <summary>Ticking a step of a task not started yet starts it.</summary>
@@ -228,65 +318,126 @@ public static class TaskBoard
     public static string Join(string? reason, string? note) =>
         string.Join(". ", new[] { reason?.Trim(), note?.Trim() }.Where(s => !string.IsNullOrEmpty(s)));
 
-    // ---- What the Tasks tab shows ---------------------------------------------------
+    // ---- What the Tasks tab shows (F-16: Today · Upcoming · All · Done) ------------------------------
 
-    public static bool PassesStatus(MemberTask t, string status) => status switch
+    /// <param name="holding">Tasks ticked in the last few seconds: they stay where they were, greyed, until the hold ends.</param>
+    public static bool InView(MemberTask t, TaskView view, DateTimeOffset now, IReadOnlySet<int>? holding = null)
     {
-        "new" => !Finished(t) && t.IsNew,
-        "todo" => LaneOf(t) == TaskLane.Todo,
-        "doing" => LaneOf(t) == TaskLane.Doing,
-        "waiting" => LaneOf(t) == TaskLane.Waiting,
-        "done" => Finished(t),
-        _ => true,
-    };
-
-    public static bool PassesDue(MemberTask t, string due, DateTimeOffset now)
-    {
-        var weekEnd = now.Date.AddDays(7);
-        return due switch
+        var open = !Ticked(t) || (holding?.Contains(t.Id) ?? false);
+        if (view == TaskView.Done)
         {
-            "overdue" => IsLate(t, now),
-            "today" => t.DueKey is DueKey.Today or DueKey.Overdue,
-            "tomorrow" => t.DueKey == DueKey.Tomorrow,
-            "week" => t.DueKey == DueKey.Later && (t.DueDate is null || t.DueDate.Value.ToDateTime(TimeOnly.MinValue) <= weekEnd),
-            "later" => t.DueKey == DueKey.Later && t.DueDate is { } d && d.ToDateTime(TimeOnly.MinValue) > weekEnd,
+            return !open;
+        }
+        if (!open)
+        {
+            return false;
+        }
+        return view switch
+        {
+            TaskView.Today => DaysFrom(t, now) is <= 0,
+            TaskView.Upcoming => DaysFrom(t, now) is >= 1,
             _ => true,
         };
     }
 
-    public static bool PassesFrom(MemberTask t, string from) => from switch
+    /// <summary>The number beside a view: what it lists; for Done, what was ticked today.</summary>
+    public static int Count(IEnumerable<MemberTask> tasks, TaskView view, DateTimeOffset now, IReadOnlySet<int>? holding = null) =>
+        view == TaskView.Done
+            ? DoneToday(tasks, now, holding).Count
+            : tasks.Count(t => InView(t, view, now, holding));
+
+    /// <summary>Ticked today (and not still holding): folded at the bottom of Today.</summary>
+    public static IReadOnlyList<MemberTask> DoneToday(IEnumerable<MemberTask> tasks, DateTimeOffset now, IReadOnlySet<int>? holding = null) =>
+        [.. tasks.Where(t => InView(t, TaskView.Done, now, holding) && t.DoneAt is { } at && DateOnly.FromDateTime(at.LocalDateTime) == Today(now))
+            .OrderByDescending(t => t.DoneAt)];
+
+    /// <summary>
+    /// The view as dated sections: Overdue, Today, Tomorrow, then each later day, then No date; the most pressing first
+    /// inside each (exact times, then high priority). Done: "Done today", then "Earlier", newest first.
+    /// </summary>
+    public static IReadOnlyList<TaskSection> Sections(IEnumerable<MemberTask> tasks, TaskView view, DateTimeOffset now,
+        IReadOnlySet<int>? holding = null)
     {
-        "owner" => !t.Mine,
-        "me" => t.Mine,
-        _ => true,
+        var shown = tasks.Where(t => InView(t, view, now, holding)).ToList();
+        if (view == TaskView.Done)
+        {
+            var today = DoneToday(shown, now, holding);
+            var earlier = shown.Except(today).OrderByDescending(t => t.DoneAt ?? DateTimeOffset.MinValue).ThenBy(t => t.Id).ToList();
+            var done = new List<TaskSection>();
+            if (today.Count > 0)
+            {
+                done.Add(new TaskSection("Done today", "", false, today));
+            }
+            if (earlier.Count > 0)
+            {
+                done.Add(new TaskSection("Earlier", "", false, earlier));
+            }
+            return done;
+        }
+        return [.. shown
+            .OrderBy(t => Rank(t, now)).ThenByDescending(t => t.High).ThenBy(t => t.Id)
+            .GroupBy(t => SectionOf(t, now))
+            .OrderBy(g => g.Key.Order)
+            .Select(g => new TaskSection(g.Key.Name, g.Key.Sub, g.Key.Late, [.. g]))];
+    }
+
+    private static (int Order, string Name, string Sub, bool Late) SectionOf(MemberTask t, DateTimeOffset now)
+    {
+        if (When(t).Day is not { } day)
+        {
+            return (int.MaxValue, "No date", "", false);
+        }
+        var n = day.DayNumber - Today(now).DayNumber;
+        return n switch
+        {
+            < 0 when IsLate(t, now) => (-1, "Overdue", "", true),
+            <= 0 => (0, "Today", DayLabel(Today(now)), false),
+            1 => (1, "Tomorrow", DayLabel(day), false),
+            _ => (n, day.ToString("dddd", CultureInfo.InvariantCulture), DayLabel(day), false),
+        };
+    }
+
+    /// <summary>What an empty view says: a plain heading and one line.</summary>
+    public static (string Title, string Line) EmptyText(TaskView view) => view switch
+    {
+        TaskView.Today => ("Nothing due today", "Add a task above, or look at Upcoming."),
+        TaskView.Upcoming => ("Nothing coming up", "Tasks for tomorrow and later show here."),
+        TaskView.All => ("No open tasks", "Everything is done."),
+        _ => ("Nothing done yet", "Ticked tasks show here."),
     };
 
-    private static bool PassesOthers(MemberTask t, TaskFilter f, DateTimeOffset now) =>
-        PassesDue(t, f.Due, now) && PassesFrom(t, f.From) && (!f.High || t.High) && (!f.Todo || IsTodo(t, now));
+    /// <summary>The view that shows a task (opening it from a notice or Home): its day's view, else All, else Done.</summary>
+    public static TaskView ViewFor(MemberTask t, DateTimeOffset now) =>
+        InView(t, TaskView.Today, now) ? TaskView.Today
+        : InView(t, TaskView.Upcoming, now) ? TaskView.Upcoming
+        : InView(t, TaskView.All, now) ? TaskView.All
+        : TaskView.Done;
 
-    /// <summary>What's left to do by today: not finished, and due today or overdue, so late work is never hidden.</summary>
-    public static bool IsTodo(MemberTask t, DateTimeOffset now) => !Finished(t) && PassesDue(t, "today", now);
+    /// <summary>The quick add's choice as a day and, with a time picked, the exact due time on that day.</summary>
+    public static (DateOnly Day, DateTimeOffset? At) QuickDue(QuickAdd q, DateTimeOffset now)
+    {
+        var today = Today(now);
+        var day = q.Due switch
+        {
+            "tomorrow" => today.AddDays(1),
+            "date" when q.Date is { } d => d,
+            _ => today,
+        };
+        return (day, q.Time is { } time ? new DateTimeOffset(day.ToDateTime(time, DateTimeKind.Local)) : null);
+    }
 
-    /// <summary>The Todo button's count: what pressing it lists, given the Status and From filters.</summary>
-    public static int TodoCount(IEnumerable<MemberTask> tasks, TaskFilter f, DateTimeOffset now) =>
-        tasks.Count(t => IsTodo(t, now) && PassesStatus(t, f.Status) && PassesFrom(t, f.From) && (!f.High || t.High));
-
-    /// <summary>Todo on or off. Turning it on clears what can't combine with it: a date, and Done.</summary>
-    public static TaskFilter ToggleTodo(TaskFilter f) => f.Todo
-        ? f with { Todo = false }
-        : f with { Todo = true, Due = "any", Status = f.Status == "done" ? "all" : f.Status };
-
-    /// <summary>The Status dropdown's choice. Done turns Todo off: nothing finished is left to do.</summary>
-    public static TaskFilter WithStatus(TaskFilter f, string key) => key == "high"
-        ? f with { Status = "all", High = true }
-        : f with { Status = key, High = false, Todo = f.Todo && key != "done" };
-
-    public static IReadOnlyList<MemberTask> Shown(IEnumerable<MemberTask> tasks, TaskFilter f, DateTimeOffset now) =>
-        [.. tasks.Where(t => PassesStatus(t, f.Status) && PassesOthers(t, f, now)).OrderBy(t => Rank(t, now)).ThenBy(t => t.Id)];
-
-    /// <summary>How many tasks a status chip would list, given the other filters (0 for "All").</summary>
-    public static int ChipCount(IEnumerable<MemberTask> tasks, string status, TaskFilter f, DateTimeOffset now) =>
-        status == "all" ? 0 : tasks.Count(t => PassesStatus(t, status) && PassesOthers(t, f, now));
+    /// <summary>The line under the quick add: "Due today, Wed 4 Nov, by 4:00 PM · press Enter to add".</summary>
+    public static string QuickHint(QuickAdd q, DateTimeOffset now)
+    {
+        var (day, at) = QuickDue(q, now);
+        var n = day.DayNumber - Today(now).DayNumber;
+        if (n < 0)
+        {
+            return "Pick today or a later date.";
+        }
+        var when = n == 0 ? "today, " + DayLabel(day) : n == 1 ? "tomorrow, " + DayLabel(day) : DayLabel(day);
+        return "Due " + when + (at is { } x ? ", by " + TimeLabel(x) : "") + " · press Enter to add";
+    }
 
     /// <summary>The group the member's own to-dos go in: kept apart from the owner's tasks.</summary>
     public const string MyTodos = "My to-dos";
@@ -308,49 +459,6 @@ public static class TaskBoard
 
     /// <summary>True when this task's waiting change really goes somewhere (an own to-do on this PC only never does).</summary>
     public static bool WaitsToSend(MemberTask t) => t.Queued && (!t.Mine || t.ClientId is not null);
-
-    public static IReadOnlyList<TaskGroup> Groups(IReadOnlyList<MemberTask> shown, string statusFilter, string ownerFirst)
-    {
-        var owners = shown.Where(t => !t.Mine).ToList();
-        var mine = shown.Where(t => t.Mine).ToList();
-        var groups = new List<TaskGroup>();
-        if (statusFilter == "done")
-        {
-            Add("Done", owners);
-        }
-        else
-        {
-            Add("Doing", owners.Where(t => LaneOf(t) == TaskLane.Doing));
-            Add("To do", owners.Where(t => LaneOf(t) == TaskLane.Todo));
-            Add("With " + ownerFirst, owners.Where(t => LaneOf(t) == TaskLane.Waiting));
-            Add("Done", owners.Where(Finished));
-        }
-        // Own to-dos last, open ones first (the order Shown gave them within each half).
-        Add(MyTodos, mine.Where(t => !Finished(t)).Concat(mine.Where(Finished)));
-        return groups;
-
-        void Add(string label, IEnumerable<MemberTask> items)
-        {
-            var list = items.ToList();
-            if (list.Count > 0)
-            {
-                groups.Add(new TaskGroup(label, list));
-            }
-        }
-    }
-
-    public static string EmptyText(TaskFilter f, string ownerFirst) =>
-        f is { Todo: true, Status: "all", From: "any", High: false } ? "Nothing left for today."
-        : f.Due != "any" || f.From != "any" || f.High || f.Todo ? "No tasks match these filters."
-        : f.Status switch
-        {
-            "new" => $"Nothing new. You’ve opened everything {ownerFirst} sent.",
-            "todo" => "Nothing to start.",
-            "doing" => "Nothing in progress. Start a task from To do.",
-            "waiting" => $"Nothing is with {ownerFirst} right now.",
-            "done" => "Nothing done yet today.",
-            _ => $"Nothing here yet. New tasks from {ownerFirst} arrive here, or add your own with +.",
-        };
 
     /// <summary>Home's focus card: the task in progress (the one last started, else the soonest), else the next to do.</summary>
     public static (MemberTask? Task, bool Now) Focus(IEnumerable<MemberTask> tasks, int? focusId, DateTimeOffset now)

@@ -193,7 +193,7 @@ public static class SampleTasks
             new MemberTask
             {
                 Id = 3, Title = "Confirm the Austin trip dates with Karan", Due = "Tomorrow", DueKey = DueKey.Tomorrow,
-                Status = MemberTaskStatus.New, Confirm = true, SentAt = now.AddDays(-1).AddMinutes(-2),
+                DueOn = DateOnly.FromDateTime(today.AddDays(1)), Status = MemberTaskStatus.New, Confirm = true, SentAt = now.AddDays(-1).AddMinutes(-2),
             },
         ];
     }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using Zinwe.Agent.Core.Backend;
+using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Messages;
 
 namespace Zinwe.Agent.Tray.Widget;
@@ -67,8 +68,15 @@ public static class OwnerTasks
             Activity = [.. activity.OrderBy(a => a.At).Select(a => new TaskActivityLine(a.At, Describe(a, ownerFirst)))],
             SentAt = d.CreatedAt ?? d.UpdatedAt ?? now,
             Queued = queued,
+            DoneAt = status is MemberTaskStatus.Review or MemberTaskStatus.Approved or MemberTaskStatus.Cancelled
+                ? activity.Where(a => IsClosing(a.Action)).Select(a => (DateTimeOffset?)a.At).Max() ?? d.StatusChangedAt ?? d.UpdatedAt
+                : null,
         };
     }
+
+    /// <summary>History lines that tick a task off: the member's done, the owner's approval or cancel.</summary>
+    private static bool IsClosing(string? action) => (action ?? "").ToLowerInvariant() is
+        "done" or "review" or "approved" or "approve" or "cancelled" or "cancel";
 
     /// <summary>"Today, 4:00 PM", "Tomorrow", "Fri 30 Oct", "No due date" + the key the filters and sorting use.</summary>
     public static (string Label, DueKey Key, DateOnly? Date) DueOf(DateTimeOffset? dueAt, DateTimeOffset now)
@@ -189,19 +197,80 @@ public static class OwnerTasks
                 break;
         }
         var activity = t.Activity ?? [];
-        var name = ActivityName(a);
-        if (a.StepId is { } sid)
-        {
-            note = (t.Steps ?? []).FirstOrDefault(x => x.Id == sid)?.Title ?? note; // the server notes the step's title
-        }
         // Once the server has the line (same action and note, made around then), don't show it twice.
-        var known = activity.Any(x => IsMember(x.By) && x.Action == name && (x.Note ?? "") == (note ?? "")
-            && x.At >= a.CreatedAtUtc - TimeSpan.FromMinutes(2));
-        if (!known && a.Action != TaskActions.Seen)
+        if (!ServerHas(t, a) && a.Action != TaskActions.Seen)
         {
-            activity = [.. activity, new DeviceTaskActivity(a.CreatedAtUtc, "member", name, note)];
+            activity = [.. activity, new DeviceTaskActivity(a.CreatedAtUtc, "member", ActivityName(a), NoteOf(t, a))];
         }
         return t with { Status = status, Steps = steps, HelpNote = helpNote, Activity = activity };
+    }
+
+    /// <summary>How far the server's clock and this PC's may differ when matching a queued action to its history line.</summary>
+    private static readonly TimeSpan Skew = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// After this long past the action (by the snapshot's own clock) an action the snapshot still doesn't show is let go:
+    /// the backend refused it, or the owner's later move replaced it. Long enough for several sync rounds.
+    /// </summary>
+    public static readonly TimeSpan GiveUpAfter = TimeSpan.FromMinutes(3);
+
+    /// <summary>The note the server records with an action: a step tick notes the step's title.</summary>
+    private static string? NoteOf(DeviceTask t, OutboxReply a) =>
+        a.StepId is { } sid ? (t.Steps ?? []).FirstOrDefault(x => x.Id == sid)?.Title ?? Trimmed(a.Body) : Trimmed(a.Body);
+
+    private static string? Trimmed(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>The task's history already has this action: same name and note, made around then.</summary>
+    public static bool ServerHas(DeviceTask t, OutboxReply a)
+    {
+        var name = ActivityName(a);
+        var note = NoteOf(t, a) ?? "";
+        return (t.Activity ?? []).Any(x => IsMember(x.By) && x.Action == name && (x.Note ?? "") == note && x.At >= a.CreatedAtUtc - Skew);
+    }
+
+    /// <summary>
+    /// The snapshot already shows what the action did: its history line is there, the status has reached (or gone past)
+    /// where the action takes it, or the owner moved the task on after it. Only then may the tray stop applying it.
+    /// </summary>
+    public static bool Reflected(DeviceTask t, OutboxReply a)
+    {
+        if (ServerHas(t, a))
+        {
+            return true;
+        }
+        if ((t.Activity ?? []).Any(x => !IsMember(x.By) && x.At >= a.CreatedAtUtc - Skew && x.Action is not ("created" or "create" or "sent")))
+        {
+            return true; // the owner acted since: their move is the truth now
+        }
+        return a.Action switch
+        {
+            TaskActions.Seen => t.Status != "sent",
+            TaskActions.Accept => t.Status is not ("sent" or "seen"),
+            TaskActions.Done => t.Status is "review" or "approved" or "cancelled",
+            TaskActions.Note when a.StepId is { } stepId => (t.Steps ?? []).FirstOrDefault(s => s.Id == stepId) is not { } step
+                || a.StepDone is { } done && step.Done == done,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Which of the member's actions the tray keeps applying over <paramref name="snapshot"/> (FR-20 v2, F-16). An action
+    /// stays until the snapshot shows it: while it waits in the outbox, and after the agent posted it but before a
+    /// snapshot that reflects it arrived. Going by the snapshot's time alone let a tick flip back for a round when the
+    /// agent's answer carried no task, or the list was fetched before the action landed. Dropped when its task left the
+    /// list, or <see cref="GiveUpAfter"/> passed without it showing (refused).
+    /// </summary>
+    public static IReadOnlyList<OutboxReply> Retire(IReadOnlyList<OutboxReply> actions, IReadOnlySet<string> waiting, TasksReply? snapshot)
+    {
+        if (snapshot?.Tasks is not { } tasks)
+        {
+            return actions;
+        }
+        var byId = tasks.GroupBy(t => t.Id).ToDictionary(g => g.Key, g => g.First());
+        return [.. actions.Where(a =>
+            waiting.Contains(a.Id)
+            || (a.TaskId is { } id && byId.TryGetValue(id, out var task) && !Reflected(task, a)
+                && !(snapshot.SyncedAt is { } at && at - a.CreatedAtUtc > GiveUpAfter)))];
     }
 }
 

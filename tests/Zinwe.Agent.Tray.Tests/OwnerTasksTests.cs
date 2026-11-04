@@ -230,20 +230,26 @@ public sealed class OwnerTasksTests : IDisposable
     // ---- My to-dos, chat cards, the history -------------------------------------------------------------
 
     [Fact]
-    public void Own_to_dos_are_a_group_of_their_own_after_the_owners_tasks()
+    public void Own_to_dos_and_the_owners_tasks_share_the_dated_sections_and_done_tasks_go_to_done()
     {
-        var own = new MemberTask { Id = 1, Title = "Water the plants", Mine = true, Status = MemberTaskStatus.New, DueKey = DueKey.Today };
-        var ownDone = own with { Id = 2, Status = MemberTaskStatus.Done };
-        var tasks = new[] { own, ownDone, OwnerTasks.ToMemberTask(Remote(5, "progress"), "Ananya", Now), OwnerTasks.ToMemberTask(Remote(6, "approved"), "Ananya", Now) };
+        var today = DateOnly.FromDateTime(Now.Date);
+        var own = new MemberTask { Id = 1, Title = "Water the plants", Mine = true, Status = MemberTaskStatus.New, DueOn = today };
+        var ownDone = own with { Id = 2, Status = MemberTaskStatus.Done, DoneAt = Now.AddMinutes(-5) };
+        var tasks = new[]
+        {
+            own, ownDone,
+            OwnerTasks.ToMemberTask(Remote(5, "progress", new DateTimeOffset(Now.Date.AddHours(16), Offset)), "Ananya", Now),
+            OwnerTasks.ToMemberTask(Remote(6, "approved", activity: [new DeviceTaskActivity(Now.AddHours(-1), "owner", "approved")]), "Ananya", Now),
+        };
 
-        var groups = TaskBoard.Groups(TaskBoard.Shown(tasks, TaskFilter.None, Now), "all", "Ananya");
+        var all = TaskBoard.Sections(tasks, TaskView.All, Now);
+        var section = Assert.Single(all);
+        Assert.Equal(("Today", TaskBoard.DayLabel(today)), (section.Name, section.Sub));
+        Assert.Equal([-5, 1], section.Items.Select(t => t.Id)); // the one with a time first, then the rest of the day
 
-        Assert.Equal(["Doing", "Done", TaskBoard.MyTodos], groups.Select(g => g.Label));
-        Assert.Equal([1, 2], groups[^1].Items.Select(t => t.Id)); // open first
-        Assert.All(groups.Take(2).SelectMany(g => g.Items), t => Assert.False(t.Mine));
-
-        var done = TaskBoard.Groups(TaskBoard.Shown(tasks, new TaskFilter(Status: "done"), Now), "done", "Ananya");
-        Assert.Equal(["Done", TaskBoard.MyTodos], done.Select(g => g.Label));
+        var done = Assert.Single(TaskBoard.Sections(tasks, TaskView.Done, Now));
+        Assert.Equal("Done today", done.Name);
+        Assert.Equal([2, -6], done.Items.Select(t => t.Id)); // newest first
     }
 
     [Fact]

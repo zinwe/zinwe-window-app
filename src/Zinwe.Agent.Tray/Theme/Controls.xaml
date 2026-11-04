@@ -4,7 +4,7 @@
         Tray app controls on the admin panel's theme: hairlines, 12 px cards, 8 px controls, black primary buttons,
         orange for state only (active tab, progress, badges, focus).
           Z.Btn / .Pri / .Dark, Z.BtnSm*, Z.Chip, Z.Seg, Z.Tab, Z.ListItem, Z.LinkBtn, Z.TextAction (plain-text actions:
-          Reply, Log, Retry), Z.QuickReply, Z.WinCtl, Z.Input, Z.InputPill, Z.SwitchRow, Z.FilterBtn, Z.TodoBtn, Z.Menu.
+          Reply, Log, Retry), Z.QuickReply, Z.WinCtl, Z.Input, Z.InputPill, Z.SwitchRow, Z.FilterBtn, Z.Menu, Z.ViewSeg.
         Small controls keep their 30-34 px look but get a 44 px hit area (a transparent frame around the visual).
         Keyboard focus is a 2 px orange ring; the mouse never shows it.
     -->
@@ -294,7 +294,7 @@
         </Setter>
     </Style>
 
-    <!-- Task filters: Status / Date / From open a menu, 34 px look with a 44 px hit area. On = the admin panel's ink border. -->
+    <!-- A small menu button (the quick add's "By" time): 34 px look with a 44 px hit area. On = the admin panel's ink border. -->
     <Style x:Key="Z.FilterBtn" TargetType="ToggleButton">
         <Setter Property="Foreground" Value="{DynamicResource Z.Ink2}" />
         <Setter Property="Background" Value="{DynamicResource Z.Surface}" />
@@ -330,20 +330,6 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <!-- Todo: the one filter that is a switch, not a menu. On = ink fill. -->
-    <Style x:Key="Z.TodoBtn" TargetType="ToggleButton" BasedOn="{StaticResource Z.FilterBtn}">
-        <Setter Property="Padding" Value="9,0" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="Foreground" Value="{DynamicResource Z.Ink}" />
-        <Style.Triggers>
-            <Trigger Property="IsChecked" Value="True">
-                <Setter Property="Background" Value="{DynamicResource Z.Inv}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource Z.Inv}" />
-                <Setter Property="Foreground" Value="{DynamicResource Z.OnInv}" />
-            </Trigger>
-        </Style.Triggers>
-    </Style>
-
     <!-- The filters' menu. Keyboard arrows come with ContextMenu. Tag = the count on the right. -->
     <Style x:Key="Z.Menu" TargetType="ContextMenu">
         <Setter Property="FontFamily" Value="{DynamicResource Zinwe.Font}" />
@@ -421,6 +407,41 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource Z.Inv}" />
                             <Setter Property="Foreground" Value="{DynamicResource Z.OnInv}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Tasks views (F-16): Today · Upcoming · All · Done on a grey track; the picked one is a raised white pill. -->
+    <Style x:Key="Z.ViewSeg" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource Z.Ink2}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Zinwe.Font}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="4,0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Z.FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="b" CornerRadius="7" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Z.Ink}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Z.Surface}" />
+                            <Setter TargetName="b" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="3" ShadowDepth="1" Opacity="0.14" Direction="270" Color="#141210" />
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="Foreground" Value="{DynamicResource Z.Ink}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -3,7 +3,7 @@ using Zinwe.Agent.Tray.Widget;
 
 namespace Zinwe.Agent.Tray.Tests;
 
-/// <summary>The chat's "Not sent" and "Seen" lines, and the Tasks tab's Todo button.</summary>
+/// <summary>The chat's "Not sent" and "Seen" lines (the Tasks tab's views: <see cref="TasksV2Tests"/>).</summary>
 public sealed class ChatAndTodoTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 31, 11, 0, 0, TimeSpan.Zero);
@@ -44,60 +44,5 @@ public sealed class ChatAndTodoTests
             .Where(r => r.Kind == ThreadKind.Text).ToList();
 
         Assert.Equal([false, true, false], rows.Select(r => r.HasAvatar));
-    }
-
-    private static MemberTask Task(int id, DueKey due, MemberTaskStatus status = MemberTaskStatus.New, bool mine = false) =>
-        new() { Id = id, Title = "Task " + id, DueKey = due, Status = status, Mine = mine };
-
-    private static readonly MemberTask[] Board =
-    [
-        Task(1, DueKey.Overdue),
-        Task(2, DueKey.Today, MemberTaskStatus.Progress),
-        Task(3, DueKey.Today, MemberTaskStatus.Done),
-        Task(4, DueKey.Tomorrow),
-        Task(5, DueKey.Today, mine: true),
-    ];
-
-    private static int[] Shown(TaskFilter f) => [.. TaskBoard.Shown(Board, f, Now).Select(t => t.Id).Order()];
-
-    [Fact]
-    public void Todo_lists_overdue_and_today_but_nothing_finished()
-    {
-        Assert.Equal([1, 2, 5], Shown(TaskFilter.None with { Todo = true }));
-    }
-
-    [Fact]
-    public void Todo_count_matches_the_list_under_the_other_filters()
-    {
-        foreach (var f in new[] { TaskFilter.None, TaskFilter.None with { From = "me" }, TaskFilter.None with { From = "owner" }, TaskFilter.None with { Status = "doing" } })
-        {
-            Assert.Equal(Shown(f with { Todo = true }).Length, TaskBoard.TodoCount(Board, f, Now));
-        }
-    }
-
-    [Fact]
-    public void Turning_todo_on_clears_a_date_and_done_and_off_leaves_the_rest()
-    {
-        var on = TaskBoard.ToggleTodo(new TaskFilter(Status: "done", Due: "tomorrow", From: "me"));
-        Assert.Equal(new TaskFilter(Status: "all", Due: "any", From: "me", Todo: true), on);
-        Assert.Equal(new TaskFilter(From: "me"), TaskBoard.ToggleTodo(on));
-    }
-
-    [Fact]
-    public void Choosing_done_turns_todo_off_and_high_priority_sets_its_own_flag()
-    {
-        var todo = TaskFilter.None with { Todo = true };
-        Assert.False(TaskBoard.WithStatus(todo, "done").Todo);
-        Assert.True(TaskBoard.WithStatus(todo, "doing").Todo);
-        var high = TaskBoard.WithStatus(todo, "high");
-        Assert.True(high.High);
-        Assert.Equal("all", high.Status);
-        Assert.False(TaskBoard.WithStatus(high, "todo").High);
-    }
-
-    [Fact]
-    public void An_empty_todo_says_so_kindly()
-    {
-        Assert.Equal("Nothing left for today.", TaskBoard.EmptyText(TaskFilter.None with { Todo = true }, "Ananya"));
     }
 }

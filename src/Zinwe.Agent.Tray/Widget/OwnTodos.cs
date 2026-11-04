@@ -44,8 +44,14 @@ public static class OwnTodos
         sharingOn && Changed(old, edited) ? Share(edited, member) : edited;
 
     public static bool Changed(MemberTask old, MemberTask edited) =>
-        old.Title != edited.Title || old.DueKey != edited.DueKey || old.DueDate != edited.DueDate
+        old.Title != edited.Title || TaskBoard.When(old).Day != TaskBoard.When(edited).Day || old.DueDate != edited.DueDate
         || !old.Steps.Select(s => s.Label).SequenceEqual(edited.Steps.Select(s => s.Label));
+
+    /// <summary>The server's copy says what this PC's row says (the parts that go up: name, date, steps, done, deleted).</summary>
+    public static bool Same(MemberTask t, DeviceTodo d) =>
+        t.Title == d.Title && (t.DueDate ?? t.DueOn) == d.DueDate && TaskBoard.Finished(t) == (d.Status == DeviceTodo.Done)
+        && (t.DeletedAt is not null) == d.Deleted
+        && t.Steps.Take(MaxSteps).Select(s => (s.Label, s.Done)).SequenceEqual((d.Steps ?? []).Select(s => (s.Title, s.Done)));
 
     /// <summary>What goes up: a shared to-do as it stands now. Notes and details stay here.</summary>
     public static DeviceTodo ToWire(MemberTask t) => new(
@@ -87,6 +93,9 @@ public static class OwnTodos
         {
             Title = d.Title, Due = due, DueKey = key, DueDate = d.DueDate, DueOn = d.DueDate, Steps = steps, Status = status,
             UpdatedAt = d.UpdatedAt, SyncedAt = d.UpdatedAt, SyncedFor = member, DeletedAt = null, Queued = false,
+            // The time of day stays on this PC (the server keeps dates only): kept while the day is the same.
+            DueAt = t.DueAt is { } dueAt && DateOnly.FromDateTime(dueAt.LocalDateTime) == d.DueDate ? dueAt : null,
+            DoneAt = status == MemberTaskStatus.Done ? t.DoneAt ?? d.UpdatedAt : null,
         };
     }
 
@@ -94,8 +103,14 @@ public static class OwnTodos
     /// The list from the server into this PC's copy. Local rows that are not shared are never touched. A shared row
     /// that belongs to another member (someone else connected this PC under the same Windows user) leaves: it's safe
     /// on the server, or, not sent yet, stays on this PC and is never sent as the new member's.
+    ///
+    /// A change made here that hasn't gone up yet (<paramref name="waiting"/>: client ids still in the outbox, or not
+    /// handed to it) always wins (F-16). The list may be older than it (the service's cached list after a restart), or
+    /// carry a later stamp from a PC whose clock runs ahead; the old rule let either turn a ticked to-do back to open.
+    /// When the server's copy is stamped at or after ours, ours is stamped again just after it, so the server takes it too.
     /// </summary>
-    public static IReadOnlyList<MemberTask> Merge(IReadOnlyList<MemberTask> local, IReadOnlyList<DeviceTodo> remote, long? member, DateTimeOffset now)
+    public static IReadOnlyList<MemberTask> Merge(IReadOnlyList<MemberTask> local, IReadOnlyList<DeviceTodo> remote, long? member, DateTimeOffset now,
+        IReadOnlySet<string>? waiting = null)
     {
         var today = DateOnly.FromDateTime(now.LocalDateTime);
         var rows = new List<MemberTask>(local.Count);
@@ -128,6 +143,14 @@ public static class OwnTodos
             }
             var t = rows[i];
             var at = t.UpdatedAt ?? DateTimeOffset.MinValue;
+            if (Dirty(t) && (waiting?.Contains(t.ClientId!) ?? false))
+            {
+                if (d.UpdatedAt >= at && !Same(t, d))
+                {
+                    rows[i] = t with { UpdatedAt = Stamp(now, d.UpdatedAt) };
+                }
+                continue;
+            }
             if (d.Deleted)
             {
                 if (d.UpdatedAt >= at)
