@@ -352,6 +352,59 @@ public sealed class ZingleTests : IDisposable
         Assert.True(sync.OnStatusAsked(t0.AddMinutes(3)));
     }
 
+    /// <summary>A widget folder that notes how many refreshes are inside it at once (each Use lingers a little).</summary>
+    private sealed class OverlapWidgetFolder(string widget) : IWidgetFolder
+    {
+        private int _inside;
+        private int _most;
+
+        public int Most => Volatile.Read(ref _most);
+
+        public T Use<T>(Func<string, T> op, T whenNobody)
+        {
+            var now = Interlocked.Increment(ref _inside);
+            int seen;
+            while ((seen = Volatile.Read(ref _most)) < now && Interlocked.CompareExchange(ref _most, now, seen) != seen)
+            {
+            }
+            try
+            {
+                Thread.Sleep(5);
+                return op(widget);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _inside);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Refreshes_from_the_worker_and_a_tray_start_never_run_at_once()
+    {
+        // The worker's tick and the pipe thread (OnStatusAsked) both refresh: at once they shared the ".tmp" name
+        // and DeleteExcept could remove the other's copy.
+        Serve(Body());
+        var folder = new OverlapWidgetFolder(Widget);
+        var sync = new ZingleSync(_backend.Client(), folder, NullLogger<ZingleSync>.Instance, Data);
+        Assert.True(await sync.CheckAsync(CancellationToken.None));
+
+        Directory.Delete(Widget, recursive: true); // the copies are made again, through the ".tmp" path
+        var runs = Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
+        {
+            for (var n = 0; n < 5; n++)
+            {
+                sync.RefreshWidget();
+            }
+        })).ToArray();
+        await Task.WhenAll(runs);
+
+        Assert.Equal(1, folder.Most);
+        sync.RefreshWidget();
+        Assert.Equal(["zingle-1-1793785141-animated.gif", "zingle-1-1793785141-still.png"], Files(Widget));
+        Assert.NotNull(sync.Status);
+    }
+
     [Fact]
     public void A_check_that_fails_at_start_up_is_retried_within_seconds_then_every_5_minutes()
     {

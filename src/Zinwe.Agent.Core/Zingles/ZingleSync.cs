@@ -31,6 +31,9 @@ public sealed class ZingleSync
     private readonly ILogger _logger;
     private readonly string? _dataDirectory;
     private readonly Lock _lock = new();
+    // One refresh of the widget copies at a time: the worker's tick and a tray start (the pipe thread) both refresh,
+    // and two at once would share the ".tmp" name and delete each other's copy (DeleteExcept).
+    private readonly Lock _refreshLock = new();
 
     private Zingle? _zingle;
     private string? _stillCache;
@@ -130,6 +133,14 @@ public sealed class ZingleSync
     /// check gets them within a minute), and that it holds no other Zingle files. Cheap: file-exists checks.
     /// </summary>
     public void RefreshWidget()
+    {
+        lock (_refreshLock)
+        {
+            RefreshWidgetLocked();
+        }
+    }
+
+    private void RefreshWidgetLocked()
     {
         Zingle? zingle;
         string? still, animated;
