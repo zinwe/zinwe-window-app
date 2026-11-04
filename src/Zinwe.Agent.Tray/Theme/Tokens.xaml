@@ -34,6 +34,8 @@
     <SolidColorBrush x:Key="Z.Ink2" Color="#404040" />
     <SolidColorBrush x:Key="Z.Ink3" Color="#404040" />
     <SolidColorBrush x:Key="Z.Muted" Color="#6B6B6B" />
+    <!-- Lighter than muted: counts beside a heading or view, done titles (Tasks v2). -->
+    <SolidColorBrush x:Key="Z.Faint" Color="#A3A3A3" />
     <SolidColorBrush x:Key="Z.Link" Color="#A84505" />
     <SolidColorBrush x:Key="Z.Inv" Color="#141210" />
     <SolidColorBrush x:Key="Z.OnInv" Color="#FFFFFF" />
@@ -44,6 +46,22 @@
     <SolidColorBrush x:Key="Z.StDoing" Color="#A84505" />
     <SolidColorBrush x:Key="Z.StWait" Color="#404040" />
     <SolidColorBrush x:Key="Z.StDone" Color="#17663F" />
+
+    <!-- Task status chips (Tasks v2): one chip per owner's task, text on a soft tint, coloured by its status. -->
+    <SolidColorBrush x:Key="Z.StTodoText" Color="#404040" />
+    <SolidColorBrush x:Key="Z.StTodoTint" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="Z.StConfirmedText" Color="#1D4ED8" />
+    <SolidColorBrush x:Key="Z.StConfirmedTint" Color="#EAF1FE" />
+    <SolidColorBrush x:Key="Z.StDoingText" Color="#A84505" />
+    <SolidColorBrush x:Key="Z.StDoingTint" Color="#FFF6EE" />
+    <SolidColorBrush x:Key="Z.StHelpText" Color="#C0331C" />
+    <SolidColorBrush x:Key="Z.StHelpTint" Color="#FDECEA" />
+    <SolidColorBrush x:Key="Z.StWaitText" Color="#8A5A00" />
+    <SolidColorBrush x:Key="Z.StWaitTint" Color="#FFF4D6" />
+    <SolidColorBrush x:Key="Z.StApprovedText" Color="#17663F" />
+    <SolidColorBrush x:Key="Z.StApprovedTint" Color="#E3F4EA" />
+    <SolidColorBrush x:Key="Z.StCancelledText" Color="#6B6B6B" />
+    <SolidColorBrush x:Key="Z.StCancelledTint" Color="#F0F0F0" />
 
     <!-- Soft panels -->
     <SolidColorBrush x:Key="Z.AccentSoft" Color="#FFF6EE" />

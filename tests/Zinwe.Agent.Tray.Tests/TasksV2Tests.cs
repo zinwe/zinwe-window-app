@@ -1,3 +1,4 @@
+using System.IO;
 using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Messages;
@@ -180,7 +181,7 @@ public sealed class TasksV2Tests
     [Fact]
     public void Empty_views_say_so_plainly()
     {
-        Assert.Equal(("Nothing due today", "Add a task above, or look at Upcoming."), TaskBoard.EmptyText(TaskView.Today));
+        Assert.Equal(("Nothing due today", "Press Add, or look at Upcoming."), TaskBoard.EmptyText(TaskView.Today));
         Assert.Equal("Nothing done yet", TaskBoard.EmptyText(TaskView.Done).Title);
     }
 
@@ -192,19 +193,56 @@ public sealed class TasksV2Tests
         Assert.Null(TaskBoard.Reopen(done).DoneAt);
     }
 
-    // ---- Quick add ---------------------------------------------------------------------------------------------
+    // ---- Rows, chips and the Add sheet ------------------------------------------------------------------------
 
     [Fact]
-    public void Quick_add_is_today_unless_tomorrow_or_a_date_is_picked_with_an_optional_time()
+    public void A_row_under_a_dated_heading_shows_only_the_time_and_flags_what_needs_a_look()
     {
-        Assert.Equal((Today, (DateTimeOffset?)null), TaskBoard.QuickDue(new QuickAdd(), Now));
-        Assert.Equal((Today.AddDays(1), (DateTimeOffset?)At(5, 16)), TaskBoard.QuickDue(new QuickAdd("tomorrow", Time: new TimeOnly(16, 0)), Now));
-        Assert.Equal(Today.AddDays(9), TaskBoard.QuickDue(new QuickAdd("date", Today.AddDays(9)), Now).Day);
+        Assert.Equal(("By 5:00 PM", false), TaskBoard.RowDue(Own(1, null, at: At(4, 17)), Now));
+        Assert.Equal(("By 11:00 AM", false), TaskBoard.RowDue(Own(1, null, at: At(5, 11)), Now)); // not "Tomorrow · Thu 5 Nov" again
+        Assert.Equal(("", false), TaskBoard.RowDue(Own(1, Today.AddDays(1)), Now)); // no time: nothing
+        Assert.Equal(("Due in 15 min", true), TaskBoard.RowDue(Own(1, null, at: At(4, 15, 50)), Now));
+        Assert.Equal(("Was due 3:00 PM", true), TaskBoard.RowDue(Own(1, null, at: At(4, 15)), Now));
+        Assert.Equal(("Overdue · yesterday", true), TaskBoard.RowDue(Own(1, Today.AddDays(-1)), Now));
+        Assert.Equal(("", false), TaskBoard.RowDue(Own(1, null, MemberTaskStatus.Done, At(4, 15)), Now)); // ticked: nothing
+    }
 
-        Assert.Equal("Due today, Wed 4 Nov, by 5:30 PM · press Enter to add",
-            TaskBoard.QuickHint(new QuickAdd(Time: new TimeOnly(17, 30)), Now));
-        Assert.Equal("Due tomorrow, Thu 5 Nov · press Enter to add", TaskBoard.QuickHint(new QuickAdd("tomorrow"), Now));
-        Assert.Equal("Pick today or a later date.", TaskBoard.QuickHint(new QuickAdd("date", Today.AddDays(-1)), Now));
+    [Theory]
+    [InlineData(MemberTaskStatus.New, "To do", "Todo")]
+    [InlineData(MemberTaskStatus.Confirmed, "Confirmed", "Confirmed")]
+    [InlineData(MemberTaskStatus.Progress, "Doing", "Doing")]
+    [InlineData(MemberTaskStatus.Help, "Needs help", "Help")]
+    [InlineData(MemberTaskStatus.Review, "Waiting for Vishal’s OK", "Wait")]
+    [InlineData(MemberTaskStatus.Approved, "Approved", "Approved")]
+    [InlineData(MemberTaskStatus.Cancelled, "Cancelled", "Cancelled")]
+    public void An_owners_task_has_one_status_chip_coloured_by_its_status(MemberTaskStatus status, string label, string tone)
+    {
+        Assert.Equal((label, tone), TaskBoard.StatusChip(new MemberTask { Status = status }, "Vishal"));
+        Assert.Null(TaskBoard.StatusChip(new MemberTask { Status = status, Mine = true }, "Vishal")); // own to-dos: the tick only
+    }
+
+    [Fact]
+    public void Every_chip_tone_has_its_brushes_in_the_theme()
+    {
+        var tokens = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Zinwe.Agent.Tray", "Theme", "Tokens.xaml"));
+        foreach (var tone in new[] { "Todo", "Confirmed", "Doing", "Help", "Wait", "Approved", "Cancelled" })
+        {
+            Assert.Contains($"x:Key=\"Z.St{tone}Text\"", tokens);
+            Assert.Contains($"x:Key=\"Z.St{tone}Tint\"", tokens);
+        }
+    }
+
+    [Fact]
+    public void The_add_sheet_says_the_day_and_time_in_one_line()
+    {
+        Assert.Equal("Due tomorrow, Thu 5 Nov, by 4:00 PM.", TaskBoard.DueHint(Today.AddDays(1), new TimeOnly(16, 0), Today));
+        Assert.Equal("Due today, Wed 4 Nov.", TaskBoard.DueHint(Today, null, Today));
+        Assert.Equal("Due Fri 6 Nov.", TaskBoard.DueHint(TaskBoard.FormDay("later", null, Today), null, Today)); // This week: the Friday
+        Assert.Equal(Today.AddDays(9), TaskBoard.FormDay("date", Today.AddDays(9), Today));
+        Assert.Equal("Pick today or a later date.", TaskBoard.DueHint(Today.AddDays(-1), null, Today));
+
+        Assert.Null(TaskBoard.ByTimes[0]); // No time first
+        Assert.Equal((new TimeOnly(9, 0), new TimeOnly(20, 30), 25), (TaskBoard.ByTimes[1]!.Value, TaskBoard.ByTimes[^1]!.Value, TaskBoard.ByTimes.Count));
     }
 
     // ---- Owner's tasks: an action holds until the snapshot shows it (the tick that flipped back) -------------------

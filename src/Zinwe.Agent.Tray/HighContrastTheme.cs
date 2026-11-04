@@ -23,13 +23,17 @@ internal static class HighContrastTheme
         ["Z.Bg"] = "#0E0E0E", ["Z.Surface"] = "#1A1A1A", ["Z.Surface2"] = "#262626", ["Z.Fill"] = "#262626",
         ["Z.Hover"] = "#262626", ["Z.Line"] = "#333333", ["Z.LineSoft"] = "#333333", ["Z.Line2"] = "#4A4A4A",
         // ink
-        ["Z.Ink"] = "#F5F5F5", ["Z.Ink2"] = "#CFCFCF", ["Z.Ink3"] = "#CFCFCF", ["Z.Muted"] = "#A3A3A3",
+        ["Z.Ink"] = "#F5F5F5", ["Z.Ink2"] = "#CFCFCF", ["Z.Ink3"] = "#CFCFCF", ["Z.Muted"] = "#A3A3A3", ["Z.Faint"] = "#6B6B6B",
         ["Z.Inv"] = "#F5F5F5", ["Z.OnInv"] = "#141210", ["Z.Link"] = "#FF8A3D",
         // accent (orange) and its soft panels; amber states use the same orange
         ["Z.AccentSoft"] = "#1F150D", ["Z.AccentLine"] = "#5A3315", ["Z.WarnSoft"] = "#1F150D", ["Z.WarnLine"] = "#5A3315",
         ["Z.TabOn"] = "#3A2414", ["Z.OrangeTint"] = "#3A2414", ["Z.OrangeInk"] = "#FF8A3D", ["Z.SoonTint"] = "#3A2414",
         ["Z.WarnTint"] = "#3A2414", ["Z.Warn"] = "#FF8A3D", ["Z.WarnInk"] = "#FF8A3D", ["Z.WarnText"] = "#FF8A3D",
         ["Z.StDoing"] = "#FF8A3D",
+        ["Z.StTodoText"] = "#CFCFCF", ["Z.StTodoTint"] = "#262626", ["Z.StConfirmedText"] = "#93B4FF", ["Z.StConfirmedTint"] = "#172440",
+        ["Z.StDoingText"] = "#FF8A3D", ["Z.StDoingTint"] = "#3A2414", ["Z.StHelpText"] = "#FF6B57", ["Z.StHelpTint"] = "#3A1A15",
+        ["Z.StWaitText"] = "#F2C14E", ["Z.StWaitTint"] = "#3A2E10", ["Z.StApprovedText"] = "#4ADE80", ["Z.StApprovedTint"] = "#12301F",
+        ["Z.StCancelledText"] = "#A3A3A3", ["Z.StCancelledTint"] = "#262626",
         // grey (was blue)
         ["Z.InfoTint"] = "#262626", ["Z.Info"] = "#CFCFCF", ["Z.InfoInk"] = "#F5F5F5", ["Z.StWait"] = "#CFCFCF",
         // status: red for errors, green for working/done
@@ -52,7 +56,7 @@ internal static class HighContrastTheme
     {
         ["Z.Bg"] = Hc.Window, ["Z.Surface"] = Hc.Window, ["Z.Surface2"] = Hc.Window, ["Z.Fill"] = Hc.Window,
         ["Z.Hover"] = Hc.Window, ["Z.Line"] = Hc.WindowText, ["Z.LineSoft"] = Hc.Gray, ["Z.Line2"] = Hc.WindowText,
-        ["Z.Ink"] = Hc.WindowText, ["Z.Ink2"] = Hc.WindowText, ["Z.Ink3"] = Hc.WindowText, ["Z.Muted"] = Hc.WindowText,
+        ["Z.Ink"] = Hc.WindowText, ["Z.Ink2"] = Hc.WindowText, ["Z.Ink3"] = Hc.WindowText, ["Z.Muted"] = Hc.WindowText, ["Z.Faint"] = Hc.Gray,
         ["Z.Link"] = Hc.WindowText, ["Z.Inv"] = Hc.Highlight, ["Z.OnInv"] = Hc.HighlightText, ["Z.WarnText"] = Hc.WindowText,
         ["Z.RedText"] = Hc.WindowText, ["Z.StDoing"] = Hc.WindowText, ["Z.StWait"] = Hc.WindowText, ["Z.StDone"] = Hc.WindowText,
         ["Z.AccentSoft"] = Hc.Window, ["Z.AccentLine"] = Hc.WindowText, ["Z.WarnSoft"] = Hc.Window, ["Z.WarnLine"] = Hc.WindowText,
@@ -63,6 +67,10 @@ internal static class HighContrastTheme
         ["Z.Info"] = Hc.WindowText, ["Z.InfoInk"] = Hc.WindowText, ["Z.OrangeTint"] = Hc.Window, ["Z.OrangeInk"] = Hc.WindowText,
         ["Z.SoonTint"] = Hc.Window, ["Z.RedTint"] = Hc.Window, ["Z.RedInk"] = Hc.WindowText, ["Z.Off"] = Hc.Gray,
         ["Z.SnackAction"] = Hc.HighlightText,
+        ["Z.StTodoText"] = Hc.WindowText, ["Z.StTodoTint"] = Hc.Window, ["Z.StConfirmedText"] = Hc.WindowText, ["Z.StConfirmedTint"] = Hc.Window,
+        ["Z.StDoingText"] = Hc.WindowText, ["Z.StDoingTint"] = Hc.Window, ["Z.StHelpText"] = Hc.WindowText, ["Z.StHelpTint"] = Hc.Window,
+        ["Z.StWaitText"] = Hc.WindowText, ["Z.StWaitTint"] = Hc.Window, ["Z.StApprovedText"] = Hc.WindowText, ["Z.StApprovedTint"] = Hc.Window,
+        ["Z.StCancelledText"] = Hc.WindowText, ["Z.StCancelledTint"] = Hc.Window,
         ["Zinwe.White"] = Hc.Window, ["Zinwe.Paper"] = Hc.Window, ["Zinwe.Ink"] = Hc.WindowText, ["Zinwe.Muted"] = Hc.WindowText,
         ["Zinwe.Line"] = Hc.WindowText, ["Zinwe.LineStrong"] = Hc.WindowText, ["Zinwe.Orange"] = Hc.Control,
         ["Zinwe.OrangeDeep"] = Hc.Control, ["Zinwe.OrangeStrong"] = Hc.Highlight, ["Zinwe.OrangeText"] = Hc.WindowText,

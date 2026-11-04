@@ -2,78 +2,42 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!--
-        Tasks (F-16, the approved prototype tasks-v2): the clock, a quick add pinned at the top, four views
-        (Today · Upcoming · All · Done) and every task under a dated heading that stays at the top while its tasks scroll.
+        Tasks (F-16, the approved prototype tasks-v2): the day and Add task, the four views (Today · Upcoming · All · Done)
+        at full width, then every task under a dated heading that stays at the top
+        while its tasks scroll. Content is black and greys; orange marks only what needs a look and the open view's count.
     -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <DockPanel Margin="14,8,14,0" LastChildFill="False">
-            <TextBlock Text="Tasks" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource Z.Ink}" VerticalAlignment="Bottom" />
-            <TextBlock x:Name="Clock" DockPanel.Dock="Right" FontSize="12" Foreground="{DynamicResource Z.Muted}" VerticalAlignment="Bottom"
-                       Margin="0,0,0,3" />
-        </DockPanel>
-
-        <!-- Quick add: type and press Enter. Today unless Tomorrow or a date is picked, plus an optional time. -->
-        <Border x:Name="AddBox" Grid.Row="1" Margin="12,10,12,0" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource Z.Line}"
-                Background="{DynamicResource Z.Surface}" IsKeyboardFocusWithinChanged="OnAddFocus">
-            <StackPanel>
-                <Grid Margin="10,0,6,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Ellipse Width="18" Height="18" Stroke="{DynamicResource Z.Muted}" StrokeThickness="1.6" StrokeDashArray="2 1.6"
-                             VerticalAlignment="Center" />
-                    <TextBox x:Name="AddTitle" Grid.Column="1" BorderThickness="0" Background="Transparent" MinHeight="42" MaxLength="200"
-                             VerticalContentAlignment="Center" Padding="0" Margin="8,0,6,0" FontSize="13.5" Foreground="{DynamicResource Z.Ink}"
-                             CaretBrush="{DynamicResource Z.Ink}" FocusVisualStyle="{x:Null}" Tag="Add a task" TextWrapping="NoWrap"
-                             AutomationProperties.Name="New task" PreviewKeyDown="OnAddKey" TextChanged="OnAddChanged">
-                        <TextBox.Template>
-                            <ControlTemplate TargetType="TextBox">
-                                <Grid>
-                                    <TextBlock x:Name="ph" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
-                                               Foreground="{DynamicResource Z.Muted}" IsHitTestVisible="False" Visibility="Collapsed"
-                                               VerticalAlignment="Center" Margin="2,0,0,0" />
-                                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalAlignment="Center" />
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="Text" Value="">
-                                        <Setter TargetName="ph" Property="Visibility" Value="Visible" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </TextBox.Template>
-                    </TextBox>
-                    <Button x:Name="AddGo" Grid.Column="2" Style="{StaticResource Z.BtnSm.Dark}" Content="Add" IsEnabled="False" Click="OnAddGo"
-                            AutomationProperties.Name="Add task" />
-                </Grid>
-                <StackPanel x:Name="AddOpts" Margin="36,0,10,8" Visibility="Collapsed">
-                    <WrapPanel x:Name="AddChips" AutomationProperties.Name="Due" />
-                    <DatePicker x:Name="AddDate" Margin="0,4,0,0" SelectedDateChanged="OnAddDate" AutomationProperties.Name="Due date"
-                                FontFamily="{DynamicResource Zinwe.Font}" FontSize="13" Visibility="Collapsed" />
-                    <TextBlock x:Name="AddHint" FontSize="12" Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                               AutomationProperties.LiveSetting="Polite" />
+        <!-- Two rows that never scroll away: the day and Add task on top, the four views below at full width. -->
+        <Grid Margin="14,12,12,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="Clock" FontSize="13" Foreground="{DynamicResource Z.Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <Button x:Name="AddButton" Grid.Column="1" Style="{StaticResource Z.Btn.Pri}" MinHeight="32" Height="32" Padding="12,0" Margin="12,0,0,0"
+                    FontSize="13" Click="OnAdd" AutomationProperties.Name="Add a task">
+                <StackPanel Orientation="Horizontal">
+                    <Path Data="M7,2 L7,12 M2,7 L12,7" Stroke="{DynamicResource Z.OnInv}" StrokeThickness="2" StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" Width="13" Height="13" Stretch="Uniform" Margin="0,0,5,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Add task" VerticalAlignment="Center" />
                 </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <!-- Four plain views. -->
-        <Border Grid.Row="2" Margin="12,12,12,4" CornerRadius="9" Padding="3" Background="{DynamicResource Z.Fill}">
+            </Button>
+        </Grid>
+        <Border Grid.Row="1" Margin="12,10,12,2" CornerRadius="9" Padding="3" Background="{DynamicResource Z.Fill}">
             <UniformGrid x:Name="Views" Rows="1" AutomationProperties.Name="Show" />
         </Border>
 
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="2">
             <ScrollViewer x:Name="ListScroller" Style="{StaticResource Z.Scroll}" ScrollChanged="OnListScrolled">
                 <StackPanel Margin="12,0,12,16">
-                    <StackPanel x:Name="Empty" Margin="16,36,16,16" Visibility="Collapsed">
+                    <StackPanel x:Name="Empty" Margin="16,40,16,16" Visibility="Collapsed">
                         <TextBlock x:Name="EmptyTitle" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink}" TextAlignment="Center"
-                                   TextWrapping="Wrap" Margin="0,0,0,4" />
+                                   TextWrapping="Wrap" Margin="0,0,0,2" />
                         <TextBlock x:Name="EmptyText" FontSize="13" Foreground="{DynamicResource Z.Muted}" TextAlignment="Center" TextWrapping="Wrap" />
                     </StackPanel>
                     <StackPanel x:Name="Rows" />

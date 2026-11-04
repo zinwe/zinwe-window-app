@@ -110,9 +110,6 @@ public enum TaskView { Today, Upcoming, All, Done }
 /// <param name="Late">Overdue: the heading reads in the late colour.</param>
 public sealed record TaskSection(string Name, string Sub, bool Late, IReadOnlyList<MemberTask> Items);
 
-/// <summary>The quick add's due choice (F-16): Today, Tomorrow or a picked date, and an optional "by" time.</summary>
-public sealed record QuickAdd(string Due = "today", DateOnly? Date = null, TimeOnly? Time = null);
-
 /// <summary>The one action shown on a closed card, so the common case is a single tap.</summary>
 public sealed record QuickAction(string Label, bool Primary, string Aria);
 
@@ -400,7 +397,7 @@ public static class TaskBoard
     /// <summary>What an empty view says: a plain heading and one line.</summary>
     public static (string Title, string Line) EmptyText(TaskView view) => view switch
     {
-        TaskView.Today => ("Nothing due today", "Add a task above, or look at Upcoming."),
+        TaskView.Today => ("Nothing due today", "Press Add, or look at Upcoming."),
         TaskView.Upcoming => ("Nothing coming up", "Tasks for tomorrow and later show here."),
         TaskView.All => ("No open tasks", "Everything is done."),
         _ => ("Nothing done yet", "Ticked tasks show here."),
@@ -413,31 +410,67 @@ public static class TaskBoard
         : InView(t, TaskView.All, now) ? TaskView.All
         : TaskView.Done;
 
-    /// <summary>The quick add's choice as a day and, with a time picked, the exact due time on that day.</summary>
-    public static (DateOnly Day, DateTimeOffset? At) QuickDue(QuickAdd q, DateTimeOffset now)
+    /// <summary>
+    /// The due words on a row of the Tasks tab, where the heading already names the day: only the time ("By 11:00 AM"),
+    /// or what needs a look now ("Overdue · yesterday", "Was due 3:00 PM", "Due in 25 min", flagged
+    /// <paramref name="Urgent"/>: a small dot before them). "" for a task without a time, and for a ticked one.
+    /// </summary>
+    public static (string Text, bool Urgent) RowDue(MemberTask t, DateTimeOffset now)
     {
-        var today = Today(now);
-        var day = q.Due switch
+        var at = When(t).At;
+        if (Ticked(t) || When(t).Day is null)
         {
-            "tomorrow" => today.AddDays(1),
-            "date" when q.Date is { } d => d,
-            _ => today,
-        };
-        return (day, q.Time is { } time ? new DateTimeOffset(day.ToDateTime(time, DateTimeKind.Local)) : null);
+            return ("", false);
+        }
+        if (IsLate(t, now) || IsSoon(t, now))
+        {
+            return (DueLabel(t, now), true);
+        }
+        return at is { } x ? ("By " + TimeLabel(x), false) : ("", false);
     }
 
-    /// <summary>The line under the quick add: "Due today, Wed 4 Nov, by 4:00 PM · press Enter to add".</summary>
-    public static string QuickHint(QuickAdd q, DateTimeOffset now)
+    /// <summary>The day the sheet's due chip means: Today, Tomorrow, This week (the next Friday) or the picked date.</summary>
+    public static DateOnly FormDay(string due, DateOnly? date, DateOnly today) => due switch
     {
-        var (day, at) = QuickDue(q, now);
-        var n = day.DayNumber - Today(now).DayNumber;
+        "tomorrow" => today.AddDays(1),
+        "later" => today.AddDays(((int)DayOfWeek.Friday - (int)today.DayOfWeek + 7) % 7 is var add && add == 0 ? 7 : add),
+        "date" when date is { } d => d,
+        _ => today,
+    };
+
+    /// <summary>The Add / Edit sheet's line under the due choice: "Due tomorrow, Thu 5 Nov, by 4:00 PM."</summary>
+    public static string DueHint(DateOnly day, TimeOnly? time, DateOnly today)
+    {
+        var n = day.DayNumber - today.DayNumber;
         if (n < 0)
         {
             return "Pick today or a later date.";
         }
-        var when = n == 0 ? "today, " + DayLabel(day) : n == 1 ? "tomorrow, " + DayLabel(day) : DayLabel(day);
-        return "Due " + when + (at is { } x ? ", by " + TimeLabel(x) : "") + " · press Enter to add";
+        var when = n == 0 ? "today, " : n == 1 ? "tomorrow, " : "";
+        var by = time is { } t ? ", by " + TimeLabel(new DateTimeOffset(day.ToDateTime(t, DateTimeKind.Local))) : "";
+        return $"Due {when}{DayLabel(day)}{by}.";
     }
+
+    /// <summary>The sheet's "By (optional)" choices: no time, then every half hour from 9:00 AM to 8:30 PM.</summary>
+    public static IReadOnlyList<TimeOnly?> ByTimes { get; } =
+        [null, .. Enumerable.Range(18, 24).Select(h => (TimeOnly?)new TimeOnly(h / 2, h % 2 * 30))];
+
+    /// <summary>
+    /// The one status chip on an owner's task, coloured by its status: the words and the tone, which names the
+    /// <c>Z.St{Tone}Text</c> / <c>Z.St{Tone}Tint</c> brushes. Null for the member's own to-dos (the tick says it all).
+    /// </summary>
+    public static (string Label, string Tone)? StatusChip(MemberTask t, string ownerFirst) => t.Mine ? null : t.Status switch
+    {
+        MemberTaskStatus.Confirmed => ("Confirmed", "Confirmed"),
+        MemberTaskStatus.Progress => ("Doing", "Doing"),
+        MemberTaskStatus.Help => ("Needs help", "Help"),
+        MemberTaskStatus.Cant => ("Can’t do this", "Help"),
+        MemberTaskStatus.Review => ($"Waiting for {ownerFirst}’s OK", "Wait"),
+        MemberTaskStatus.Approved => ("Approved", "Approved"),
+        MemberTaskStatus.Done => ("Done", "Approved"),
+        MemberTaskStatus.Cancelled => ("Cancelled", "Cancelled"),
+        _ => ("To do", "Todo"),
+    };
 
     /// <summary>The group the member's own to-dos go in: kept apart from the owner's tasks.</summary>
     public const string MyTodos = "My to-dos";

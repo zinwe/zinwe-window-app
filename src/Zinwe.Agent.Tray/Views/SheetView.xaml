@@ -74,7 +74,13 @@
                         <WrapPanel x:Name="DueChips" Margin="0,4,0,0" AutomationProperties.Name="Due" />
                         <DatePicker x:Name="NtDate" Margin="0,6,0,0" SelectedDateChanged="OnDateChanged" AutomationProperties.Name="Due date"
                                     FontFamily="{DynamicResource Zinwe.Font}" FontSize="14" />
-                        <TextBlock x:Name="NtDateHint" FontSize="12" Foreground="{DynamicResource Z.Muted}" Margin="0,4,0,0" />
+                        <!-- Tasks v2: an optional time on the day ("By 4:00 PM"); kept on this PC. -->
+                        <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,0">
+                            <Run Text="By " /><Run Text="(optional)" FontWeight="Normal" Foreground="{DynamicResource Z.Muted}" />
+                        </TextBlock>
+                        <ToggleButton x:Name="NtTime" Style="{StaticResource Z.FilterBtn}" Margin="0,2,0,0" Click="OnTimeMenu" />
+                        <TextBlock x:Name="NtDateHint" FontSize="12" Foreground="{DynamicResource Z.Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
                         <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}" Margin="0,12,0,0">
                             <Run Text="Steps " /><Run Text="(optional)" FontWeight="Normal" Foreground="{DynamicResource Z.Muted}" />
                         </TextBlock>

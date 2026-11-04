@@ -456,10 +456,13 @@ public partial class WidgetWindow : Window
         {
             var b = new Button
             {
-                Content = label, Style = (Style)FindResource("Z.IconBtn"), Padding = new Thickness(4, 0, 4, 0), MinHeight = 44,
+                // White underlined text, like the snack's words (Tasks v2: no orange on the bar).
+                Content = new TextBlock { Text = label, TextDecorations = TextDecorations.Underline },
+                Style = (Style)FindResource("Z.IconBtn"), Padding = new Thickness(4, 0, 4, 0), MinHeight = 44,
                 FontSize = 12.5, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0),
             };
-            b.SetResourceReference(ForegroundProperty, "Z.SnackAction");
+            b.Foreground = Brushes.White;
+            AutomationProperties.SetName(b, label);
             b.Click += (_, _) => run();
             SnackActions.Children.Add(b);
         }

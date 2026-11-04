@@ -28,7 +28,8 @@ public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback,
 public sealed record Snack(string Text, IReadOnlyList<(string Label, Action Run)> Actions, DateTimeOffset Born);
 
 /// <summary>The "Add a task for yourself" / "Edit your task" form.</summary>
-public sealed record NewTaskForm(string Title = "", string Due = "today", DateOnly? Date = null, IReadOnlyList<string>? Steps = null, int? EditId = null)
+public sealed record NewTaskForm(string Title = "", string Due = "today", DateOnly? Date = null, IReadOnlyList<string>? Steps = null, int? EditId = null,
+    TimeOnly? Time = null)
 {
     public IReadOnlyList<string> StepList => Steps ?? [];
 }
@@ -177,8 +178,6 @@ public sealed class TrayModel : IDisposable
     public TaskView View { get; private set; } = TaskView.Today;
     /// <summary>"Done today" unfolded at the bottom of Today.</summary>
     public bool ShowDoneToday { get; private set; }
-    /// <summary>The quick add's due choice (the title lives in its text box).</summary>
-    public QuickAdd Quick { get; private set; } = new();
     public int? OpenCard { get; private set; }
     /// <summary>The task whose Log is open.</summary>
     public int? OpenLog { get; private set; }
@@ -1135,41 +1134,6 @@ public sealed class TrayModel : IDisposable
         Raise();
     }
 
-    public void SetQuick(QuickAdd quick)
-    {
-        Quick = quick;
-        Raise();
-    }
-
-    /// <summary>
-    /// The quick add (F-16): a to-do for the picked day, with the "by" time when one was picked (kept on this PC: the
-    /// server keeps dates only). Shows the view it lands in. False when the title is empty or the date has passed.
-    /// </summary>
-    public bool AddQuick(string text)
-    {
-        var title = text.Trim();
-        var (day, at) = TaskBoard.QuickDue(Quick, Now);
-        var today = TaskBoard.Today(Now);
-        if (title.Length == 0 || day < today)
-        {
-            return false;
-        }
-        var (due, key) = OwnTodos.DueOf(day, today);
-        var added = new MemberTask
-        {
-            Id = Tasks.NextId(), Title = title, Due = due, DueKey = key, DueDate = Quick.Due == "date" ? day : null, DueOn = day, DueAt = at,
-            Mine = true, Status = MemberTaskStatus.New, SentAt = Now,
-        };
-        SaveOwn(TodoSharingOn ? OwnTodos.Share(added, _todos?.MemberId) : added);
-        if (View != TaskView.All && !TaskBoard.InView(added, View, Now))
-        {
-            View = TaskBoard.ViewFor(added, Now);
-        }
-        var n = day.DayNumber - today.DayNumber;
-        ShowSnack($"Added for {(n == 0 ? "today" : n == 1 ? "tomorrow" : TaskBoard.DayLabel(day))}: {title}", [("OK", CloseSnack)]);
-        return true;
-    }
-
     /// <summary>
     /// A change to a task: an own to-do (or a sample) is saved on this PC, and a shared one queued; an owner's task
     /// becomes the contract's action (<paramref name="action"/>), queued for the agent and shown at once.
@@ -1490,14 +1454,15 @@ public sealed class TrayModel : IDisposable
         // The chips follow the real date now, not the words saved with the to-do.
         var day = edit is null ? null : TaskBoard.When(edit).Day;
         Form = edit is null
-            ? new NewTaskForm()
+            ? new NewTaskForm(Due: View == TaskView.Upcoming ? "tomorrow" : "today") // Add from Upcoming: tomorrow
             : new NewTaskForm(edit.Title, edit.DueDate is not null ? "date" : TaskBoard.KeyOf(edit, Now) switch
             {
                 DueKey.Today => "today",
                 DueKey.Tomorrow => "tomorrow",
                 _ when day is not null => "date",
                 _ => "later",
-            }, edit.DueDate ?? day, [.. edit.Steps.Select(s => s.Label)], edit.Id);
+            }, edit.DueDate ?? day, [.. edit.Steps.Select(s => s.Label)], edit.Id,
+            TaskBoard.When(edit).At is { } at ? TimeOnly.FromDateTime(at.LocalDateTime) : null);
         Snack = null;
         Sheet = Sheet.NewTask;
         Raise();
@@ -1529,15 +1494,17 @@ public sealed class TrayModel : IDisposable
             _ => ("Today", DueKey.Today, (DateOnly?)null, today),
         };
         var title = f.Title.Trim();
+        // "By (optional)": the time stays on this PC (the server keeps dates only).
+        DateTimeOffset? dueAt = f.Time is { } time ? new DateTimeOffset(on.ToDateTime(time, DateTimeKind.Local)) : null;
         if (f.EditId is { } id && TaskList.FirstOrDefault(t => t.Id == id) is { } old)
         {
             var edited = old with
             {
                 Title = title, Due = due, DueKey = key, DueDate = date, DueOn = on, Queued = Offline || old.Queued,
-                DueAt = old.DueAt is { } at && DateOnly.FromDateTime(at.LocalDateTime) == on ? at : null,
+                DueAt = dueAt,
                 Steps = [.. f.StepList.Select(l => new TaskStep(l, old.Steps.FirstOrDefault(s => s.Label == l)?.Done ?? false))],
             };
-            if (old.ClientId is null || OwnTodos.Changed(old, edited))
+            if (old.ClientId is null || OwnTodos.Changed(old, edited) || old.DueAt != edited.DueAt)
             {
                 SaveOwn(OwnTodos.AfterEdit(old, edited, TodoSharingOn, _todos?.MemberId));
             }
@@ -1549,22 +1516,21 @@ public sealed class TrayModel : IDisposable
         var next = Tasks.NextId();
         var added = new MemberTask
         {
-            Id = next, Title = title, Due = due, DueKey = key, DueDate = date, DueOn = on, Mine = true, Status = MemberTaskStatus.New,
+            Id = next, Title = title, Due = due, DueKey = key, DueDate = date, DueOn = on, DueAt = dueAt, Mine = true, Status = MemberTaskStatus.New,
             SentAt = Now, Steps = [.. f.StepList.Select(l => new TaskStep(l, false))],
         };
         SaveOwn(TodoSharingOn ? OwnTodos.Share(added, _todos?.MemberId) : added);
-        View = TaskBoard.ViewFor(added, Now);
+        if (!TaskBoard.InView(added, View, Now))
+        {
+            View = TaskBoard.ViewFor(added, Now); // show where it landed
+        }
         OpenCard = next;
         Sheet = Sheet.None;
         ShowSnack("Added: " + title, [("OK", CloseSnack)]);
         return true;
     }
 
-    private static DateOnly NextFriday(DateOnly today)
-    {
-        var add = ((int)DayOfWeek.Friday - (int)today.DayOfWeek + 7) % 7;
-        return today.AddDays(add == 0 ? 7 : add);
-    }
+    private static DateOnly NextFriday(DateOnly today) => TaskBoard.FormDay("later", null, today);
 
     private static (string, DueKey, DateOnly?, DateOnly) DateDue(DateOnly date, DateOnly today)
     {

@@ -267,14 +267,20 @@ public partial class SheetView : UserControl
             DueChips.Children.Add(chip);
         }
         var bad = f.Due == "date" && !okDate;
-        NtDateHint.Visibility = Show(f.Due == "date");
-        if (f.Due == "date")
-        {
-            var days = okDate ? f.Date!.Value.DayNumber - today.DayNumber : 0;
-            NtDateHint.Text = bad ? "Pick today or a later date." : days == 0 ? "Due today." : days == 1 ? "Due tomorrow."
-                : $"Due {f.Date!.Value:ddd d MMM}, in {days} days.";
-            NtDateHint.SetResourceReference(TextBlock.ForegroundProperty, bad ? "Z.RedText" : "Z.Muted");
-        }
+        // One line for the whole choice: "Due tomorrow, Thu 5 Nov, by 4:00 PM."
+        NtDateHint.Text = bad ? "Pick today or a later date." : TaskBoard.DueHint(TaskBoard.FormDay(f.Due, f.Date, today), f.Time, today);
+        NtDateHint.SetResourceReference(TextBlock.ForegroundProperty, bad ? "Z.RedText" : "Z.Muted");
+        var timeText = f.Time is { } time ? TaskBoard.TimeLabel(new DateTimeOffset(today.ToDateTime(time, DateTimeKind.Local))) : "No time";
+        var timeContent = new Grid();
+        timeContent.ColumnDefinitions.Add(new ColumnDefinition());
+        timeContent.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        timeContent.Children.Add(new TextBlock { Text = timeText, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+        var chevron = Ui.Glyph(Ui.Icon.Chevron, 11, "Z.Muted", 2.6);
+        Grid.SetColumn(chevron, 1);
+        timeContent.Children.Add(chevron);
+        NtTime.Content = timeContent;
+        NtTime.IsChecked = false;
+        AutomationProperties.SetName(NtTime, "By (optional): " + timeText);
 
         NtSteps.Children.Clear();
         for (var i = 0; i < f.StepList.Count; i++)
@@ -334,6 +340,34 @@ public partial class SheetView : UserControl
             return;
         }
         m.SetForm(m.Form with { Date = DateOnly.FromDateTime(d) });
+    }
+
+    /// <summary>"By (optional)": No time, then every half hour from 9:00 AM to 8:30 PM.</summary>
+    private void OnTimeMenu(object sender, RoutedEventArgs e)
+    {
+        NtTime.IsChecked = false;
+        if (Model is not { } m)
+        {
+            return;
+        }
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var menu = new ContextMenu
+        {
+            PlacementTarget = NtTime, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom, MaxHeight = 300,
+            Style = (Style)FindResource("Z.Menu"),
+        };
+        foreach (var t in TaskBoard.ByTimes)
+        {
+            var item = new MenuItem
+            {
+                Header = t is { } x ? TaskBoard.TimeLabel(new DateTimeOffset(today.ToDateTime(x, DateTimeKind.Local))) : "No time",
+                IsCheckable = true, IsChecked = t == m.Form.Time, Style = (Style)FindResource("Z.MenuItem"),
+            };
+            item.Click += (_, _) => m.SetForm(m.Form with { Time = t });
+            menu.Items.Add(item);
+        }
+        menu.Closed += (_, _) => NtTime.Focus();
+        menu.IsOpen = true;
     }
 
     private void OnStepChanged(object sender, TextChangedEventArgs e) => NtAddStep.IsEnabled = NtStep.Text.Trim().Length > 0;

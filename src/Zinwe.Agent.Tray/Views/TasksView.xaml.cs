@@ -10,10 +10,11 @@ using Zinwe.Agent.Tray.Widget;
 namespace Zinwe.Agent.Tray.Views;
 
 /// <summary>
-/// Tasks (F-16), built like the to-do apps people know: add at the top, four views, every task under a real date.
-/// The due words come from the clock at each render (TaskBoard), so yesterday's "Tomorrow" reads Today after midnight.
-/// A tick never undoes itself: the task stays in place, greyed with Undo, then moves to Done; an owner's task stays
-/// ticked in orange as "Waiting for {owner}'s OK".
+/// Tasks (F-16), built like the to-do apps people know: the day and Add task, four views below, every task under a
+/// real date. The due words come from the clock at each render (TaskBoard), so yesterday's "Tomorrow" reads Today after
+/// midnight. A tick never undoes itself: the task stays in place, struck through with Undo, then moves to Done; an
+/// owner's task stays ticked (grey) with its "Waiting for {owner}'s OK" chip. Content is black and greys; colour is
+/// kept for the status chips, the open view's count and a small dot on what is late or due soon.
 /// </summary>
 public partial class TasksView : UserControl
 {
@@ -23,12 +24,11 @@ public partial class TasksView : UserControl
     private readonly Dictionary<TaskView, RadioButton> _views = [];
     // The section headings drawn this render, top to bottom, for the pinned copy at the top of the list.
     private readonly List<(FrameworkElement Heading, Func<FrameworkElement> Copy)> _headings = [];
-    private bool _menuOpen;
 
     public TasksView()
     {
         InitializeComponent();
-        foreach (var (view, label) in ViewNames)
+        foreach (var (view, _) in ViewNames)
         {
             var b = new RadioButton { GroupName = "taskview", Style = (Style)FindResource("Z.ViewSeg") };
             b.Click += (_, _) => Model?.SetView(view);
@@ -48,24 +48,31 @@ public partial class TasksView : UserControl
         var now = m.Now;
         var tasks = m.TaskList;
         var holding = m.Holding;
-        Clock.Text = TaskBoard.DayLabel(TaskBoard.Today(now)) + " · " + TaskBoard.TimeLabel(now);
-        RenderAdd(m, now);
+        // "Wednesday, 4 Nov · 4:03 PM": the weekday in ink, the rest grey.
+        Clock.Inlines.Clear();
+        Clock.Inlines.Add(new System.Windows.Documents.Run(now.ToLocalTime().ToString("dddd", System.Globalization.CultureInfo.InvariantCulture))
+        {
+            FontWeight = FontWeights.SemiBold, Foreground = Ui.B("Z.Ink"),
+        });
+        Clock.Inlines.Add(new System.Windows.Documents.Run(now.ToLocalTime().ToString(", d MMM", System.Globalization.CultureInfo.InvariantCulture)
+            + " · " + TaskBoard.TimeLabel(now)));
 
         foreach (var (view, label) in ViewNames)
         {
             var count = TaskBoard.Count(tasks, view, now, holding);
+            var on = m.View == view;
             var content = new StackPanel { Orientation = Orientation.Horizontal };
             content.Children.Add(new TextBlock { Text = label });
             if (count > 0)
             {
-                var n = Ui.Text(count.ToString(), 11, fg: "Z.Muted");
-                n.Margin = new Thickness(4, 1, 0, 0);
+                var n = Ui.Text(count.ToString(), 11, on ? FontWeights.SemiBold : FontWeights.Normal, on ? "Z.Orange" : "Z.Faint");
+                n.Margin = new Thickness(3, 1, 0, 0);
                 n.VerticalAlignment = VerticalAlignment.Center;
                 content.Children.Add(n);
             }
             var b = _views[view];
             b.Content = content;
-            b.IsChecked = m.View == view;
+            b.IsChecked = on;
             AutomationProperties.SetName(b, view == TaskView.Done ? $"{label}, {count} today" : $"{label}, {count}");
         }
 
@@ -74,8 +81,7 @@ public partial class TasksView : UserControl
         var sections = TaskBoard.Sections(tasks, m.View, now, holding);
         foreach (var s in sections)
         {
-            var sub = s.Sub.Length > 0 ? $"{s.Sub} · {s.Items.Count}" : s.Items.Count.ToString();
-            AddHeading(s.Name, sub, s.Late, null);
+            AddHeading(s.Name, s.Sub, s.Items.Count, null);
             foreach (var t in s.Items)
             {
                 Rows.Children.Add(Row(t, m, holding));
@@ -83,7 +89,7 @@ public partial class TasksView : UserControl
         }
         if (m.View == TaskView.Today && TaskBoard.DoneToday(tasks, now, holding) is { Count: > 0 } doneToday)
         {
-            AddHeading("Done today", doneToday.Count.ToString(), false,
+            AddHeading("Done today", "", doneToday.Count,
                 () => Ui.Button(m.ShowDoneToday ? "Hide" : "Show", "Z.TextAction", m.ToggleDoneToday,
                     (m.ShowDoneToday ? "Hide" : "Show") + " what you did today"));
             if (m.ShowDoneToday)
@@ -94,15 +100,18 @@ public partial class TasksView : UserControl
                 }
             }
         }
-        var empty = sections.Count == 0;
-        Empty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        Empty.Visibility = sections.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         (EmptyTitle.Text, EmptyText.Text) = TaskBoard.EmptyText(m.View);
         Dispatcher.BeginInvoke(UpdatePinned, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
+    /// <summary>Add task opens the Add a to-do sheet (from Upcoming it starts on Tomorrow).</summary>
+    private void OnAdd(object sender, RoutedEventArgs e) => Model?.OpenNewTask();
+
     // ---- Sections -------------------------------------------------------------------------------
 
-    private void AddHeading(string name, string sub, bool late, Func<FrameworkElement>? action)
+    /// <summary>"Today  Wed 4 Nov  3": the name in ink, the date grey, the count lighter grey.</summary>
+    private void AddHeading(string name, string sub, int count, Func<FrameworkElement>? action)
     {
         var heading = Heading();
         Rows.Children.Add(heading);
@@ -111,20 +120,27 @@ public partial class TasksView : UserControl
 
         FrameworkElement Heading()
         {
-            var row = new DockPanel { LastChildFill = false, MinHeight = 36, Margin = new Thickness(4, 6, 0, 0) };
-            var title = Ui.Text(name, 13, FontWeights.Bold, late ? "Z.WarnText" : "Z.Ink");
+            var row = new DockPanel { LastChildFill = false, MinHeight = 34, Margin = new Thickness(2, 10, 0, 0) };
+            var title = Ui.Text(name, 13, FontWeights.SemiBold);
             title.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(title);
-            var meta = Ui.Text(sub, 12, fg: "Z.Muted");
-            meta.VerticalAlignment = VerticalAlignment.Center;
-            meta.Margin = new Thickness(8, 1, 0, 0);
-            row.Children.Add(meta);
+            if (sub.Length > 0)
+            {
+                var date = Ui.Text(sub, 12, fg: "Z.Muted");
+                date.VerticalAlignment = VerticalAlignment.Center;
+                date.Margin = new Thickness(6, 1, 0, 0);
+                row.Children.Add(date);
+            }
+            var n = Ui.Text(count.ToString(), 12, fg: "Z.Faint");
+            n.VerticalAlignment = VerticalAlignment.Center;
+            n.Margin = new Thickness(6, 1, 0, 0);
+            row.Children.Add(n);
             if (action?.Invoke() is { } a)
             {
                 DockPanel.SetDock(a, Dock.Right);
                 row.Children.Add(a);
             }
-            AutomationProperties.SetName(row, $"{name}, {sub}");
+            AutomationProperties.SetName(row, sub.Length > 0 ? $"{name}, {sub}, {count}" : $"{name}, {count}");
             return new Border { Child = row }.Res(Border.BackgroundProperty, "Z.Surface");
         }
     }
@@ -162,10 +178,10 @@ public partial class TasksView : UserControl
     private static FrameworkElement Row(MemberTask t, TrayModel m, IReadOnlySet<int> holding)
     {
         var now = m.Now;
-        var owner = m.OwnerFirst;
         var held = holding.Contains(t.Id);
-        var waiting = t.Status == MemberTaskStatus.Review;
-        var greyed = TaskBoard.Finished(t) || held && !waiting;
+        var ticked = TaskBoard.Ticked(t);
+        // Done (own, approved) ticks black and strikes through; an owner's task waiting for the OK ticks grey and keeps its title.
+        var struck = ticked && t.Status != MemberTaskStatus.Review;
         var open = m.OpenCard == t.Id;
 
         var grid = new Grid();
@@ -176,16 +192,16 @@ public partial class TasksView : UserControl
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        grid.Children.Add(Check(t, m, TaskBoard.Ticked(t), waiting));
+        grid.Children.Add(Check(t, m, ticked));
 
         var title = new TextBlock
         {
-            Text = t.Title, FontSize = 14, TextWrapping = TextWrapping.Wrap, LineHeight = 19,
-            TextDecorations = greyed ? TextDecorations.Strikethrough : null,
-        }.Res(TextBlock.ForegroundProperty, greyed ? "Z.Muted" : "Z.Ink");
+            Text = t.Title, FontSize = 14, TextWrapping = TextWrapping.Wrap, LineHeight = 19.5,
+            TextDecorations = struck ? TextDecorations.Strikethrough : null,
+        }.Res(TextBlock.ForegroundProperty, struck ? "Z.Faint" : ticked ? "Z.Ink2" : "Z.Ink");
         var titleButton = new Button
         {
-            Content = title, Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(0, 3, 0, 3),
+            Content = title, Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(0, 2, 0, 2),
             Template = Plain(), FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
         };
         titleButton.Click += (_, _) => m.ToggleCard(t.Id);
@@ -197,7 +213,7 @@ public partial class TasksView : UserControl
         Grid.SetColumn(more, 2);
         grid.Children.Add(more);
 
-        var meta = Meta(t, m, owner, now, held);
+        var meta = Meta(t, m, now, held);
         if (meta.Children.Count > 0)
         {
             Grid.SetRow(meta, 1);
@@ -225,74 +241,83 @@ public partial class TasksView : UserControl
 
         return new Border
         {
-            Child = grid, Padding = new Thickness(4, 6, 0, 6), BorderThickness = new Thickness(0, 0, 0, 1), SnapsToDevicePixels = true,
+            Child = grid, Padding = new Thickness(2, 8, 0, 8), BorderThickness = new Thickness(0, 0, 0, 1), SnapsToDevicePixels = true,
         }.Res(Border.BorderBrushProperty, "Z.Line");
     }
 
-    /// <summary>The round tick: empty while open, ink when done, orange while it waits for the owner's OK.</summary>
-    private static Button Check(MemberTask t, TrayModel m, bool ticked, bool waiting)
+    /// <summary>The round tick: an outline while open, black when done, mid-grey while an owner's task waits for the OK.</summary>
+    private static Button Check(MemberTask t, TrayModel m, bool ticked)
     {
         var circle = new Border
         {
-            Width = 20, Height = 20, CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1.6),
+            Width = 19, Height = 19, CornerRadius = new CornerRadius(9.5), BorderThickness = new Thickness(1.5),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         };
-        var fill = waiting ? "Z.Orange" : ticked ? "Z.Inv" : "Z.Surface";
+        var waiting = t.Status == MemberTaskStatus.Review;
+        var fill = !ticked ? "Z.Surface" : waiting ? "Z.Muted" : "Z.Inv";
         circle.SetResourceReference(Border.BackgroundProperty, fill);
-        circle.SetResourceReference(Border.BorderBrushProperty, ticked ? fill : "Z.Ink2");
+        circle.SetResourceReference(Border.BorderBrushProperty, ticked ? fill : "Z.Line2");
         if (ticked)
         {
             var mark = new Path
             {
-                Data = Geometry.Parse("M2,6.5 L4.5,9 L10,3.5"), StrokeThickness = 2, Width = 12, Height = 12,
+                Data = Geometry.Parse("M2,6.5 L4.5,9 L10,3.5"), StrokeThickness = 2.2, Width = 10, Height = 10, Stretch = Stretch.Uniform,
                 StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             };
-            mark.SetResourceReference(Shape.StrokeProperty, waiting ? "Z.OnOrange" : "Z.OnInv");
+            mark.SetResourceReference(Shape.StrokeProperty, waiting ? "Z.Surface" : "Z.OnInv");
             circle.Child = mark;
+            circle.BorderThickness = new Thickness(0); // a clean filled disc
         }
-        var closed = t.RemoteId is not null && t.Status is MemberTaskStatus.Approved or MemberTaskStatus.Cancelled;
+        var closed = !t.Mine && t.Status is MemberTaskStatus.Approved or MemberTaskStatus.Cancelled;
         var b = new Button
         {
-            Content = circle, Width = 40, Height = 40, Margin = new Thickness(-10, -7, -2, -9), VerticalAlignment = VerticalAlignment.Top,
+            Content = circle, Width = 40, Height = 40, Margin = new Thickness(-10, -9, -2, -9), VerticalAlignment = VerticalAlignment.Top,
             Cursor = closed ? Cursors.Arrow : Cursors.Hand, Template = Plain(), IsEnabled = !closed,
             FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
         };
         if (!ticked)
         {
-            b.MouseEnter += (_, _) => circle.SetResourceReference(Border.BorderBrushProperty, "Z.Orange");
-            b.MouseLeave += (_, _) => circle.SetResourceReference(Border.BorderBrushProperty, "Z.Ink2");
+            b.MouseEnter += (_, _) => circle.SetResourceReference(Border.BorderBrushProperty, "Z.Ink2");
+            b.MouseLeave += (_, _) => circle.SetResourceReference(Border.BorderBrushProperty, "Z.Line2");
         }
         b.Click += (_, _) => m.ToggleTick(t);
         AutomationProperties.SetName(b, (ticked ? "Mark not done: " : "Mark done: ") + t.Title);
-        AutomationProperties.SetItemStatus(b, waiting ? $"Waiting for {m.OwnerFirst}’s OK" : ticked ? "done" : "open");
+        AutomationProperties.SetItemStatus(b, ticked ? "done" : "open");
         return b;
     }
 
-    /// <summary>The line under the title: due words, who it's from, steps, priority, where it stands, Undo.</summary>
-    private static WrapPanel Meta(MemberTask t, TrayModel m, string owner, DateTimeOffset now, bool held)
+    /// <summary>The line under the title: the time, who it's from, its status chip, steps, priority, Undo.</summary>
+    private static WrapPanel Meta(MemberTask t, TrayModel m, DateTimeOffset now, bool held)
     {
-        var meta = new WrapPanel { Margin = new Thickness(0, 0, 0, 2) };
+        var meta = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
         void Add(FrameworkElement el)
         {
-            el.Margin = new Thickness(0, 0, 10, 2);
+            el.Margin = new Thickness(0, 0, 10, 3);
             el.VerticalAlignment = VerticalAlignment.Center;
             meta.Children.Add(el);
         }
 
-        if ((!TaskBoard.Ticked(t) || held) && TaskBoard.DueLabel(t, now) is { Length: > 0 } due)
+        // Under a dated heading only the time shows; what's late or due within the hour gets a small orange dot.
+        if (TaskBoard.RowDue(t, now) is { Text.Length: > 0 } due)
         {
-            var tone = TaskBoard.DueToneOf(t, now);
-            Add(Ui.Text(due, 12, tone == DueTone.Late ? FontWeights.SemiBold : FontWeights.Normal, tone == DueTone.Normal ? "Z.Muted" : "Z.WarnText"));
-        }
-        if (t.IsNew && !TaskBoard.Ticked(t))
-        {
-            var tag = Ui.Pill("New", "Z.OrangeTint", "Z.OrangeInk", 11, FontWeights.SemiBold);
-            tag.Padding = new Thickness(5, 0, 5, 0);
-            Add(tag);
+            if (due.Urgent)
+            {
+                var line = new StackPanel { Orientation = Orientation.Horizontal };
+                var dot = Ui.Dot(6, "Z.Orange");
+                dot.Margin = new Thickness(0, 1, 5, 0);
+                line.Children.Add(dot);
+                line.Children.Add(Ui.Text(due.Text, 12, FontWeights.SemiBold));
+                Add(line);
+            }
+            else
+            {
+                Add(Ui.Text(due.Text, 12, fg: "Z.Muted"));
+            }
         }
         if (!t.Mine)
         {
+            var owner = m.OwnerFirst;
             var from = new StackPanel { Orientation = Orientation.Horizontal };
             var initial = Ui.Text(owner.Length > 0 ? owner[..1].ToUpperInvariant() : "?", 9, FontWeights.Bold, "Z.OnInv");
             initial.HorizontalAlignment = HorizontalAlignment.Center;
@@ -302,13 +327,13 @@ public partial class TasksView : UserControl
             from.Children.Add(Ui.Text("From " + owner, 12, fg: "Z.Muted"));
             Add(from);
         }
-        if (t.Status is MemberTaskStatus.Progress && !held)
+        if (TaskBoard.StatusChip(t, m.OwnerFirst) is { } chip)
         {
-            Add(Ui.Text("Doing", 12, FontWeights.SemiBold, "Z.StDoing"));
-        }
-        else if (t.Status is MemberTaskStatus.Help or MemberTaskStatus.Cant)
-        {
-            Add(Ui.Text(TaskBoard.LaneLabel(t, m.OwnerFirst), 12, FontWeights.SemiBold, "Z.StWait"));
+            Add(new Border
+            {
+                CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 1, 6, 1),
+                Child = Ui.Text(chip.Label, 12, FontWeights.SemiBold, $"Z.St{chip.Tone}Text"),
+            }.Res(Border.BackgroundProperty, $"Z.St{chip.Tone}Tint"));
         }
         if (t.Steps.Count > 0)
         {
@@ -316,33 +341,28 @@ public partial class TasksView : UserControl
         }
         if (t.High && !TaskBoard.Ticked(t))
         {
-            Add(Ui.Text("High", 12, FontWeights.Bold, "Z.Orange"));
+            Add(Ui.Text("High", 12, FontWeights.SemiBold, "Z.RedText"));
         }
-        if (t.Status == MemberTaskStatus.Review)
+        if (TaskBoard.Finished(t) && t.Status != MemberTaskStatus.Cancelled && t.DoneAt is { } doneAt && !held)
         {
-            var pill = new Border
-            {
-                CornerRadius = new CornerRadius(9), BorderThickness = new Thickness(1), Padding = new Thickness(7, 0, 7, 1),
-                Child = Ui.Text($"Waiting for {m.OwnerFirst}’s OK", 12, fg: "Z.WarnText"),
-            }.Res(Border.BackgroundProperty, "Z.AccentSoft").Res(Border.BorderBrushProperty, "Z.AccentLine");
-            Add(pill);
-        }
-        else if (t.Status is MemberTaskStatus.Approved or MemberTaskStatus.Cancelled)
-        {
-            Add(Ui.Text(t.Status == MemberTaskStatus.Approved ? $"Approved by {m.OwnerFirst}" : "Cancelled", 12, fg: "Z.Muted"));
-        }
-        if (TaskBoard.Finished(t) && t.DoneAt is { } doneAt && !held)
-        {
-            Add(Ui.Text("Done " + TaskCard.Sent(doneAt, now), 12, fg: "Z.Muted"));
+            var when = TaskCard.Sent(doneAt, now);
+            Add(Ui.Text("Done " + (when == "Yesterday" ? "yesterday" : when), 12, fg: "Z.Muted"));
         }
         if (TaskBoard.WaitsToSend(t) && m.Offline)
         {
-            Add(Ui.Text("Saved on this PC", 12, FontWeights.SemiBold, "Z.WarnText"));
+            Add(Ui.Text("Saved on this PC", 12, fg: "Z.Muted"));
         }
         if (held)
         {
-            var undo = Ui.Button("Undo", "Z.TextAction", () => m.ToggleTick(t), "Undo: " + t.Title);
-            undo.Margin = new Thickness(0, -12, 0, -12);
+            var text = Ui.Text("Undo", 12, FontWeights.SemiBold);
+            text.TextDecorations = TextDecorations.Underline;
+            var undo = new Button
+            {
+                Content = text, Cursor = Cursors.Hand, Template = Plain(), Padding = new Thickness(0, 4, 0, 4), Margin = new Thickness(0, -4, 0, -4),
+                FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
+            };
+            undo.Click += (_, _) => m.ToggleTick(t);
+            AutomationProperties.SetName(undo, "Undo: " + t.Title);
             Add(undo);
         }
         return meta;
@@ -354,13 +374,13 @@ public partial class TasksView : UserControl
         var dots = new GeometryGroup();
         foreach (var x in new[] { 3.5, 8, 12.5 })
         {
-            dots.Children.Add(new EllipseGeometry(new Point(x, 8), 1.3, 1.3));
+            dots.Children.Add(new EllipseGeometry(new Point(x, 8), 1.2, 1.2));
         }
         var glyph = new Path { Data = dots, Width = 16, Height = 16 };
         glyph.SetResourceReference(Shape.FillProperty, "Z.Muted");
         var b = new Button
         {
-            Content = glyph, Width = 36, Height = 36, Margin = new Thickness(0, -6, 0, -6), VerticalAlignment = VerticalAlignment.Top,
+            Content = glyph, Width = 36, Height = 36, Margin = new Thickness(0, -8, 0, -8), VerticalAlignment = VerticalAlignment.Top,
             Style = (Style)Application.Current.FindResource("Z.IconBtn"),
         };
         AutomationProperties.SetName(b, "More for " + t.Title);
@@ -424,152 +444,5 @@ public partial class TasksView : UserControl
         grid.AppendChild(content);
         t.VisualTree = grid;
         return t;
-    }
-
-    // ---- Quick add ----------------------------------------------------------------------------------
-
-    // Made once and updated, so a pick keeps keyboard focus in the add box (and its options stay open).
-    private static readonly (string Key, string Label)[] DueChoices = [("today", "Today"), ("tomorrow", "Tomorrow"), ("date", "Pick date")];
-    private readonly Dictionary<string, ToggleButton> _chips = [];
-    private ToggleButton? _time;
-
-    private void RenderAdd(TrayModel m, DateTimeOffset now)
-    {
-        var q = m.Quick;
-        var today = TaskBoard.Today(now);
-        if (_chips.Count == 0)
-        {
-            foreach (var (key, label) in DueChoices)
-            {
-                var chip = new ToggleButton { Style = (Style)FindResource("Z.Chip"), Margin = new Thickness(0, 0, 4, 0) };
-                chip.Click += (_, _) => PickDue(key);
-                AutomationProperties.SetName(chip, "Due " + label);
-                _chips[key] = chip;
-                AddChips.Children.Add(chip);
-            }
-            _time = new ToggleButton { Style = (Style)FindResource("Z.FilterBtn") };
-            _time.Click += (_, _) => OpenTimes();
-            AddChips.Children.Add(_time);
-        }
-        foreach (var (key, label) in DueChoices)
-        {
-            _chips[key].Content = key == "date" && q is { Due: "date", Date: { } d } ? TaskBoard.DayLabel(d) : label;
-            _chips[key].IsChecked = q.Due == key;
-        }
-        var timeLabel = TimeText(q.Time, today);
-        var content = new StackPanel { Orientation = Orientation.Horizontal };
-        content.Children.Add(new TextBlock { Text = timeLabel, VerticalAlignment = VerticalAlignment.Center });
-        var chevron = Ui.Glyph(Ui.Icon.Chevron, 11, "Z.Muted", 2.6);
-        chevron.Margin = new Thickness(4, 0, 0, 0);
-        content.Children.Add(chevron);
-        _time!.Content = content;
-        _time.IsChecked = q.Time is not null;
-        AutomationProperties.SetName(_time, "Due time: " + timeLabel);
-
-        AddDate.Visibility = q.Due == "date" ? Visibility.Visible : Visibility.Collapsed;
-        AddDate.DisplayDateStart = today.ToDateTime(TimeOnly.MinValue);
-        var selected = q.Date?.ToDateTime(TimeOnly.MinValue);
-        if (AddDate.SelectedDate != selected)
-        {
-            AddDate.SelectedDate = selected;
-        }
-        AddHint.Text = TaskBoard.QuickHint(q, now);
-        UpdateAdd();
-    }
-
-    private static string TimeText(TimeOnly? time, DateOnly day) =>
-        time is { } t ? "By " + TaskBoard.TimeLabel(new DateTimeOffset(day.ToDateTime(t, DateTimeKind.Local))) : "No time";
-
-    private void PickDue(string key)
-    {
-        if (Model is not { } m)
-        {
-            return;
-        }
-        var q = m.Quick;
-        var today = TaskBoard.Today(m.Now);
-        m.SetQuick(key == "date"
-            ? q with { Due = "date", Date = q.Date is { } picked && picked >= today ? picked : today.AddDays(2) }
-            : q with { Due = key });
-    }
-
-    /// <summary>"No time" / "By 4:00 PM": a menu of half hours through the working day.</summary>
-    private void OpenTimes()
-    {
-        if (Model is not { } m || _time is not { } button)
-        {
-            return;
-        }
-        var q = m.Quick;
-        var today = TaskBoard.Today(m.Now);
-        button.IsChecked = q.Time is not null;
-        var menu = new ContextMenu
-        {
-            PlacementTarget = button, Placement = PlacementMode.Bottom, Style = (Style)FindResource("Z.Menu"), MaxHeight = 320,
-        };
-        var times = new List<TimeOnly?> { null };
-        for (var h = 9; h <= 20; h++)
-        {
-            times.Add(new TimeOnly(h, 0));
-            times.Add(new TimeOnly(h, 30));
-        }
-        foreach (var t in times)
-        {
-            var item = new MenuItem { Header = TimeText(t, today), IsCheckable = true, IsChecked = t == q.Time, Style = (Style)FindResource("Z.MenuItem") };
-            item.Click += (_, _) => m.SetQuick(m.Quick with { Time = t });
-            menu.Items.Add(item);
-        }
-        _menuOpen = true;
-        menu.Closed += (_, _) =>
-        {
-            _menuOpen = false;
-            AddTitle.Focus();
-        };
-        menu.IsOpen = true;
-    }
-
-    private void OnAddFocus(object sender, DependencyPropertyChangedEventArgs e) => UpdateAdd();
-
-    /// <summary>The options show while the add box is in use; the border turns ink, like a focused field.</summary>
-    private void UpdateAdd()
-    {
-        var active = AddBox.IsKeyboardFocusWithin || _menuOpen || AddTitle.Text.Length > 0 || AddDate.IsDropDownOpen;
-        AddOpts.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
-        AddBox.SetResourceReference(Border.BorderBrushProperty, AddBox.IsKeyboardFocusWithin ? "Z.Ink" : "Z.Line");
-        AddGo.IsEnabled = AddTitle.Text.Trim().Length > 0;
-    }
-
-    private void OnAddChanged(object sender, TextChangedEventArgs e) => UpdateAdd();
-
-    private void OnAddKey(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            e.Handled = true;
-            Add();
-        }
-    }
-
-    private void OnAddGo(object sender, RoutedEventArgs e)
-    {
-        Add();
-        AddTitle.Focus();
-    }
-
-    private void Add()
-    {
-        if (Model is { } m && m.AddQuick(AddTitle.Text))
-        {
-            AddTitle.Text = "";
-        }
-    }
-
-    private void OnAddDate(object? sender, SelectionChangedEventArgs e)
-    {
-        if (Model is not { } m || AddDate.SelectedDate is not { } d || m.Quick.Date == DateOnly.FromDateTime(d))
-        {
-            return;
-        }
-        m.SetQuick(m.Quick with { Due = "date", Date = DateOnly.FromDateTime(d) });
     }
 }
