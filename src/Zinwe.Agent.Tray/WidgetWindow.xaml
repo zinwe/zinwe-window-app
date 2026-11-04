@@ -299,6 +299,10 @@
                 </Border>
             </Grid>
         </Grid>
+
+        <!-- A task's details card (Tasks v2): over the whole window, dimmed; a click outside closes it. -->
+        <ContentControl x:Name="DetailLayer" Grid.RowSpan="3" Panel.ZIndex="10" Focusable="False" Visibility="Collapsed"
+                        WindowChrome.IsHitTestVisibleInChrome="True" />
     </Grid>
 
 </Window>

@@ -56,6 +56,11 @@ public partial class WidgetWindow : Window
             ScreensHost.Children.Add(view);
         }
         SheetSlot.Content = SheetHost;
+        // The floating + on Tasks moves up above the snack bar while it shows, so it never covers it.
+        void Lift() => TasksView.SetSnackLift(SnackBar.Visibility == Visibility.Visible ? SnackBar.ActualHeight : 0);
+        SnackBar.SizeChanged += (_, _) => Lift();
+        SnackBar.IsVisibleChanged += (_, _) => Lift();
+        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(VisibilityProperty, typeof(Border)).AddValueChanged(SnackBar, (_, _) => Lift());
         Onboard.Model = model;
         Home.Model = model;
         ChatView.Model = model;
@@ -155,6 +160,8 @@ public partial class WidgetWindow : Window
         RenderHeader(m, stage);
         if (!inApp)
         {
+            DetailLayer.Visibility = Visibility.Collapsed;
+            DetailLayer.Content = null;
             Onboard.Render();
             return;
         }
@@ -192,6 +199,7 @@ public partial class WidgetWindow : Window
         RenderFocus(m, onHome);
         RenderTabs(m);
         RenderSnack(m);
+        RenderDetail(m);
         TextScale.ScaleX = TextScale.ScaleY = m.Settings.TextLarge ? 1.12 : 1;
         RestoreFocus(focusName);
     }
@@ -459,6 +467,36 @@ public partial class WidgetWindow : Window
         badge.Visibility = Show(count > 0);
         ((TextBlock)badge.Child).Text = count > 9 ? "9+" : count.ToString();
         AutomationProperties.SetName(tab, count > 0 ? $"{name}, {count} new" : name);
+    }
+
+    // What the details card drawn now shows (the task, the minute, the owner), so the status poll's re-render every few
+    // seconds keeps the card, its scroll and its focus; the card arrives with a short scale-in only when it opens.
+    private (int Id, string Seen)? _detailShown;
+
+    /// <summary>A task's details card over the window (press and hold a task, or ⋯); gone when it closes or the task does.</summary>
+    private void RenderDetail(TrayModel m)
+    {
+        var task = m.Tab == Tab.Tasks || m.DetailId is not null ? m.Detail : null;
+        if (task is null)
+        {
+            if (m.DetailId is not null)
+            {
+                m.CloseDetail(); // the task went away (deleted, or no longer listed)
+            }
+            DetailLayer.Visibility = Visibility.Collapsed;
+            DetailLayer.Content = null;
+            _detailShown = null;
+            return;
+        }
+        var seen = System.Text.Json.JsonSerializer.Serialize(task) + $"|{m.Now:yyyyMMddHHmm}|{m.OwnerFirst}|{m.OwnerNameStart}|{m.TodoSharingOn}|{m.Offline}";
+        if (_detailShown is { } shown && shown.Id == task.Id && shown.Seen == seen && DetailLayer.Content is not null)
+        {
+            return;
+        }
+        var arriving = _detailShown?.Id != task.Id;
+        _detailShown = (task.Id, seen);
+        DetailLayer.Content = Views.TaskDetailCard.Build(task, m, arriving);
+        DetailLayer.Visibility = Visibility.Visible;
     }
 
     private void RenderSnack(TrayModel m)

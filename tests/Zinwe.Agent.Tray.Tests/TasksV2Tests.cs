@@ -181,16 +181,179 @@ public sealed class TasksV2Tests
     [Fact]
     public void Empty_views_say_so_plainly()
     {
-        Assert.Equal(("Nothing due today", "Press Add, or look at Upcoming."), TaskBoard.EmptyText(TaskView.Today));
+        Assert.Equal(("Nothing due today", "Press + to add one, or look at Upcoming."), TaskBoard.EmptyText(TaskView.Today));
         Assert.Equal("Nothing done yet", TaskBoard.EmptyText(TaskView.Done).Title);
     }
 
     [Fact]
-    public void Done_keeps_when_it_was_ticked_and_reopening_clears_it()
+    public void Done_keeps_when_it_was_ticked()
     {
         var done = TaskBoard.MarkDone(Own(1, Today), Now);
         Assert.Equal((MemberTaskStatus.Done, (DateTimeOffset?)Now), (done.Status, done.DoneAt));
-        Assert.Null(TaskBoard.Reopen(done).DoneAt);
+    }
+
+    // ---- Done is final (owner rule): a tick is never undone, it offers Add a note ------------------------------
+
+    [Fact]
+    public void A_tick_on_an_open_task_marks_it_done_and_on_a_ticked_one_opens_add_a_note_never_reopen()
+    {
+        var open = Own(1, Today);
+        Assert.Equal(TickAction.MarkDone, TaskBoard.TickActionOf(open));
+
+        // Own to-dos included: done is in the reports.
+        Assert.Equal(TickAction.AddNote, TaskBoard.TickActionOf(TaskBoard.MarkDone(open, Now)));
+        // Ticked a moment ago (still in place): Add a note, not Undo.
+        Assert.Equal(TickAction.AddNote, TaskBoard.TickActionOf(open, new HashSet<int> { 1 }));
+        // An owner's task waiting for the OK, or approved: Add a note.
+        var owner = open with { Mine = false, RemoteId = 9, Id = -9, NeedsOk = true };
+        Assert.Equal(TickAction.AddNote, TaskBoard.TickActionOf(TaskBoard.MarkDone(owner, Now)));
+        Assert.Equal(TickAction.AddNote, TaskBoard.TickActionOf(owner with { Status = MemberTaskStatus.Approved }));
+        // Called off by the owner: nothing to tick or note.
+        Assert.Equal(TickAction.None, TaskBoard.TickActionOf(owner with { Status = MemberTaskStatus.Cancelled }));
+    }
+
+    [Fact]
+    public void Nothing_reopens_a_done_task_any_more()
+    {
+        // The old one-tap "reopen" (TaskBoard.Reopen) and the model's Undo / Reopen paths are gone.
+        Assert.Null(typeof(TaskBoard).GetMethod("Reopen"));
+        foreach (var name in new[] { "UndoDone", "ReopenTask", "EndHold" })
+        {
+            Assert.Null(typeof(TrayModel).GetMethod(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance));
+        }
+        Assert.Contains("stay done", TaskBoard.DoneStaysDone);
+    }
+
+    // ---- Filters: All's calendar and Done's status menu --------------------------------------------------------
+
+    [Fact]
+    public void A_day_picked_on_all_lists_every_task_due_that_day_done_ones_too()
+    {
+        var day = new TaskFilter(Day: Today);
+        var shown = Board().Where(t => TaskBoard.InView(t, TaskView.All, Now, null, day)).Select(t => t.Id);
+        Assert.Equal([2, 3, 7], shown); // due today, due today at 5 PM, and the one done today
+
+        var tomorrow = new TaskFilter(Day: Today.AddDays(1));
+        Assert.Equal([4], Board().Where(t => TaskBoard.InView(t, TaskView.All, Now, null, tomorrow)).Select(t => t.Id));
+        Assert.Equal(1, TaskBoard.Count(Board(), TaskView.All, Now, null, tomorrow));
+
+        // The day only filters All: Today is unchanged.
+        Assert.Equal(TaskBoard.Count(Board(), TaskView.Today, Now), TaskBoard.Count(Board(), TaskView.Today, Now, null, tomorrow));
+
+        // A past day lists under its own name, not under Today.
+        var monday = new TaskFilter(Day: Today.AddDays(-2));
+        var s = Assert.Single(TaskBoard.Sections(Board(), TaskView.All, Now, null, monday));
+        Assert.Equal("Overdue", s.Name); // task 1 is open and late
+        var yesterday = Assert.Single(TaskBoard.Sections(Board(), TaskView.All, Now, null, new TaskFilter(Day: Today.AddDays(-1))));
+        Assert.Equal(("Yesterday", "Tue 3 Nov"), (yesterday.Name, yesterday.Sub)); // task 8, done
+
+        Assert.Equal("5 Nov", TaskBoard.AllLabel(tomorrow));
+        Assert.Equal("All", TaskBoard.AllLabel(new TaskFilter()));
+        Assert.Equal("Due on Thursday 5 November", TaskBoard.FilterLine(TaskView.All, tomorrow));
+        Assert.Null(TaskBoard.FilterLine(TaskView.Today, tomorrow));
+        Assert.Equal(("Nothing due that day", "Pick another day, or clear the date."),
+            TaskBoard.EmptyText(TaskView.All, new TaskFilter(Day: Today.AddDays(30))));
+    }
+
+    private static MemberTask Owner(int id, MemberTaskStatus status, DateOnly? on = null) =>
+        new() { Id = -id, RemoteId = id, Title = "From Vishal " + id, Mine = false, DueOn = on ?? Today, Status = status, SentAt = Now.AddDays(-1) };
+
+    private static MemberTask[] Statuses() =>
+    [
+        Own(1, Today),                                                              // To do
+        Own(2, Today) with { Steps = [new TaskStep("a", true), new TaskStep("b", false)] }, // Doing (a step ticked)
+        Owner(3, MemberTaskStatus.New),                                             // To do
+        Owner(4, MemberTaskStatus.Confirmed),
+        Owner(5, MemberTaskStatus.Progress),                                        // Doing
+        Owner(6, MemberTaskStatus.Help),
+        Owner(7, MemberTaskStatus.Cant),                                            // Needs help too
+        Owner(8, MemberTaskStatus.Review) with { DoneAt = Now },                    // Waiting for OK
+        Owner(9, MemberTaskStatus.Approved) with { DoneAt = Now.AddDays(-1) },
+        Own(10, Today, MemberTaskStatus.Done) with { DoneAt = Now },
+        Owner(11, MemberTaskStatus.Cancelled),                                      // only in Everything done
+    ];
+
+    [Fact]
+    public void Every_task_has_the_status_the_menu_names()
+    {
+        Assert.Equal(
+            [TaskStatusKey.Todo, TaskStatusKey.Doing, TaskStatusKey.Todo, TaskStatusKey.Confirmed, TaskStatusKey.Doing, TaskStatusKey.Help,
+                TaskStatusKey.Help, TaskStatusKey.Waiting, TaskStatusKey.Approved, TaskStatusKey.Done, null],
+            Statuses().Select(TaskBoard.StatusOf));
+        Assert.Equal(["To do", "Confirmed", "Doing", "Needs help", "Waiting for OK", "Approved", "Done"], TaskBoard.MenuStatuses.Select(TaskBoard.StatusName));
+    }
+
+    [Fact]
+    public void The_done_menu_counts_everything_done_then_each_status()
+    {
+        var counts = TaskBoard.MenuCounts(Statuses(), Now);
+        Assert.Equal(
+            [(null, 4), (TaskStatusKey.Todo, 2), (TaskStatusKey.Confirmed, 1), (TaskStatusKey.Doing, 2), (TaskStatusKey.Help, 2),
+                (TaskStatusKey.Waiting, 1), (TaskStatusKey.Approved, 1), (TaskStatusKey.Done, 1)],
+            counts.Select(c => (c.Status, c.Count)));
+    }
+
+    [Fact]
+    public void A_status_picked_on_done_lists_those_tasks_and_names_itself()
+    {
+        var doing = new TaskFilter(Status: TaskStatusKey.Doing);
+        Assert.Equal([2, -5], Statuses().Where(t => TaskBoard.InView(t, TaskView.Done, Now, null, doing)).Select(t => t.Id));
+        var section = Assert.Single(TaskBoard.Sections(Statuses(), TaskView.Done, Now, null, doing));
+        Assert.Equal("Doing", section.Name);
+        Assert.Equal(2, TaskBoard.Count(Statuses(), TaskView.Done, Now, null, doing));
+
+        var waiting = new TaskFilter(Status: TaskStatusKey.Waiting);
+        Assert.Equal([-8], Assert.Single(TaskBoard.Sections(Statuses(), TaskView.Done, Now, null, waiting)).Items.Select(t => t.Id));
+        Assert.Equal("Waiting", TaskBoard.DoneLabel(waiting));
+        Assert.Equal("Done", TaskBoard.DoneLabel(new TaskFilter()));
+        Assert.Equal("Status: Waiting for OK", TaskBoard.FilterLine(TaskView.Done, waiting));
+
+        // A task ticked a moment ago (holding in place) has left the open statuses, and isn't in Done's yet.
+        var ticked = TaskBoard.MarkDone(Own(1, Today), Now);
+        var holding = new HashSet<int> { 1 };
+        Assert.False(TaskBoard.InView(ticked, TaskView.Done, Now, holding, new TaskFilter(Status: TaskStatusKey.Todo)));
+        Assert.False(TaskBoard.InView(ticked, TaskView.Done, Now, holding, new TaskFilter(Status: TaskStatusKey.Done)));
+        Assert.True(TaskBoard.InView(ticked, TaskView.Done, Now, null, new TaskFilter(Status: TaskStatusKey.Done)));
+
+        Assert.Equal("No tasks with this status", TaskBoard.EmptyText(TaskView.Done, new TaskFilter(Status: TaskStatusKey.Approved)).Title);
+    }
+
+    [Fact]
+    public void The_calendar_starts_on_monday_and_dots_the_days_with_open_tasks()
+    {
+        var days = TaskBoard.CalendarDays(new DateOnly(2026, 11, 1), Board());
+        Assert.Equal(42, days.Count);
+        Assert.Equal(new DateOnly(2026, 10, 26), days[0].Day); // 1 Nov 2026 is a Sunday: the grid starts Monday 26 Oct
+        Assert.Equal(DayOfWeek.Monday, days[0].Day.DayOfWeek);
+        Assert.False(days[0].InMonth);
+        Assert.True(days.Single(d => d.Day == Today).HasTasks);
+        Assert.True(days.Single(d => d.Day == Today.AddDays(-2)).HasTasks);
+        Assert.False(days.Single(d => d.Day == Today.AddDays(-1)).HasTasks); // only a done task that day
+    }
+
+    [Fact]
+    public void Moving_an_own_to_do_to_tomorrow_keeps_its_time()
+    {
+        var timed = Own(1, Today, at: At(4, 16));
+        var moved = TrayModel.MovedToTomorrow(timed, Now);
+        Assert.Equal(Today.AddDays(1), TaskBoard.When(moved).Day);
+        Assert.Equal(At(5, 16), TaskBoard.When(moved).At);
+
+        var plain = TrayModel.MovedToTomorrow(Own(2, Today.AddDays(-3)), Now);
+        Assert.Equal((Today.AddDays(1), (DateTimeOffset?)null), TaskBoard.When(plain));
+        Assert.Equal("Tomorrow · Thu 5 Nov", TaskBoard.DueLabel(plain, Now));
+    }
+
+    [Fact]
+    public void Press_and_hold_sinks_at_220_ms_and_opens_at_500_and_a_move_cancels_it()
+    {
+        Assert.Equal(HoldGesture.Stage.Pressed, HoldGesture.At(TimeSpan.FromMilliseconds(100)));
+        Assert.Equal(HoldGesture.Stage.Sinking, HoldGesture.At(TimeSpan.FromMilliseconds(220)));
+        Assert.Equal(HoldGesture.Stage.Sinking, HoldGesture.At(TimeSpan.FromMilliseconds(499)));
+        Assert.Equal(HoldGesture.Stage.Open, HoldGesture.At(TimeSpan.FromMilliseconds(500)));
+        Assert.False(HoldGesture.Cancels(3, 4)); // 5 px: a still finger
+        Assert.True(HoldGesture.Cancels(6, 7));  // 9 px: a scroll or a drag
     }
 
     // ---- Rows, chips and the Add sheet ------------------------------------------------------------------------

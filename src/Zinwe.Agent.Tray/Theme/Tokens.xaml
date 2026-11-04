@@ -95,6 +95,11 @@
     <SolidColorBrush x:Key="Z.Off" Color="#6B6B6B" />
     <SolidColorBrush x:Key="Z.Dim" Color="#59141210" />
     <SolidColorBrush x:Key="Z.SnackAction" Color="#FF8A3D" />
+    <!-- Tasks v2 details card (Apple style): the card, the soft icon squares, the round close, the dimmed window. -->
+    <SolidColorBrush x:Key="Z.DetailBg" Color="#F2F2F2" />
+    <SolidColorBrush x:Key="Z.IconSoft" Color="#E9E9E9" />
+    <SolidColorBrush x:Key="Z.CloseFill" Color="#E3E3E3" />
+    <SolidColorBrush x:Key="Z.DimCard" Color="#61141210" />
 
     <!-- Legacy keys (v1 widget, FeedbackPanel, ChatRow / NotificationRow): mapped onto the v2 palette. -->
     <SolidColorBrush x:Key="Zinwe.White" Color="#FFFFFF" />

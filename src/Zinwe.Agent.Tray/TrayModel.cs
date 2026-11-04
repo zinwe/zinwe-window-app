@@ -18,13 +18,16 @@ public enum Stage { NotRunning, Connect, Consent, Welcome, Removed, App }
 
 public enum Tab { Home, Chat, Tasks, Me }
 
+/// <summary>The pop-overs under the Tasks filters: All's month calendar, Done's status menu.</summary>
+public enum TaskPop { None, Calendar, Status }
+
 /// <summary>Screens pushed over a tab, with a Back arrow.</summary>
 public enum Push { None, Time, Privacy, Settings, Notifications, Help }
 
 /// <summary>Bottom sheets.</summary>
 public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback, Issue }
 
-/// <summary>The dark bar at the bottom ("Done: …  Add a note · Undo").</summary>
+/// <summary>The dark bar at the bottom ("Done: …  Add a note", "Deleted: …  Undo").</summary>
 public sealed record Snack(string Text, IReadOnlyList<(string Label, Action Run)> Actions, DateTimeOffset Born);
 
 /// <summary>The "Add a task for yourself" / "Edit your task" form.</summary>
@@ -74,12 +77,9 @@ public sealed class TrayModel : IDisposable
     private int? _todosVersion;
     private readonly Dictionary<string, DateTimeOffset> _handed = new(StringComparer.Ordinal);
 
-    // F-16 · a ticked task stays where it was, greyed with Undo, for TaskBoard.TickHold. An own to-do is saved at once;
-    // an owner's "done" is held here (shown, not queued) until the hold ends, so an Undo inside it never leaves the PC.
-    // After that, the queued action's id per task, for a later Undo.
-    private sealed record Hold(DateTimeOffset At, MemberTask Before, OutboxReply? Action);
-    private readonly Dictionary<int, Hold> _holds = [];
-    private readonly Dictionary<int, string> _doneSent = [];
+    // F-16 · a ticked task stays where it was, ticked, for TaskBoard.TickHold, then moves to Done. Done is final (owner
+    // rule): the tick is saved (own to-do) or queued for the owner at once, and is never undone.
+    private readonly Dictionary<int, DateTimeOffset> _holds = [];
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
 
     // FR-44 · the member's picture: their fresh pick (drawn at once), and how it reaches the service (pipe "picture").
@@ -226,14 +226,13 @@ public sealed class TrayModel : IDisposable
             {
                 return local;
             }
-            var held = _holds.Values.Select(h => h.Action).OfType<OutboxReply>();
-            var remote = OwnerTasks.Overlay(_remote!.Tasks ?? [], [.. _actions, .. held])
+            var remote = OwnerTasks.Overlay(_remote!.Tasks ?? [], _actions)
                 .Select(d => OwnerTasks.ToMemberTask(d, OwnerFirstStart, Now, queued: PendingInOutbox.Contains(d.Id)));
             return [.. local.Where(t => t.Mine), .. remote];
         }
     }
 
-    /// <summary>Tasks ticked within the last <see cref="TaskBoard.TickHold"/>: still in place, greyed, with Undo.</summary>
+    /// <summary>Tasks ticked within the last <see cref="TaskBoard.TickHold"/>: still in place, ticked, with Add a note.</summary>
     public IReadOnlySet<int> Holding => _holds.Keys.ToHashSet();
 
     /// <summary>True when the service and the backend both have the owner's tasks (FR-20 v2).</summary>
@@ -291,9 +290,9 @@ public sealed class TrayModel : IDisposable
             _today = today; // midnight: "Tomorrow" becomes "Today", today's tasks become overdue
             Raise();
         }
-        if (_holds.Count > 0 && _holds.Where(h => now - h.Value.At >= TaskBoard.TickHold).Select(h => h.Key).ToList() is { Count: > 0 } ended)
+        if (_holds.Count > 0 && _holds.Where(h => now - h.Value >= TaskBoard.TickHold).Select(h => h.Key).ToList() is { Count: > 0 } ended)
         {
-            ended.ForEach(EndHold);
+            ended.ForEach(id => _holds.Remove(id));
             Raise();
         }
         if (++_secondsSinceSave >= 30)
@@ -618,6 +617,8 @@ public sealed class TrayModel : IDisposable
         Tab = tab;
         Push = Push.None;
         Sheet = Sheet.None;
+        DetailId = null;
+        Pop = TaskPop.None;
         WorkMenuOpen = false;
         if (tab == Tab.Chat)
         {
@@ -663,6 +664,16 @@ public sealed class TrayModel : IDisposable
         if (Sheet != Sheet.None)
         {
             CloseSheet();
+            return true;
+        }
+        if (DetailId is not null)
+        {
+            CloseDetail();
+            return true;
+        }
+        if (Pop != TaskPop.None)
+        {
+            ClosePop();
             return true;
         }
         if (Push != Push.None)
@@ -1085,6 +1096,7 @@ public sealed class TrayModel : IDisposable
         if (TaskList.FirstOrDefault(t => t.Id == id) is { } task)
         {
             View = TaskBoard.ViewFor(task, Now);
+            Filter = new(); // a picked day or status could hide it
         }
         OpenCard = id;
         ReadTask(id);
@@ -1124,6 +1136,7 @@ public sealed class TrayModel : IDisposable
     public void SetView(TaskView view)
     {
         View = view;
+        Pop = TaskPop.None;
         OpenCard = null;
         Raise();
     }
@@ -1132,6 +1145,162 @@ public sealed class TrayModel : IDisposable
     {
         ShowDoneToday = !ShowDoneToday;
         Raise();
+    }
+
+    // ---- Filters: All's calendar and Done's status menu (Tasks v2) ------------------------------------
+
+    /// <summary>The day picked on All's calendar and the status picked on Done's menu (each applies to its own view).</summary>
+    public TaskFilter Filter { get; private set; } = new();
+
+    /// <summary>The pop-over open under the filters, if any.</summary>
+    public TaskPop Pop { get; private set; } = TaskPop.None;
+
+    /// <summary>The month All's calendar shows (its first day).</summary>
+    public DateOnly CalendarMonth { get; private set; } = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    /// <summary>The calendar icon on All: open or close the month.</summary>
+    public void ToggleCalendar()
+    {
+        if (Pop == TaskPop.Calendar)
+        {
+            Pop = TaskPop.None;
+        }
+        else
+        {
+            var at = Filter.Day ?? TaskBoard.Today(Now);
+            CalendarMonth = new DateOnly(at.Year, at.Month, 1);
+            Pop = TaskPop.Calendar;
+        }
+        Raise();
+    }
+
+    public void ShiftMonth(int months)
+    {
+        CalendarMonth = CalendarMonth.AddMonths(months);
+        Raise();
+    }
+
+    /// <summary>A day on the calendar (or Today / Tomorrow; null = Any day): All lists the tasks due that day.</summary>
+    public void PickDay(DateOnly? day)
+    {
+        Filter = Filter with { Day = day };
+        View = TaskView.All;
+        Pop = TaskPop.None;
+        OpenCard = null;
+        Raise();
+    }
+
+    /// <summary>Done: opens its status menu (and the view); a second press closes the menu.</summary>
+    public void PressDone()
+    {
+        Pop = Pop == TaskPop.Status ? TaskPop.None : TaskPop.Status;
+        if (View != TaskView.Done)
+        {
+            View = TaskView.Done;
+            OpenCard = null;
+        }
+        Raise();
+    }
+
+    /// <summary>A line of Done's menu: a status (null = Everything done).</summary>
+    public void PickStatus(TaskStatusKey? status)
+    {
+        Filter = Filter with { Status = status };
+        View = TaskView.Done;
+        Pop = TaskPop.None;
+        OpenCard = null;
+        Raise();
+    }
+
+    public void ClosePop()
+    {
+        if (Pop != TaskPop.None)
+        {
+            Pop = TaskPop.None;
+            Raise();
+        }
+    }
+
+    // ---- The details card (press and hold a task, or ⋯) ----------------------------------------------
+
+    /// <summary>The task whose details card is open over the window.</summary>
+    public int? DetailId { get; private set; }
+
+    public MemberTask? Detail => DetailId is { } id ? TaskList.FirstOrDefault(t => t.Id == id) : null;
+
+    public void OpenDetail(int id)
+    {
+        DetailId = id;
+        Pop = TaskPop.None;
+        ReadTask(id);
+        Raise();
+    }
+
+    public void CloseDetail()
+    {
+        if (DetailId is not null)
+        {
+            DetailId = null;
+            Raise();
+        }
+    }
+
+    /// <summary>A button on the details card: it closes, then runs.</summary>
+    public void FromDetail(Action run)
+    {
+        DetailId = null;
+        run();
+        Raise();
+    }
+
+    /// <summary>"Ask {owner}" on the card: Chat opens with the task quoted (without chat, the Ask sheet).</summary>
+    public void AskInChat(MemberTask t)
+    {
+        if (!ChatOn)
+        {
+            AskAbout(t);
+            return;
+        }
+        ReplyTo = new Quote("them", "Task: " + t.Title, "task:" + t.Id);
+        Go(Tab.Chat);
+        FocusRequested?.Invoke("composer");
+    }
+
+    /// <summary>"Can't do it" on the card: the existing Can't do this sheet.</summary>
+    public void CantFor(MemberTask t)
+    {
+        SelTask = t.Id;
+        TaskReason = "";
+        Snack = null;
+        Sheet = Sheet.Cant;
+        Raise();
+    }
+
+    /// <summary>"Tomorrow" on an own to-do's card: due tomorrow (same time, if it has one), with Undo.</summary>
+    public void MoveToTomorrow(MemberTask t)
+    {
+        if (!t.Mine || TaskBoard.Ticked(t))
+        {
+            return;
+        }
+        var before = t;
+        SaveOwn(OwnTodos.AfterEdit(t, MovedToTomorrow(t, Now) with { Queued = Offline || t.Queued }, TodoSharingOn, _todos?.MemberId));
+        ShowSnack("Moved to tomorrow: " + t.Title, [("Undo", () =>
+        {
+            SaveOwn(before); // a newer write than the move, so it wins everywhere
+            Snack = null;
+            Raise();
+        })]);
+    }
+
+    /// <summary>An own to-do due tomorrow: the date moves, a time of day stays.</summary>
+    public static MemberTask MovedToTomorrow(MemberTask t, DateTimeOffset now)
+    {
+        var day = TaskBoard.Today(now).AddDays(1);
+        DateTimeOffset? at = TaskBoard.When(t).At is { } time
+            ? new DateTimeOffset(day.ToDateTime(TimeOnly.FromDateTime(time.LocalDateTime), DateTimeKind.Local))
+            : null;
+        return t with { Due = "Tomorrow", DueKey = DueKey.Tomorrow, DueDate = null, DueOn = day, DueAt = at };
     }
 
     /// <summary>
@@ -1196,10 +1365,10 @@ public sealed class TrayModel : IDisposable
     }
 
     /// <summary>
-    /// Done (F-16: a tick never flips back by itself). The task stays where it is, ticked and greyed with Undo, for
-    /// <see cref="TaskBoard.TickHold"/>, then moves to Done. An own to-do is saved at once. An owner's task shows as
-    /// "Waiting for {owner}'s OK" at once, and its action is queued when the hold ends, so an Undo inside it never
-    /// reaches the owner (it used to post "done", then "start").
+    /// Done (F-16), and final (owner rule: done work is in the day's reports, so a tick is never undone, own to-dos
+    /// included). The task stays where it is, ticked, for <see cref="TaskBoard.TickHold"/>, then moves to Done. An own
+    /// to-do is saved at once; an owner's task is queued for the owner at once ("Waiting for {owner}'s OK" when it needs
+    /// one). Changed later? The snack, the row and the details card offer Add a note instead of Undo.
     /// </summary>
     public void DoneTask(MemberTask t)
     {
@@ -1207,99 +1376,39 @@ public sealed class TrayModel : IDisposable
         {
             return; // already ticked (a second tap on a card drawn before the first)
         }
-        OutboxReply? held = null;
-        if (t.RemoteId is { } id)
+        if (t.RemoteId is not null)
         {
-            held = new OutboxReply(Guid.NewGuid().ToString("N"), "", DateTimeOffset.UtcNow, OutboxReply.TaskActionKind,
-                TaskId: id, Action: TaskActions.Done);
-            History.MarkRead(e => e.Go == "task:" + t.Id);
-            Sheet = Sheet.None;
-            TaskReason = "";
+            Change(t, x => TaskBoard.MarkDone(x, Now), TaskActions.Done);
         }
         else
         {
             Change(t, x => TaskBoard.MarkDone(x, Now));
         }
-        _holds[t.Id] = new Hold(Now, t, held);
+        _holds[t.Id] = Now;
         if (FocusId == t.Id)
         {
             FocusId = null;
         }
-        var before = t;
+        var id = t.Id;
         var text = (t.NeedsOk ? $"Sent to {OwnerFirst} to check: " : "Done: ") + t.Title;
-        ShowSnack(text, [("Add a note", () => OpenNote(before.Id)), ("Undo", () => UndoDone(before))]);
+        ShowSnack(text, [("Add a note", () => OpenNote(id))]);
     }
 
     /// <summary>
-    /// Undo a tick: inside the hold nothing has left this PC (an owner's action is just dropped); later, an action
-    /// still waiting in the outbox is taken back, else the owner gets "start" (back to in progress). An own to-do gets
-    /// its earlier state as a newer change, so it wins everywhere.
+    /// The round tick on a task row: an open task is marked done; a ticked one opens Add a note (done is final, so
+    /// it never reopens); a cancelled one does nothing.
     /// </summary>
-    public void UndoDone(MemberTask before)
-    {
-        var held = _holds.Remove(before.Id);
-        if (before.RemoteId is null)
-        {
-            SaveOwn(before);
-        }
-        else if (!held)
-        {
-            if (_doneSent.Remove(before.Id, out var sentId) && _outbox.TryRemove(sentId))
-            {
-                _actions.RemoveAll(a => a.Id == sentId); // never left this PC
-            }
-            else
-            {
-                Act(before, TaskActions.Start); // already with the owner: back to in progress
-            }
-        }
-        FocusId = before.Status == MemberTaskStatus.Progress ? before.Id : FocusId;
-        Snack = null;
-        Raise();
-    }
-
-    /// <summary>The hold is over: the task moves to Done, and an owner's "done" goes to the outbox.</summary>
-    private void EndHold(int id)
-    {
-        if (!_holds.Remove(id, out var hold) || hold.Action is null)
-        {
-            return;
-        }
-        if (Act(hold.Before, TaskActions.Done) is { } queued)
-        {
-            _doneSent[id] = queued.Id;
-        }
-    }
-
-    /// <summary>The round tick on a task row: tick it, Undo while it holds, or untick it from Done.</summary>
     public void ToggleTick(MemberTask t)
     {
-        if (_holds.TryGetValue(t.Id, out var hold))
+        switch (TaskBoard.TickActionOf(t, Holding))
         {
-            UndoDone(hold.Before);
+            case TickAction.MarkDone:
+                DoneTask(t);
+                break;
+            case TickAction.AddNote:
+                OpenNote(t.Id);
+                break;
         }
-        else if (!TaskBoard.Ticked(t))
-        {
-            DoneTask(t);
-        }
-        else
-        {
-            ReopenTask(t);
-        }
-    }
-
-    /// <summary>
-    /// Back on the list from Done: an own to-do reopens; an owner's task waiting for the OK goes back to in progress.
-    /// One the owner approved or cancelled is closed and stays so.
-    /// </summary>
-    public void ReopenTask(MemberTask t)
-    {
-        if (t.RemoteId is not null && t.Status != MemberTaskStatus.Review)
-        {
-            return;
-        }
-        Change(t, TaskBoard.Reopen, t.RemoteId is null ? null : TaskActions.Start);
-        ShowSnack("Back on your list: " + t.Title, [("OK", CloseSnack)]);
     }
 
     public void ToggleStep(MemberTask t, int index)
@@ -1520,7 +1629,7 @@ public sealed class TrayModel : IDisposable
             SentAt = Now, Steps = [.. f.StepList.Select(l => new TaskStep(l, false))],
         };
         SaveOwn(TodoSharingOn ? OwnTodos.Share(added, _todos?.MemberId) : added);
-        if (!TaskBoard.InView(added, View, Now))
+        if (!TaskBoard.InView(added, View, Now, null, Filter))
         {
             View = TaskBoard.ViewFor(added, Now); // show where it landed
         }
@@ -1891,10 +2000,6 @@ public sealed class TrayModel : IDisposable
     {
         _tick.Stop();
         _statusTimer.Stop();
-        foreach (var id in _holds.Keys.ToList())
-        {
-            EndHold(id); // a tick in its last seconds still reaches the owner
-        }
         CommitPendingEnd();
         _timerStore.Save(Timer);
     }

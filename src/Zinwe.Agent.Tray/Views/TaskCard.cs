@@ -47,7 +47,7 @@ internal static class TaskCard
                 IsChecked = finished, Width = 44, Height = 44, Margin = new Thickness(-12, -10, -6, -10), Cursor = System.Windows.Input.Cursors.Hand,
                 Template = TickTemplate(), FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
             };
-            AutomationProperties.SetName(tick, (finished ? "Mark not done: " : "Mark done: ") + t.Title);
+            AutomationProperties.SetName(tick, (finished ? "Done. Add a note to: " : "Mark done: ") + t.Title);
             tick.Click += (_, _) => m.ToggleTick(t);
             tick.VerticalAlignment = VerticalAlignment.Center;
             head.Children.Add(tick);

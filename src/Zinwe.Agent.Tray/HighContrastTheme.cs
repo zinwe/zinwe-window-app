@@ -44,6 +44,8 @@ internal static class HighContrastTheme
         ["Z.OkTint"] = "#12301F", ["Z.Ok"] = "#4ADE80", ["Z.StDone"] = "#4ADE80",
         // snackbar and scrim
         ["Z.Snack"] = "#333333", ["Z.Dim"] = "#99000000", ["Z.ProgressTrack"] = "#5A3315",
+        // Tasks v2 details card
+        ["Z.DetailBg"] = "#141414", ["Z.IconSoft"] = "#333333", ["Z.CloseFill"] = "#333333", ["Z.DimCard"] = "#B3000000",
         // legacy keys (v1 widget, FeedbackPanel, ChatRow / NotificationRow)
         ["Zinwe.White"] = "#1A1A1A", ["Zinwe.Paper"] = "#0E0E0E", ["Zinwe.Ink"] = "#F5F5F5", ["Zinwe.Muted"] = "#A3A3A3",
         ["Zinwe.Line"] = "#333333", ["Zinwe.LineStrong"] = "#4A4A4A", ["Zinwe.OrangeText"] = "#FF8A3D",
@@ -69,7 +71,7 @@ internal static class HighContrastTheme
         ["Z.WarnTint"] = Hc.Window, ["Z.Warn"] = Hc.WindowText, ["Z.WarnInk"] = Hc.WindowText, ["Z.InfoTint"] = Hc.Window,
         ["Z.Info"] = Hc.WindowText, ["Z.InfoInk"] = Hc.WindowText, ["Z.OrangeTint"] = Hc.Window, ["Z.OrangeInk"] = Hc.WindowText,
         ["Z.SoonTint"] = Hc.Window, ["Z.RedTint"] = Hc.Window, ["Z.RedInk"] = Hc.WindowText, ["Z.Off"] = Hc.Gray,
-        ["Z.SnackAction"] = Hc.HighlightText,
+        ["Z.SnackAction"] = Hc.HighlightText, ["Z.DetailBg"] = Hc.Window, ["Z.IconSoft"] = Hc.Window, ["Z.CloseFill"] = Hc.Window,
         ["Z.StTodoText"] = Hc.WindowText, ["Z.StTodoTint"] = Hc.Window, ["Z.StConfirmedText"] = Hc.WindowText, ["Z.StConfirmedTint"] = Hc.Window,
         ["Z.StDoingText"] = Hc.WindowText, ["Z.StDoingTint"] = Hc.Window, ["Z.StHelpText"] = Hc.WindowText, ["Z.StHelpTint"] = Hc.Window,
         ["Z.StWaitText"] = Hc.WindowText, ["Z.StWaitTint"] = Hc.Window, ["Z.StApprovedText"] = Hc.WindowText, ["Z.StApprovedTint"] = Hc.Window,

@@ -333,11 +333,11 @@ public sealed class OwnTodosTests : IDisposable
     }
 
     [Fact]
-    public void Ticking_finishing_or_reopening_a_legacy_to_do_keeps_it_on_this_pc()
+    public void Ticking_or_finishing_a_legacy_to_do_keeps_it_on_this_pc()
     {
         var legacy = Legacy() with { Steps = [new TaskStep("One", false)] };
 
-        foreach (var t in new[] { TaskBoard.MarkDone(legacy), TaskBoard.ToggleStep(legacy, 0), TaskBoard.Reopen(TaskBoard.MarkDone(legacy)) })
+        foreach (var t in new[] { TaskBoard.MarkDone(legacy), TaskBoard.ToggleStep(legacy, 0) })
         {
             Assert.Null(t.ClientId);
             Assert.Empty(OwnTodos.Unsent([t], new Dictionary<string, DateTimeOffset>(), Asha));
