@@ -138,10 +138,15 @@ public partial class SheetView : UserControl
     private void RenderReason(TrayModel m, bool opened)
     {
         var prompt = m.Prompt!;
+        // Break keeps its one-line note (Enter takes the break); End day gets a text area (F-05b).
+        var note = prompt == WorkPrompt.LogOut ? EndNote : ReasonNote;
+        ReasonNote.Visibility = Show(note == ReasonNote);
+        EndNote.Visibility = Show(note == EndNote);
         if (opened)
         {
             _syncing = true;
             ReasonNote.Text = "";
+            EndNote.Text = "";
             _syncing = false;
         }
         ReasonChips.Children.Clear();
@@ -156,12 +161,12 @@ public partial class SheetView : UserControl
                 m.PickReason(reason);
                 if (prompt.NoteRequired(reason))
                 {
-                    ReasonNote.Focus();
+                    note.Focus();
                 }
             };
             ReasonChips.Children.Add(chip);
         }
-        ReasonNote.Tag = prompt.NotePlaceholder(m.Reason);
+        note.Tag = prompt.NotePlaceholder(m.Reason);
         ReasonCta.Content = prompt.ConfirmLabel;
         UpdateReasonCta(m);
     }
@@ -180,7 +185,7 @@ public partial class SheetView : UserControl
         {
             return;
         }
-        m.SetReasonNote(ReasonNote.Text);
+        m.SetReasonNote(((TextBox)sender).Text);
         UpdateReasonCta(m);
     }
 

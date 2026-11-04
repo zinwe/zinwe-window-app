@@ -78,6 +78,22 @@ public sealed class WorkTimerStateTests
     }
 
     [Fact]
+    public void The_end_of_day_note_keeps_its_lines_up_to_a_thousand_characters_and_a_break_note_stays_short()
+    {
+        var s = Fresh();
+        s.Start(T0);
+        s.ToggleBreak(T0.AddMinutes(10), "Personal", new string('b', 600));
+        Assert.Equal(WorkTimerState.MaxBreakNoteLength, s.BreakNote!.Length);
+        s.ToggleBreak(T0.AddMinutes(20));
+
+        s.End(T0.AddHours(8), "Done for today", "Quotes for Sharma Traders\r\nFixed the sign-in page\r\n" + new string('x', 2000));
+
+        Assert.Equal(1000, WorkTimerState.MaxEndNoteLength);
+        Assert.Equal(WorkTimerState.MaxEndNoteLength, s.EndNote!.Length);
+        Assert.StartsWith("Quotes for Sharma Traders\r\nFixed the sign-in page\r\n", s.EndNote);
+    }
+
+    [Fact]
     public void Transitions_are_gated_by_state()
     {
         var s = Fresh();

@@ -90,6 +90,9 @@ public sealed class WorkTimerState
     /// <summary>Longest break note we keep (matches the backend's limit).</summary>
     public const int MaxBreakNoteLength = 280;
 
+    /// <summary>Longest end-of-day note we keep (F-05b: what they worked on, a few lines; the backend takes 1,000).</summary>
+    public const int MaxEndNoteLength = 1000;
+
     /// <summary>True when the employee can press Start (fresh day, after End, or to take a moved day back).</summary>
     [JsonIgnore]
     public bool CanStart => State is WorkState.NotStarted or WorkState.Ended or WorkState.Moved;
@@ -249,7 +252,7 @@ public sealed class WorkTimerState
         BreakReason = null;
         BreakNote = null;
         EndReason = Clean(reason, MaxBreakReasonLength);
-        EndNote = Clean(note, MaxBreakNoteLength);
+        EndNote = Clean(note, MaxEndNoteLength);
         LastTransitionAtUtc = now;
         return true;
     }
