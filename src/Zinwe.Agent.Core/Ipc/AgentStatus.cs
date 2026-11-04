@@ -78,7 +78,10 @@ public sealed record AgentStatus(
     Backend.WorkDayCarry? DayCarry = null,
     /// <summary>F-13: this service posts "Report an issue". False = an older service: the widget writes no <c>issue</c>
     /// outbox items (it would never send them).</summary>
-    bool Issues = false);
+    bool Issues = false,
+    /// <summary>The special-day logo live today, for the window's title bar. Null = none, or an older service: the
+    /// normal wordmark.</summary>
+    ZingleStatus? Zingle = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

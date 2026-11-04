@@ -27,7 +27,7 @@ namespace Zinwe.Agent.Service;
 internal sealed partial class PipeServer(
     AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger,
     Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Tasks.TodoSync todos, Zinwe.Agent.Core.Pictures.PictureSync pictures,
-    Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
+    Zinwe.Agent.Core.Zingles.ZingleSync zingles, Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
     : BackgroundService
 {
     private const int MaxInstances = 8;
@@ -97,10 +97,11 @@ internal sealed partial class PipeServer(
                     // TasksVersion says "this service knows tasks" and lets the tray fetch only when they changed.
                     // Picture (FR-44) says "this service knows pictures"; its Version lets the tray redraw only on change.
                     // TodosVersion says "this service sends own to-dos": only then does the tray queue them. Issues (F-13) the same
-                    // for "Report an issue".
+                    // for "Report an issue". Zingle: the special-day logo for the title bar (null = the normal one).
                     var status = state.Current with
                     {
                         TasksVersion = tasks.Version, Picture = pictures.Status, TodosVersion = todos.Version, Issues = true,
+                        Zingle = zingles.Status,
                     };
                     await writer.WriteLineAsync(PipeProtocol.Serialize(status).AsMemory(), cts.Token);
                 }

@@ -257,4 +257,5 @@ public static class AgentPipeClient
 [JsonSerializable(typeof(TodosReply))]
 [JsonSerializable(typeof(PictureStatus))]
 [JsonSerializable(typeof(PictureChoice))]
+[JsonSerializable(typeof(ZingleStatus))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;

@@ -104,6 +104,11 @@ builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TodoSync(
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Pictures.PictureSync(
     sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(), sp.GetRequiredService<IWidgetFolder>(),
     sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Pictures.PictureSync>>(), DataDirectory(sp)));
+// The special-day logo (Zingle) for the tray's title bar: the public api/auth/zingle/ checked hourly (ZingleWorker), files
+// cached in the data folder and copied into the member's widget folder for the tray.
+builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Zingles.ZingleSync(
+    sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<IWidgetFolder>(),
+    sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Zingles.ZingleSync>>(), DataDirectory(sp)));
 // Usage metrics upload + the member's work status (read from the widget's per-user file).
 builder.Services.AddSingleton<MetricsUploadPump>();
 builder.Services.AddSingleton(sp => new WorkStatusReader(sp.GetRequiredService<IWidgetFolder>()));
@@ -124,5 +129,6 @@ builder.Services.AddHostedService<PostUpdateRelauncher>();
 builder.Services.AddHostedService<PipeServer>();
 builder.Services.AddHostedService<EventUploader>();
 builder.Services.AddHostedService<UsbWatcherService>();
+builder.Services.AddHostedService<ZingleWorker>();
 
 builder.Build().Run();

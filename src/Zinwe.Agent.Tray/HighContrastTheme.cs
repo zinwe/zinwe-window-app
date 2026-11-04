@@ -13,6 +13,9 @@ internal static class HighContrastTheme
     private static ResourceDictionary? _resources;
     private static bool _dark;
 
+    /// <summary>Dark mode is on (Settings › Look › Dark mode); High Contrast is <see cref="SystemParameters.HighContrast"/>.</summary>
+    internal static bool IsDark => _dark;
+
     /// <summary>
     /// Dark mode (colour rule v1.3.2): black-based neutrals, white text, orange accent. Every key has a dark value,
     /// tints included, so no light chip sits on the black ground. Text on an orange fill stays ink (Z.OnOrange).

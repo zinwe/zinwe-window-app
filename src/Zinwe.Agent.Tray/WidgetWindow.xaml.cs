@@ -29,6 +29,8 @@ public partial class WidgetWindow : Window
     public const double PanelHeight = 720;
 
     private readonly TrayModel _model;
+    // The special-day logo (Zingle) in place of the title bar's wordmark while one is live.
+    private readonly Views.ZinglePlayer _zingle;
     private int _lastMinute = -1;
     private int _lastClockMinute = -1;
 
@@ -47,6 +49,7 @@ public partial class WidgetWindow : Window
     {
         _model = model;
         InitializeComponent();
+        _zingle = new Views.ZinglePlayer(TitleLogo);
         OnboardHost.Content = Onboard;
         foreach (var view in new UIElement[] { Home, ChatView, TasksView, MeView, PushView })
         {
@@ -94,8 +97,13 @@ public partial class WidgetWindow : Window
             {
                 PlaceAboveTaskbar();
             }
+            _zingle.SetOnScreen(IsVisible && WindowState != WindowState.Minimized);
         };
+        // The Zingle plays only while the window can be seen; Windows' "Animation effects" switch picks GIF or still.
+        StateChanged += (_, _) => _zingle.SetOnScreen(IsVisible && WindowState != WindowState.Minimized);
+        SystemParameters.StaticPropertyChanged += OnSystemParameterChanged;
         Closing += OnClosing;
+        Closed += (_, _) => SystemParameters.StaticPropertyChanged -= OnSystemParameterChanged;
     }
 
     /// <summary>The member is looking at the open chat (the tray skips message toasts while this is true).</summary>
@@ -228,6 +236,15 @@ public partial class WidgetWindow : Window
 
     private static Visibility Show(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 
+    private void OnSystemParameterChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SystemParameters.ClientAreaAnimation) or nameof(SystemParameters.HighContrast))
+        {
+            _zingle.Invalidate();
+            Dispatcher.BeginInvoke(Render);
+        }
+    }
+
     private string? _headerPicture;
 
     private void RenderHeader(TrayModel m, Stage stage)
@@ -253,7 +270,8 @@ public partial class WidgetWindow : Window
             Push.Notifications => "Notifications",
             _ => "Help",
         } : m.Tab.ToString();
-        // The wordmark says "Zinwe"; a dev copy adds its instance name next to it.
+        // The wordmark says "Zinwe" (or today's Zingle); a dev copy adds its instance name next to it.
+        _zingle.Apply(m.Status?.Zingle);
         TitleText.Text = Zinwe.Agent.Core.AgentInstance.IsDefault ? "" : $"({Zinwe.Agent.Core.AgentInstance.Name})";
 
         // The line under the title says something useful only: setup state, offline, the date on Home, who the chat is with.

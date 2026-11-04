@@ -262,7 +262,14 @@ public sealed class BackendClient
     /// https (or loopback, for dev). Returns null when the picture is gone (404/410), or the file isn't a JPEG / is too
     /// big; throws on network errors and 5xx so it's tried again.
     /// </summary>
-    public async Task<byte[]?> DownloadPictureAsync(string url, CancellationToken ct)
+    public async Task<byte[]?> DownloadPictureAsync(string url, CancellationToken ct) =>
+        await DownloadSmallAsync(url, MaxPictureDownloadBytes, ct) is { } bytes && IsJpeg(bytes) ? bytes : null;
+
+    /// <summary>
+    /// GET a small public file without the device token. Null when it is gone (403/404/410) or bigger than
+    /// <paramref name="maxBytes"/>; throws on network errors and 5xx so it's tried again.
+    /// </summary>
+    private async Task<byte[]?> DownloadSmallAsync(string url, int maxBytes, CancellationToken ct)
     {
         using var message = new HttpRequestMessage(HttpMethod.Get, ToDownloadUri(url));
         using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -271,7 +278,7 @@ public sealed class BackendClient
             return null;
         }
         response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength > MaxPictureDownloadBytes)
+        if (response.Content.Headers.ContentLength > maxBytes)
         {
             return null;
         }
@@ -281,15 +288,50 @@ public sealed class BackendClient
         int read;
         while ((read = await body.ReadAsync(chunk, ct)) > 0)
         {
-            if (buffer.Length + read > MaxPictureDownloadBytes)
+            if (buffer.Length + read > maxBytes)
             {
                 return null;
             }
             buffer.Write(chunk, 0, read);
         }
-        var bytes = buffer.ToArray();
-        return IsJpeg(bytes) ? bytes : null;
+        return buffer.ToArray();
     }
+
+    /// <summary>The Zingle endpoint (public: no device token is sent).</summary>
+    public const string ZinglePath = "api/auth/zingle/?for=app";
+
+    /// <summary>
+    /// The Zingle live today for the app (<see cref="Zingles.ZingleJson.Parse"/>), or null for none. A 404/410 is a
+    /// backend without Zingles: none. Throws on network errors, 5xx and an unreadable body, so the cached one stays.
+    /// </summary>
+    public async Task<Zingles.Zingle?> GetZingleAsync(CancellationToken ct)
+    {
+        using var response = await _http.GetAsync(ZinglePath, ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadAsStringAsync(ct);
+        try
+        {
+            return Zingles.ZingleJson.Parse(body);
+        }
+        catch (JsonException e)
+        {
+            throw new HttpRequestException($"The backend returned an unexpected Zingle: {e.Message}", e);
+        }
+    }
+
+    /// <summary>
+    /// Download a Zingle file (<see cref="Zingles.Zingle.StillUrl"/> / <see cref="Zingles.Zingle.AnimatedUrl"/>) with
+    /// its extension from the bytes (PNG, GIF or WebP). Null when it is gone, too big or not an image; throws on
+    /// network errors and 5xx.
+    /// </summary>
+    public async Task<(byte[] Bytes, string Extension)?> DownloadZingleFileAsync(string url, CancellationToken ct) =>
+        await DownloadSmallAsync(url, Zingles.ZingleFiles.MaxBytes, ct) is { } bytes && Zingles.ZingleFiles.Sniff(bytes) is { } ext
+            ? (bytes, ext)
+            : null;
 
     /// <summary>A JPEG starts with the SOI marker FF D8 FF.</summary>
     public static bool IsJpeg(ReadOnlySpan<byte> bytes) => bytes.Length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
