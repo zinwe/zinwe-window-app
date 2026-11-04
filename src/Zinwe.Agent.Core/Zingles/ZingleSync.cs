@@ -10,7 +10,8 @@ namespace Zinwe.Agent.Core.Zingles;
 /// The special-day logo (Zingle) for the window's title bar, kept by the service:
 /// <list type="number">
 /// <item><see cref="CheckAsync"/> asks the public <c>api/auth/zingle/?for=app</c> (no device token, so it works before
-///   the PC is connected): at start-up, about hourly and after a sleep (<c>ZingleWorker</c> in the service);</item>
+///   the PC is connected): seconds after start-up (quick retries while the network comes up), about hourly, after a
+///   sleep and when a tray starts (<c>ZingleWorker</c> in the service, <see cref="OnStatusAsked"/>);</item>
 /// <item>the files are downloaded once per Zingle id + <c>?v=</c> into <c>&lt;DataDirectory&gt;\zingles\</c>
 ///   (<see cref="ZingleFiles.FileName"/>) and the answer kept in <c>zingle.json</c>, so it shows offline and after a
 ///   restart without downloading again; older files are deleted;</item>
@@ -209,27 +210,122 @@ public sealed class ZingleSync
 
     private static bool IsPng(string path) => path.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The tray-readable copy in the widget folder, written as the signed-in user when missing. Null when nobody is signed in.</summary>
-    private string? CopyToWidget(string cached) => _widget.Use<string?>(dir =>
+    /// <summary>
+    /// The tray-readable copy in the widget folder, written as the signed-in user when missing. Null when nobody is
+    /// signed in. The cached file is read by the service itself, OUTSIDE <see cref="IWidgetFolder.Use{T}"/>: inside it
+    /// the service runs as the member, who can't read the SYSTEM-only data folder (1.3.8 read it there, so the copy
+    /// always failed and the installed window kept the normal logo).
+    /// </summary>
+    private string? CopyToWidget(string cached)
     {
+        var name = Path.GetFileName(cached);
+        if (_widget.Use<string?>(dir => File.Exists(Path.Combine(dir, name)) ? Path.Combine(dir, name) : null, null) is { } existing)
+        {
+            return existing;
+        }
+        byte[] bytes;
         try
         {
-            var path = Path.Combine(dir, Path.GetFileName(cached));
-            if (!File.Exists(path))
-            {
-                Directory.CreateDirectory(dir);
-                var tmp = path + ".tmp";
-                File.WriteAllBytes(tmp, File.ReadAllBytes(cached));
-                File.Move(tmp, path, overwrite: true);
-            }
-            return path;
+            bytes = File.ReadAllBytes(cached); // as the service, not the member
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _logger.LogDebug("Could not copy the Zingle to the widget folder: {Error}", e.Message);
+            WarnOnce("Could not read the cached Zingle: " + e.Message);
             return null;
         }
-    }, null);
+        return _widget.Use<string?>(dir =>
+        {
+            try
+            {
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, name);
+                var tmp = path + ".tmp";
+                File.WriteAllBytes(tmp, bytes);
+                File.Move(tmp, path, overwrite: true);
+                return path;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                WarnOnce("Could not copy the Zingle to the widget folder: " + e.Message);
+                return null;
+            }
+        }, null);
+    }
+
+    // The same failure every minute is logged once (Warning reaches the Event Log), and again when it changes.
+    private string? _lastWarning;
+
+    private void WarnOnce(string message)
+    {
+        if (Interlocked.Exchange(ref _lastWarning, message) != message)
+        {
+            _logger.LogWarning("{Message}", message);
+        }
+    }
+
+    // ---- Checking soon: at start-up and whenever a tray starts --------------------------------------------------
+
+    /// <summary>A tray that hasn't asked for the status for this long is taken as one that just started.</summary>
+    public static readonly TimeSpan TrayGap = TimeSpan.FromSeconds(20);
+
+    /// <summary>Checks asked for by tray starts are at most this often (a tray restarted in a loop can't flood the backend).</summary>
+    public static readonly TimeSpan NudgeEvery = TimeSpan.FromSeconds(30);
+
+    private readonly SemaphoreSlim _wake = new(0, 1);
+    private DateTimeOffset _lastStatusAsk = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastNudge = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// The tray asked for the status (every few seconds while it runs). The first ask after a quiet gap is a tray that
+    /// just started: its member gets their copies at once, and the worker checks the backend now. True when it nudged.
+    /// </summary>
+    public bool OnStatusAsked(DateTimeOffset now)
+    {
+        bool nudge;
+        lock (_lock)
+        {
+            var started = now - _lastStatusAsk > TrayGap || now < _lastStatusAsk;
+            _lastStatusAsk = now;
+            nudge = started && (now - _lastNudge >= NudgeEvery || now < _lastNudge);
+            if (nudge)
+            {
+                _lastNudge = now;
+            }
+        }
+        if (!nudge)
+        {
+            return false;
+        }
+        if (Status is null)
+        {
+            RefreshWidget(); // a member who just signed in: their copies before the next tick
+        }
+        try
+        {
+            _wake.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // already nudged, not yet taken by the worker
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// When to ask again after a check that couldn't reach the backend: quickly at first (a service that starts with
+    /// Windows often runs before the network is up: 10 s, 20 s, 40 s, 80 s), then every 5 minutes.
+    /// </summary>
+    public static TimeSpan RetryAfter(int failuresInARow) => failuresInARow switch
+    {
+        <= 1 => TimeSpan.FromSeconds(10),
+        2 => TimeSpan.FromSeconds(20),
+        3 => TimeSpan.FromSeconds(40),
+        4 => TimeSpan.FromSeconds(80),
+        _ => TimeSpan.FromMinutes(5),
+    };
+
+    /// <summary>The worker's wait between ticks: <paramref name="delay"/>, or less when a tray start asks for a check (then true).</summary>
+    public Task<bool> WaitAsync(TimeSpan delay, CancellationToken ct) => _wake.WaitAsync(delay, ct);
 
     // ---- zingle.json: the endpoint's answer, so the Zingle shows offline and after a restart ----------------------
 

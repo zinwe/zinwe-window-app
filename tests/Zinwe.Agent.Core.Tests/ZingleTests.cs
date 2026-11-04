@@ -269,6 +269,99 @@ public sealed class ZingleTests : IDisposable
         Assert.Null(sync.Status.AnimatedFile);
     }
 
+    /// <summary>
+    /// The installed service's widget folder: <c>op</c> runs AS the member, who can't read the SYSTEM-only data folder.
+    /// Here every cached file is locked while <c>op</c> runs, so a read of the cache inside it fails like it does there.
+    /// </summary>
+    private sealed class MemberOnlyWidgetFolder(string widget, string cache) : IWidgetFolder
+    {
+        public int Uses { get; private set; }
+
+        public T Use<T>(Func<string, T> op, T whenNobody)
+        {
+            Uses++;
+            var locks = Directory.Exists(cache)
+                ? Directory.EnumerateFiles(cache).Select(f => new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.None)).ToList()
+                : [];
+            try
+            {
+                return op(widget);
+            }
+            finally
+            {
+                locks.ForEach(l => l.Dispose());
+            }
+        }
+    }
+
+    [Fact]
+    public async Task The_cache_is_read_by_the_service_not_as_the_member_so_the_copy_reaches_the_tray()
+    {
+        // 1.3.8: the copy read the cache inside Use (as the member): access denied, Status null, the normal logo.
+        Serve(Body());
+        var folder = new MemberOnlyWidgetFolder(Widget, Cache);
+        var sync = new ZingleSync(_backend.Client(), folder, NullLogger<ZingleSync>.Instance, Data);
+
+        Assert.True(await sync.CheckAsync(CancellationToken.None));
+
+        var status = Assert.IsType<ZingleStatus>(sync.Status);
+        Assert.Equal(1, status.Id);
+        Assert.Equal(Png, System.IO.File.ReadAllBytes(status.StillFile));
+        Assert.Equal(Gif, System.IO.File.ReadAllBytes(status.AnimatedFile!));
+
+        // A member who signs in later (an empty widget folder) gets them on the next tick, the same way.
+        Directory.Delete(Widget, recursive: true);
+        sync.RefreshWidget();
+        Assert.Equal(["zingle-1-1793785141-animated.gif", "zingle-1-1793785141-still.png"], Files(Widget));
+        Assert.NotNull(sync.Status);
+    }
+
+    [Fact]
+    public async Task The_owners_real_files_are_kept_a_png_still_and_a_one_frame_gif87a()
+    {
+        // The prod Diwali Zingle: a 780 x 192 RGBA PNG still and a single-frame GIF87a "animation" (the tray shows the still).
+        byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, .. "IHDR"u8, 0, 0, 3, 0x0C, 0, 0, 0, 0xC0, 8, 6, 0, 0, 0];
+        byte[] gif87 = [.. "GIF87a"u8, 0x0C, 3, 0xC0, 0, 0, 0, 0, 0x3B];
+        Serve("""
+            {"id": 1, "animated_url": "/api/auth/zingle/1/animated/?v=1793794906", "still_url": "/api/auth/zingle/1/still/?v=1793794906",
+             "alt": "Zinwe, lit up for Diwali", "places": "both", "app": true, "updated_at": "2026-11-04T12:21:46.991313+00:00"}
+            """, still: png, animated: gif87);
+        var sync = new ZingleSync(_backend.Client(), new MemberOnlyWidgetFolder(Widget, Cache), NullLogger<ZingleSync>.Instance, Data);
+
+        Assert.True(await sync.CheckAsync(CancellationToken.None));
+
+        Assert.EndsWith("zingle-1-1793794906-still.png", sync.Status!.StillFile);
+        Assert.EndsWith("zingle-1-1793794906-animated.gif", sync.Status.AnimatedFile);
+    }
+
+    [Fact]
+    public async Task A_tray_start_nudges_a_check_once_and_a_running_tray_does_not()
+    {
+        Serve("null");
+        var sync = Sync();
+        var t0 = new DateTimeOffset(2026, 11, 4, 18, 12, 17, TimeSpan.Zero);
+
+        Assert.True(sync.OnStatusAsked(t0)); // the first ask: a tray that just started
+        Assert.True(await sync.WaitAsync(TimeSpan.Zero, CancellationToken.None)); // the worker wakes at once
+        Assert.False(sync.OnStatusAsked(t0.AddSeconds(5))); // the same tray, every 5 s
+        Assert.False(sync.OnStatusAsked(t0.AddSeconds(10)));
+        Assert.False(await sync.WaitAsync(TimeSpan.Zero, CancellationToken.None));
+
+        Assert.True(sync.OnStatusAsked(t0.AddMinutes(2))); // quiet for a while: the tray was restarted
+        Assert.False(sync.OnStatusAsked(t0.AddMinutes(2).AddSeconds(25))); // restarted again within 30 s: no second check
+        Assert.True(sync.OnStatusAsked(t0.AddMinutes(3)));
+    }
+
+    [Fact]
+    public void A_check_that_fails_at_start_up_is_retried_within_seconds_then_every_5_minutes()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(10), ZingleSync.RetryAfter(1));
+        Assert.Equal(TimeSpan.FromSeconds(20), ZingleSync.RetryAfter(2));
+        Assert.True(ZingleSync.RetryAfter(4) < TimeSpan.FromMinutes(2));
+        Assert.Equal(TimeSpan.FromMinutes(5), ZingleSync.RetryAfter(5));
+        Assert.Equal(TimeSpan.FromMinutes(5), ZingleSync.RetryAfter(50));
+    }
+
     [Fact]
     public void The_status_carries_the_zingle_and_an_older_service_reads_as_none()
     {
