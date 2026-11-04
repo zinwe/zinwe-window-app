@@ -449,7 +449,9 @@ public partial class TasksView : UserControl
         label.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(label, 2);
         grid.Children.Add(label);
-        var n = Ui.Text(count.ToString(CultureInfo.InvariantCulture), 13, fg: "Z.Faint");
+        // "Everything done" counts what was ticked today, like the Done segment, and says so.
+        var countText = status is null ? $"{count} today" : count.ToString(CultureInfo.InvariantCulture);
+        var n = Ui.Text(countText, 13, fg: "Z.Faint");
         n.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(n, 3);
         grid.Children.Add(n);
@@ -466,7 +468,7 @@ public partial class TasksView : UserControl
         {
             b.Tag = FocusFirst;
         }
-        AutomationProperties.SetName(b, $"{name}, {count}");
+        AutomationProperties.SetName(b, $"{name}, {countText}");
         AutomationProperties.SetItemStatus(b, picked ? "checked" : "");
         return b;
     }

@@ -429,14 +429,17 @@ public static class TaskBoard
             ? DoneToday(tasks, now, holding).Count
             : tasks.Count(t => InView(t, view, now, holding, filter));
 
-    /// <summary>Done's menu: "Everything done" (null) and each status, with how many tasks each lists.</summary>
+    /// <summary>
+    /// Done's menu: "Everything done" (null) with what was ticked today (the Done segment's count, shown as "N today"),
+    /// then each status with how many tasks it lists.
+    /// </summary>
     public static IReadOnlyList<(TaskStatusKey? Status, int Count)> MenuCounts(IEnumerable<MemberTask> tasks, DateTimeOffset now,
         IReadOnlySet<int>? holding = null, IReadOnlyDictionary<int, TaskStatusKey>? heldWas = null)
     {
         var list = tasks.ToList();
         return
         [
-            (null, list.Count(t => InView(t, TaskView.Done, now, holding))),
+            (null, DoneToday(list, now, holding).Count),
             .. MenuStatuses.Select(s => ((TaskStatusKey?)s, list.Count(t => InView(t, TaskView.Done, now, holding, new TaskFilter(Status: s) { HeldWas = heldWas })))),
         ];
     }

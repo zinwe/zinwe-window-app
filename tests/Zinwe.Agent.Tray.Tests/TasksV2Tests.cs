@@ -285,11 +285,11 @@ public sealed class TasksV2Tests
     }
 
     [Fact]
-    public void The_done_menu_counts_everything_done_then_each_status()
+    public void The_done_menu_counts_what_was_done_today_then_each_status()
     {
         var counts = TaskBoard.MenuCounts(Statuses(), Now);
         Assert.Equal(
-            [(null, 4), (TaskStatusKey.Todo, 2), (TaskStatusKey.Confirmed, 1), (TaskStatusKey.Doing, 2), (TaskStatusKey.Help, 2),
+            [(null, 2), (TaskStatusKey.Todo, 2), (TaskStatusKey.Confirmed, 1), (TaskStatusKey.Doing, 2), (TaskStatusKey.Help, 2),
                 (TaskStatusKey.Waiting, 1), (TaskStatusKey.Approved, 1), (TaskStatusKey.Done, 1)],
             counts.Select(c => (c.Status, c.Count)));
     }
