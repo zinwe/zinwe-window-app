@@ -79,7 +79,8 @@ public sealed class TrayModel : IDisposable
 
     // F-16 · a ticked task stays where it was, ticked, for TaskBoard.TickHold, then moves to Done. Done is final (owner
     // rule): the tick is saved (own to-do) or queued for the owner at once, and is never undone.
-    private readonly Dictionary<int, DateTimeOffset> _holds = [];
+    // With each hold, the status the task had before its tick (TaskFilter.HeldWas).
+    private readonly Dictionary<int, (DateTimeOffset At, TaskStatusKey? Was)> _holds = [];
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
 
     // FR-44 · the member's picture: their fresh pick (drawn at once), and how it reaches the service (pipe "picture").
@@ -235,6 +236,13 @@ public sealed class TrayModel : IDisposable
     /// <summary>Tasks ticked within the last <see cref="TaskBoard.TickHold"/>: still in place, ticked, with Add a note.</summary>
     public IReadOnlySet<int> Holding => _holds.Keys.ToHashSet();
 
+    /// <summary>The status each held task had before its tick, so it holds its place under an open status filter too.</summary>
+    public IReadOnlyDictionary<int, TaskStatusKey> HeldWas =>
+        _holds.Where(h => h.Value.Was is not null).ToDictionary(h => h.Key, h => h.Value.Was!.Value);
+
+    /// <summary>The filter as the Tasks views apply it: the member's pick plus <see cref="HeldWas"/>.</summary>
+    public TaskFilter ViewFilter => Filter with { HeldWas = HeldWas };
+
     /// <summary>True when the service and the backend both have the owner's tasks (FR-20 v2).</summary>
     public bool RemoteOn => _remote is { Supported: true, Backend: TaskBackend.On };
 
@@ -290,7 +298,7 @@ public sealed class TrayModel : IDisposable
             _today = today; // midnight: "Tomorrow" becomes "Today", today's tasks become overdue
             Raise();
         }
-        if (_holds.Count > 0 && _holds.Where(h => now - h.Value >= TaskBoard.TickHold).Select(h => h.Key).ToList() is { Count: > 0 } ended)
+        if (_holds.Count > 0 && _holds.Where(h => now - h.Value.At >= TaskBoard.TickHold).Select(h => h.Key).ToList() is { Count: > 0 } ended)
         {
             ended.ForEach(id => _holds.Remove(id));
             Raise();
@@ -1276,7 +1284,10 @@ public sealed class TrayModel : IDisposable
         Raise();
     }
 
-    /// <summary>"Tomorrow" on an own to-do's card: due tomorrow (same time, if it has one), with Undo.</summary>
+    /// <summary>
+    /// "Tomorrow" on an own to-do's card: due tomorrow (same time, if it has one), with Undo. Like a tick or a delete,
+    /// a move doesn't share a to-do that stays on this PC (only the Edit sheet, which says so, does).
+    /// </summary>
     public void MoveToTomorrow(MemberTask t)
     {
         if (!t.Mine || TaskBoard.Ticked(t))
@@ -1284,14 +1295,29 @@ public sealed class TrayModel : IDisposable
             return;
         }
         var before = t;
-        SaveOwn(OwnTodos.AfterEdit(t, MovedToTomorrow(t, Now) with { Queued = Offline || t.Queued }, TodoSharingOn, _todos?.MemberId));
+        SaveOwn(MovedToTomorrow(t, Now) with { Queued = Offline || t.Queued });
         ShowSnack("Moved to tomorrow: " + t.Title, [("Undo", () =>
         {
-            SaveOwn(before); // a newer write than the move, so it wins everywhere
+            if (UndoMove(before, Tasks.LoadAll().FirstOrDefault(x => x.Id == before.Id)) is { } restored)
+            {
+                SaveOwn(restored); // a newer write than the move, so it wins everywhere
+            }
             Snack = null;
             Raise();
         })]);
     }
+
+    /// <summary>
+    /// What Undo of "Tomorrow" writes back: the day it had, on the row as it is now (its server identity, so the restore
+    /// supersedes the move there). Nothing when the row is gone, deleted, or ticked since: done is final.
+    /// </summary>
+    public static MemberTask? UndoMove(MemberTask before, MemberTask? current) =>
+        current is null || current.DeletedAt is not null || TaskBoard.Ticked(current)
+            ? null
+            : current with
+            {
+                Due = before.Due, DueKey = before.DueKey, DueDate = before.DueDate, DueOn = before.DueOn, DueAt = before.DueAt,
+            };
 
     /// <summary>An own to-do due tomorrow: the date moves, a time of day stays.</summary>
     public static MemberTask MovedToTomorrow(MemberTask t, DateTimeOffset now)
@@ -1384,7 +1410,7 @@ public sealed class TrayModel : IDisposable
         {
             Change(t, x => TaskBoard.MarkDone(x, Now));
         }
-        _holds[t.Id] = Now;
+        _holds[t.Id] = (Now, TaskBoard.StatusOf(t));
         if (FocusId == t.Id)
         {
             FocusId = null;

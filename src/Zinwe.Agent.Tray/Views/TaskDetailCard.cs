@@ -195,6 +195,7 @@ internal static class TaskDetailCard
             Effect = new DropShadowEffect { BlurRadius = 50, ShadowDepth = 20, Opacity = 0.28, Direction = 270, Color = Color.FromRgb(0x14, 0x12, 0x10) },
         }.Res(Border.BackgroundProperty, "Z.DetailBg");
         AutomationProperties.SetName(card, "Task details: " + t.Title);
+        TasksView.Cycle(card); // Tab and Ctrl+Tab stay on the card while it is open
         if (arriving)
         {
             card.Loaded += (_, _) => close.Focus();

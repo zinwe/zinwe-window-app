@@ -44,10 +44,19 @@ public partial class TasksView : UserControl
         {
             return;
         }
+        // Rows are rebuilt below: a press that hasn't opened its card yet ends (a quick tap must not open one later).
+        if (_hold is { } pressed)
+        {
+            pressed.Redrawn();
+            if (!pressed.Opened)
+            {
+                _hold = null;
+            }
+        }
         var now = m.Now;
         var tasks = m.TaskList;
         var holding = m.Holding;
-        var filter = m.Filter;
+        var filter = m.ViewFilter;
 
         RenderSegments(m, tasks, now, holding, filter);
         RenderFilterLine(m, filter);
@@ -237,6 +246,11 @@ public partial class TasksView : UserControl
 
     // ---- Pop-overs: the month on All, the status menu on Done ----------------------------------------------------
 
+    private TaskPop _popShown = TaskPop.None;
+
+    // Marks the control a pop-over focuses when it opens (the picked or today's day, the picked menu row).
+    private const string FocusFirst = "focus-first";
+
     private void RenderPop(TrayModel m, IReadOnlyList<MemberTask> tasks, DateTimeOffset now, IReadOnlySet<int> holding)
     {
         PopCatcher.Visibility = m.Pop == TaskPop.None ? Visibility.Collapsed : Visibility.Visible;
@@ -246,15 +260,46 @@ public partial class TasksView : UserControl
             TaskPop.Status => StatusMenu(m, tasks, now, holding),
             _ => null,
         };
+        if (m.Pop != _popShown && PopSlot.Content is DependencyObject pop)
+        {
+            // Just opened: the keyboard lands inside it (and Tab cycles there until Esc or a pick closes it).
+            Dispatcher.BeginInvoke(() => FindTagged(pop)?.Focus(), DispatcherPriority.Loaded);
+        }
+        _popShown = m.Pop;
     }
 
-    private static Border PopCard(UIElement child, double width, HorizontalAlignment side) => new Border
+    private static Button? FindTagged(DependencyObject root)
+    {
+        if (root is Button { Tag: FocusFirst } hit)
+        {
+            return hit;
+        }
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (FindTagged(VisualTreeHelper.GetChild(root, i)) is { } found)
+            {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static Border PopCard(UIElement child, double width, HorizontalAlignment side) => Cycle(new Border
     {
         Width = width, Child = child, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), Padding = new Thickness(10),
         HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Top,
         Margin = side == HorizontalAlignment.Left ? new Thickness(12, 6, 0, 0) : new Thickness(0, 6, 12, 0),
         Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 12, Opacity = 0.14, Direction = 270, Color = Color.FromRgb(0x14, 0x12, 0x10) },
-    }.Res(Border.BackgroundProperty, "Z.Surface").Res(Border.BorderBrushProperty, "Z.Line");
+    }.Res(Border.BackgroundProperty, "Z.Surface").Res(Border.BorderBrushProperty, "Z.Line"));
+
+    /// <summary>Tab and Ctrl+Tab stay inside a pop-over or card while it is open.</summary>
+    internal static T Cycle<T>(T el) where T : FrameworkElement
+    {
+        KeyboardNavigation.SetTabNavigation(el, KeyboardNavigationMode.Cycle);
+        KeyboardNavigation.SetControlTabNavigation(el, KeyboardNavigationMode.Cycle);
+        KeyboardNavigation.SetDirectionalNavigation(el, KeyboardNavigationMode.Cycle);
+        return el;
+    }
 
     /// <summary>The month (Monday first): today in orange, a dot on days with open tasks, the picked day black; Today · Tomorrow · Any day.</summary>
     private static Border Calendar(TrayModel m, IReadOnlyList<MemberTask> tasks, DateTimeOffset now, IReadOnlySet<int> holding)
@@ -315,6 +360,10 @@ public partial class TasksView : UserControl
             }
             var d = day;
             var b = new Button { Content = box, Cursor = Cursors.Hand, Style = Bare(), FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing") };
+            if (picked || (m.Filter.Day is null && isToday))
+            {
+                b.Tag = FocusFirst;
+            }
             b.Click += (_, _) => m.PickDay(d);
             AutomationProperties.SetName(b, day.ToString("dddd d MMMM", CultureInfo.InvariantCulture) + (has ? ", has tasks" : ""));
             grid.Children.Add(b);
@@ -356,7 +405,7 @@ public partial class TasksView : UserControl
     /// <summary>Done's menu: Everything done, then By status with a colour dot and how many each lists.</summary>
     private static Border StatusMenu(TrayModel m, IReadOnlyList<MemberTask> tasks, DateTimeOffset now, IReadOnlySet<int> holding)
     {
-        var counts = TaskBoard.MenuCounts(tasks, now, holding);
+        var counts = TaskBoard.MenuCounts(tasks, now, holding, m.HeldWas);
         var stack = new StackPanel();
         AutomationProperties.SetName(stack, "Show by status");
         foreach (var (status, count) in counts)
@@ -389,7 +438,9 @@ public partial class TasksView : UserControl
         }
         if (status is { } s)
         {
-            var dot = new Ellipse { Width = 8, Height = 8, Fill = Ui.Hex(TaskBoard.StatusDot(s)), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            var dot = Ui.Dot(8, TaskBoard.StatusDot(s));
+            dot.Margin = new Thickness(0, 0, 8, 0);
+            dot.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(dot, 1);
             grid.Children.Add(dot);
         }
@@ -411,6 +462,10 @@ public partial class TasksView : UserControl
             FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
         };
         b.Click += (_, _) => m.PickStatus(status);
+        if (picked)
+        {
+            b.Tag = FocusFirst;
+        }
         AutomationProperties.SetName(b, $"{name}, {count}");
         AutomationProperties.SetItemStatus(b, picked ? "checked" : "");
         return b;
@@ -789,33 +844,45 @@ public partial class TasksView : UserControl
     {
         private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(30) };
         private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
-        private readonly Point _start;
+        private readonly HoldGesture.Press _press;
         private readonly Action _open;
 
         public Hold(Border tile, Point start, Action open)
         {
             Tile = tile;
-            _start = start;
+            _press = new HoldGesture.Press(start.X, start.Y);
             _open = open;
             _timer.Tick += (_, _) => Step();
             _timer.Start();
         }
 
         public Border Tile { get; }
-        public bool Opened { get; private set; }
+        public bool Opened => _press.Opened;
 
-        public bool Moved(Point at) => HoldGesture.Cancels(at.X - _start.X, at.Y - _start.Y);
+        public bool Moved(Point at) => _press.Move(at.X, at.Y);
+
+        /// <summary>The list was drawn again: a press that hasn't opened the card yet ends here.</summary>
+        public void Redrawn()
+        {
+            _press.Redrawn();
+            if (!_press.Live)
+            {
+                Cancel();
+            }
+        }
 
         private void Step()
         {
-            switch (HoldGesture.At(_clock.Elapsed))
+            switch (_press.Step(_clock.Elapsed))
             {
+                case null:
+                    Cancel();
+                    break;
                 case HoldGesture.Stage.Sinking:
                     Sink(true);
                     break;
                 case HoldGesture.Stage.Open:
                     _timer.Stop();
-                    Opened = true;
                     Sink(false);
                     _open();
                     break;
@@ -840,6 +907,7 @@ public partial class TasksView : UserControl
 
         public void Cancel()
         {
+            _press.Cancel();
             _timer.Stop();
             if (!Opened)
             {

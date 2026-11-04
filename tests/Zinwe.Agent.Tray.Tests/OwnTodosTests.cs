@@ -95,13 +95,22 @@ public sealed class OwnTodosTests : IDisposable
     }
 
     [Fact]
-    public void Done_on_another_pc_arrives_and_reopening_there_arrives_too()
+    public void Done_on_another_pc_arrives_and_a_reopen_from_an_older_pc_does_not_undo_it()
     {
         var done = Assert.Single(OwnTodos.Merge([Shared()], [Remote(updated: 1, status: DeviceTodo.Done)], Asha, Now));
         Assert.Equal(MemberTaskStatus.Done, done.Status);
 
-        var open = Assert.Single(OwnTodos.Merge([done], [Remote(updated: 2)], Asha, Now));
-        Assert.Equal(MemberTaskStatus.New, open.Status);
+        // Done is final (owner rule): a newer "open" (a PC still on 1.3.8 unticked it) keeps it done here, takes the
+        // name and steps, ticks them, and stamps it after the server's copy so Done goes back up and wins there.
+        var kept = Assert.Single(OwnTodos.Merge([done], [Remote(updated: 2, title: "Renamed there", steps: new DeviceTodoStep("One", false))], Asha, Now));
+        Assert.Equal(MemberTaskStatus.Done, kept.Status);
+        Assert.Equal("Renamed there", kept.Title);
+        Assert.Equal([("One", true)], kept.Steps.Select(s => (s.Label, s.Done)));
+        Assert.NotNull(kept.DoneAt);
+        Assert.True(kept.UpdatedAt > At(2));
+        Assert.True(OwnTodos.Dirty(kept));
+        Assert.Equal(DeviceTodo.Done, OwnTodos.ToWire(kept).Status);
+        Assert.Single(OwnTodos.Unsent([kept], new Dictionary<string, DateTimeOffset>(), Asha));
     }
 
     [Fact]

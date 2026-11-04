@@ -80,23 +80,35 @@ public static class OwnTodos
         };
     }
 
-    /// <summary>A to-do from the server over what this PC has (<paramref name="t"/> is a new row, or the older local one).</summary>
-    private static MemberTask Apply(MemberTask t, DeviceTodo d, long? member, DateOnly today)
+    /// <summary>
+    /// A to-do from the server over what this PC has (<paramref name="t"/> is a new row, or the older local one).
+    /// Done is final (owner rule): a newer copy that says open (a PC still on 1.3.8 unticked it) never reopens a to-do
+    /// that is done here. Its name, date and steps are taken; it stays done with its steps ticked, and is stamped just
+    /// after the server's copy, so Done goes back up and wins there too.
+    /// </summary>
+    private static MemberTask Apply(MemberTask t, DeviceTodo d, long? member, DateOnly today, DateTimeOffset now)
     {
         var (due, key) = DueOf(d.DueDate, today);
         var steps = (d.Steps ?? []).Select(s => new TaskStep(s.Title, s.Done)).ToList();
+        var keepDone = d.Status != DeviceTodo.Done && TaskBoard.Finished(t);
+        if (keepDone)
+        {
+            steps = [.. steps.Select(s => s with { Done = true })];
+        }
         var status = d.Status == DeviceTodo.Done ? MemberTaskStatus.Done
-            : TaskBoard.Finished(t) ? MemberTaskStatus.New
+            : keepDone ? t.Status
             : t.Status == MemberTaskStatus.New && steps.Any(s => s.Done) ? MemberTaskStatus.Progress
             : t.Status;
-        return t with
+        var applied = t with
         {
             Title = d.Title, Due = due, DueKey = key, DueDate = d.DueDate, DueOn = d.DueDate, Steps = steps, Status = status,
             UpdatedAt = d.UpdatedAt, SyncedAt = d.UpdatedAt, SyncedFor = member, DeletedAt = null, Queued = false,
             // The time of day stays on this PC (the server keeps dates only): kept while the day is the same.
             DueAt = t.DueAt is { } dueAt && DateOnly.FromDateTime(dueAt.LocalDateTime) == d.DueDate ? dueAt : null,
-            DoneAt = status == MemberTaskStatus.Done ? t.DoneAt ?? d.UpdatedAt : null,
+            DoneAt = status == MemberTaskStatus.Done || keepDone ? t.DoneAt ?? d.UpdatedAt : null,
         };
+        // Kept done over a newer "open": a change of ours again, stamped after the server's, so it goes up.
+        return keepDone ? applied with { UpdatedAt = Stamp(now, d.UpdatedAt) } : applied;
     }
 
     /// <summary>
@@ -137,7 +149,7 @@ public static class OwnTodos
                     rows.Add(Apply(new MemberTask
                     {
                         Id = next++, Mine = true, ClientId = d.ClientId, SentAt = d.CreatedAt ?? d.UpdatedAt,
-                    }, d, member, today));
+                    }, d, member, today, now));
                 }
                 continue;
             }
@@ -160,7 +172,7 @@ public static class OwnTodos
             }
             else if (d.UpdatedAt > at)
             {
-                rows[i] = Apply(t, d, member, today);
+                rows[i] = Apply(t, d, member, today, now);
             }
             else if (d.UpdatedAt == at && t.DeletedAt is null && t.SyncedAt != at)
             {

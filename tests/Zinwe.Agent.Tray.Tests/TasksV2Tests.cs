@@ -507,13 +507,15 @@ public sealed class TasksV2Tests
     }
 
     [Fact]
-    public void Once_sent_a_newer_change_from_another_pc_still_wins()
+    public void Once_sent_a_newer_change_from_another_pc_still_wins_but_never_reopens_a_done_one()
     {
         var ticked = Shared(MemberTaskStatus.Done, Now, Now.AddHours(-1));
 
         var t = Assert.Single(OwnTodos.Merge([ticked], [Remote(Now.AddMinutes(5), title: "Renamed elsewhere")], Asha, Now));
 
-        Assert.Equal(("Renamed elsewhere", MemberTaskStatus.New), (t.Title, t.Status));
+        // The name is taken; done is final, so it stays done (and goes back up as done).
+        Assert.Equal(("Renamed elsewhere", MemberTaskStatus.Done), (t.Title, t.Status));
+        Assert.True(OwnTodos.Dirty(t));
     }
 
     [Fact]
@@ -535,5 +537,70 @@ public sealed class TasksV2Tests
 
         Assert.Equal(At(4, 17), t.DueAt);
         Assert.Equal(Now, t.DoneAt);
+    }
+
+    // ---- Review round: Tomorrow's Undo, a press across a re-render, a hold under a status, the menu's dots ------
+
+    [Fact]
+    public void Undo_of_tomorrow_restores_the_day_on_the_row_as_it_is_now_and_never_reopens()
+    {
+        var before = Own(1, Today, at: At(4, 16)) with { Title = "Call Rohit" };
+        // Since the move the row was shared (a new id, queued): the restore keeps that identity, so it supersedes the
+        // move on the server instead of leaving a second, id-less copy behind.
+        var moved = TrayModel.MovedToTomorrow(before, Now) with { ClientId = "c1", SyncedFor = 7, UpdatedAt = Now };
+        var restored = TrayModel.UndoMove(before, moved)!;
+        Assert.Equal(("c1", (long?)7), (restored.ClientId, restored.SyncedFor));
+        Assert.Equal((Today, (DateTimeOffset?)At(4, 16)), TaskBoard.When(restored));
+        Assert.Equal(before.DueOn, restored.DueOn);
+
+        // Ticked (or deleted, or gone) since the move: Undo does nothing. Done is final.
+        Assert.Null(TrayModel.UndoMove(before, TaskBoard.MarkDone(moved, Now)));
+        Assert.Null(TrayModel.UndoMove(before, moved with { DeletedAt = Now }));
+        Assert.Null(TrayModel.UndoMove(before, null));
+    }
+
+    [Fact]
+    public void A_press_ends_when_the_list_is_drawn_again_before_the_card_opened()
+    {
+        // A quick tap, then the list re-renders (the status poll): the old press must not open a card later.
+        var tap = new HoldGesture.Press(10, 10);
+        Assert.Equal(HoldGesture.Stage.Pressed, tap.Step(TimeSpan.FromMilliseconds(60)));
+        tap.Redrawn();
+        Assert.Null(tap.Step(TimeSpan.FromMilliseconds(600)));
+        Assert.False(tap.Opened);
+
+        // A hold that already opened the card survives the re-render that opening it causes.
+        var hold = new HoldGesture.Press(10, 10);
+        Assert.Equal(HoldGesture.Stage.Open, hold.Step(TimeSpan.FromMilliseconds(500)));
+        hold.Redrawn();
+        Assert.True(hold.Opened);
+
+        // A move past the slop ends it; a small wobble doesn't.
+        var drag = new HoldGesture.Press(0, 0);
+        Assert.False(drag.Move(3, 4));
+        Assert.True(drag.Move(9, 0));
+        Assert.Null(drag.Step(TimeSpan.FromMilliseconds(500)));
+    }
+
+    [Fact]
+    public void A_task_ticked_under_an_open_status_holds_its_place_there_too()
+    {
+        var doing = Own(1, Today) with { Steps = [new TaskStep("a", true), new TaskStep("b", false)] };
+        var ticked = TaskBoard.MarkDone(doing, Now);
+        var holding = new HashSet<int> { 1 };
+        var filter = new TaskFilter(Status: TaskStatusKey.Doing) { HeldWas = new Dictionary<int, TaskStatusKey> { [1] = TaskStatusKey.Doing } };
+
+        Assert.True(TaskBoard.InView(ticked, TaskView.Done, Now, holding, filter)); // still under Doing for the hold
+        Assert.False(TaskBoard.InView(ticked, TaskView.Done, Now, holding, filter with { Status = TaskStatusKey.Todo }));
+        Assert.False(TaskBoard.InView(ticked, TaskView.Done, Now, null, filter)); // hold over: gone from Doing
+        Assert.Equal(1, TaskBoard.MenuCounts([ticked], Now, holding, filter.HeldWas).Single(c => c.Status == TaskStatusKey.Doing).Count);
+    }
+
+    [Fact]
+    public void The_menus_dots_use_the_status_colours_so_they_follow_dark_mode()
+    {
+        Assert.Equal(
+            ["Z.StTodoText", "Z.StConfirmedText", "Z.StDoingText", "Z.StHelpText", "Z.StWaitText", "Z.StApprovedText", "Z.Ink"],
+            TaskBoard.MenuStatuses.Select(TaskBoard.StatusDot));
     }
 }

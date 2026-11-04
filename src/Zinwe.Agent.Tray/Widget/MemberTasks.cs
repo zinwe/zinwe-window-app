@@ -364,16 +364,19 @@ public static class TaskBoard
         _ => "Done",
     };
 
-    /// <summary>The menu's colour dot: the status chip's text colour (Theme/Tokens.xaml); Done is ink.</summary>
+    /// <summary>
+    /// The menu's colour dot: the resource key of the status chip's text colour (<c>Z.St{Tone}Text</c>), Done in ink, so
+    /// the dots follow dark mode and High Contrast like the chips.
+    /// </summary>
     public static string StatusDot(TaskStatusKey s) => s switch
     {
-        TaskStatusKey.Todo => "#8A8A8A",
-        TaskStatusKey.Confirmed => "#1D4ED8",
-        TaskStatusKey.Doing => "#A84505",
-        TaskStatusKey.Help => "#C0331C",
-        TaskStatusKey.Waiting => "#8A5A00",
-        TaskStatusKey.Approved => "#17663F",
-        _ => "#141210",
+        TaskStatusKey.Todo => "Z.StTodoText",
+        TaskStatusKey.Confirmed => "Z.StConfirmedText",
+        TaskStatusKey.Doing => "Z.StDoingText",
+        TaskStatusKey.Help => "Z.StHelpText",
+        TaskStatusKey.Waiting => "Z.StWaitText",
+        TaskStatusKey.Approved => "Z.StApprovedText",
+        _ => "Z.Ink",
     };
 
     /// <summary>
@@ -391,7 +394,7 @@ public static class TaskBoard
         }
         if (view == TaskView.Done)
         {
-            return filter?.Status is { } status ? HasStatus(t, status, open) : !open;
+            return filter?.Status is { } status ? HasStatus(t, status, open, filter) : !open;
         }
         if (!open)
         {
@@ -405,9 +408,17 @@ public static class TaskBoard
         };
     }
 
-    // A just-ticked task (still holding) keeps the status it had for an open filter, and is not yet in a done one.
-    private static bool HasStatus(MemberTask t, TaskStatusKey status, bool open) =>
-        IsOpenStatus(status) ? open && (Ticked(t) ? null : StatusOf(t)) == status : !open && StatusOf(t) == status;
+    // A just-ticked task (still holding) keeps the status it had before the tick (TaskFilter.HeldWas) for an open
+    // filter, so it holds its place there too; it is not in a done status until the hold ends.
+    private static bool HasStatus(MemberTask t, TaskStatusKey status, bool open, TaskFilter filter) =>
+        IsOpenStatus(status)
+            ? open && OpenStatus(t, filter) == status
+            : !open && StatusOf(t) == status;
+
+    private static TaskStatusKey? OpenStatus(MemberTask t, TaskFilter filter) =>
+        !Ticked(t) ? StatusOf(t)
+        : filter.HeldWas is { } held && held.TryGetValue(t.Id, out var was) ? was
+        : null;
 
     /// <summary>
     /// The number beside a view: what it lists (with its filter); for Done without a status, what was ticked today.
@@ -420,13 +431,13 @@ public static class TaskBoard
 
     /// <summary>Done's menu: "Everything done" (null) and each status, with how many tasks each lists.</summary>
     public static IReadOnlyList<(TaskStatusKey? Status, int Count)> MenuCounts(IEnumerable<MemberTask> tasks, DateTimeOffset now,
-        IReadOnlySet<int>? holding = null)
+        IReadOnlySet<int>? holding = null, IReadOnlyDictionary<int, TaskStatusKey>? heldWas = null)
     {
         var list = tasks.ToList();
         return
         [
             (null, list.Count(t => InView(t, TaskView.Done, now, holding))),
-            .. MenuStatuses.Select(s => ((TaskStatusKey?)s, list.Count(t => InView(t, TaskView.Done, now, holding, new TaskFilter(Status: s))))),
+            .. MenuStatuses.Select(s => ((TaskStatusKey?)s, list.Count(t => InView(t, TaskView.Done, now, holding, new TaskFilter(Status: s) { HeldWas = heldWas })))),
         ];
     }
 
@@ -676,7 +687,14 @@ public enum TaskStatusKey { Todo, Confirmed, Doing, Help, Waiting, Approved, Don
 /// The Tasks tab's filters: a day picked on All's calendar, a status picked on Done's menu. Each applies only to its
 /// own view; null = none.
 /// </summary>
-public sealed record TaskFilter(DateOnly? Day = null, TaskStatusKey? Status = null);
+public sealed record TaskFilter(DateOnly? Day = null, TaskStatusKey? Status = null)
+{
+    /// <summary>
+    /// The status each task ticked a moment ago had before its tick (the model's holds): under an open status (Done ▾
+    /// To do, Doing …) such a task stays in place for <see cref="TaskBoard.TickHold"/>, like in the other views.
+    /// </summary>
+    public IReadOnlyDictionary<int, TaskStatusKey>? HeldWas { get; init; }
+}
 
 /// <summary>What a tap on a task's tick does (done is final: never back to open).</summary>
 public enum TickAction { None, MarkDone, AddNote }
@@ -698,4 +716,55 @@ public static class HoldGesture
     public static Stage At(TimeSpan held) => held >= OpenAfter ? Stage.Open : held >= SinkAfter ? Stage.Sinking : Stage.Pressed;
 
     public static bool Cancels(double dx, double dy) => Math.Sqrt(dx * dx + dy * dy) > Slop;
+
+    /// <summary>
+    /// One press on a row, walked through its stages by a clock. It ends (no card) when the pointer moves past
+    /// <see cref="Slop"/>, on <see cref="Cancel"/>, or when the list is drawn again before the card opened
+    /// (<see cref="Redrawn"/>): the row under the finger is then a new one, and a quick tap must not open a card later.
+    /// </summary>
+    public sealed class Press(double x, double y)
+    {
+        /// <summary>Still running: it may yet sink or open.</summary>
+        public bool Live { get; private set; } = true;
+
+        /// <summary>It reached <see cref="OpenAfter"/>: the card opened.</summary>
+        public bool Opened { get; private set; }
+
+        /// <summary>The stage after <paramref name="held"/>; null once the press has ended.</summary>
+        public Stage? Step(TimeSpan held)
+        {
+            if (!Live)
+            {
+                return null;
+            }
+            var stage = At(held);
+            if (stage == Stage.Open)
+            {
+                Opened = true;
+                Live = false;
+            }
+            return stage;
+        }
+
+        /// <summary>The pointer is at (<paramref name="atX"/>, <paramref name="atY"/>); true when that ended the press.</summary>
+        public bool Move(double atX, double atY)
+        {
+            if (Live && Cancels(atX - x, atY - y))
+            {
+                Live = false;
+                return true;
+            }
+            return false;
+        }
+
+        public void Cancel() => Live = false;
+
+        public void Redrawn()
+        {
+            if (!Opened)
+            {
+                Live = false;
+            }
+        }
+    }
 }
