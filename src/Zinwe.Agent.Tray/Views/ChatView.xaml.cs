@@ -228,14 +228,14 @@ public partial class ChatView : UserControl
         }
         var column = new StackPanel { HorizontalAlignment = side };
         column.Children.Add(Bubble(row, m));
-        column.Children.Add(MetaLine(m, row, wrap));
+        column.Children.Add(MetaLine(m, row));
         wrap.Children.Add(column);
         AutomationProperties.SetName(wrap, $"{(row.Mine ? "You" : m.OwnerFirst)}: {row.Snippet}. {row.Meta}");
         return wrap;
     }
 
     /// <summary>The line under a bubble: the time and the plain-text Reply, or "Not sent · Retry · Delete".</summary>
-    private static FrameworkElement MetaLine(TrayModel m, ThreadRow row, FrameworkElement hoverArea)
+    private static FrameworkElement MetaLine(TrayModel m, ThreadRow row)
     {
         var line = new StackPanel
         {
@@ -272,15 +272,9 @@ public partial class ChatView : UserControl
             return line;
         }
 
-        // On the member's own messages Reply waits for the mouse or the keyboard, so the thread stays quiet.
-        var own = new StackPanel { Orientation = Orientation.Horizontal, Opacity = 0 };
-        own.Children.Add(reply);
-        own.Children.Add(Dot());
-        hoverArea.MouseEnter += (_, _) => own.Opacity = 1;
-        hoverArea.MouseLeave += (_, _) => own.Opacity = own.IsKeyboardFocusWithin ? 1 : 0;
-        own.GotKeyboardFocus += (_, _) => own.Opacity = 1;
-        own.LostKeyboardFocus += (_, _) => own.Opacity = hoverArea.IsMouseOver ? 1 : 0;
-        line.Children.Add(own);
+        // F-14: Reply shows under every bubble, the member's own too (it used to wait for the mouse there).
+        line.Children.Add(reply);
+        line.Children.Add(Dot());
         line.Children.Add(time);
         return line;
 
