@@ -449,4 +449,7 @@
   <data name="TrayFeedback" xml:space="preserve">
     <value>Send feedback</value>
   </data>
+  <data name="TrayIssue" xml:space="preserve">
+    <value>Report an issue</value>
+  </data>
 </root>

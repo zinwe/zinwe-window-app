@@ -152,4 +152,5 @@ public static class Strings
     public static string MenuPoliciesHeading => Get(nameof(MenuPoliciesHeading));
     public static string MenuHide => Get(nameof(MenuHide));
     public static string TrayFeedback => Get(nameof(TrayFeedback));
+    public static string TrayIssue => Get(nameof(TrayIssue));
 }

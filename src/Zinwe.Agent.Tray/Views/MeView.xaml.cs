@@ -65,6 +65,7 @@ public partial class MeView : UserControl
             ? "What’s recorded · your rights · fair use · terms" : "Monitoring is off on this PC · terms", () => m.Open(Push.Privacy)));
         rows.Add((Ui.Icon.Help, "Help", $"Ask {m.OwnerFirst}, guides, or the Zinwe team", () => m.Open(Push.Help)));
         rows.Add((Ui.Icon.Feedback, "Send feedback", "Goes to the Zinwe team, not your employer", () => m.OpenSheet(Sheet.Feedback)));
+        rows.Add((Ui.Icon.Issue, "Report an issue", "Something not working? Tell the Zinwe team", m.OpenIssue));
         foreach (var (icon, label, sub, run) in rows)
         {
             Items.Children.Add(Ui.ListRow(Ui.Tile(icon, 32, "Z.Bg", "Z.Ink3"), label, sub, run));

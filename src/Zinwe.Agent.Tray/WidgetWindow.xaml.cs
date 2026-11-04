@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Work;
@@ -78,6 +79,7 @@ public partial class WidgetWindow : Window
             }
         };
         HighContrastTheme.Changed += Render;
+        _model.CaptureWindow = Capture;
 
         SourceInitialized += (_, _) =>
         {
@@ -661,6 +663,42 @@ public partial class WidgetWindow : Window
         {
             _model.Go(Tab.Me);
             _model.OpenSheet(Sheet.Feedback);
+        }
+    }
+
+    /// <summary>F-13: Report an issue (tray menu), over whatever the window shows, which the report can attach.</summary>
+    public void ShowIssue()
+    {
+        if (_model.Stage != Stage.App)
+        {
+            return;
+        }
+        // After the window has drawn itself (it may have just come up from the taskbar), so the capture shows it.
+        Dispatcher.BeginInvoke(_model.OpenIssue, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>The window's content as a PNG at the screen's scale ("Attach a screenshot of this window"); null on failure.</summary>
+    private byte[]? Capture()
+    {
+        try
+        {
+            if (!IsVisible || Root.ActualWidth <= 0 || Root.ActualHeight <= 0)
+            {
+                return null;
+            }
+            var dpi = VisualTreeHelper.GetDpi(Root);
+            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(Root.ActualWidth * dpi.DpiScaleX),
+                (int)Math.Ceiling(Root.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            bitmap.Render(Root);
+            var png = new PngBitmapEncoder();
+            png.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = new System.IO.MemoryStream();
+            png.Save(stream);
+            return stream.ToArray();
+        }
+        catch (Exception)
+        {
+            return null; // the report still goes, without the picture
         }
     }
 

@@ -143,6 +143,9 @@
 
                     <!-- Send feedback (FR-14: goes to the Zinwe team) -->
                     <ContentControl x:Name="FeedbackSlot" Margin="0,10,0,0" Focusable="False" />
+
+                    <!-- Report an issue (F-13: goes to the Zinwe team) -->
+                    <ContentControl x:Name="IssueSlot" Margin="0,10,0,0" Focusable="False" />
                 </StackPanel>
             </ScrollViewer>
         </Border>

@@ -22,7 +22,7 @@ public enum Tab { Home, Chat, Tasks, Me }
 public enum Push { None, Time, Privacy, Settings, Notifications, Help }
 
 /// <summary>Bottom sheets.</summary>
-public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback }
+public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback, Issue }
 
 /// <summary>The dark bar at the bottom ("Done: …  Add a note · Undo").</summary>
 public sealed record Snack(string Text, IReadOnlyList<(string Label, Action Run)> Actions, DateTimeOffset Born);
@@ -1735,6 +1735,57 @@ public sealed class TrayModel : IDisposable
     {
         Sheet = Sheet.None;
         Raise();
+    }
+
+    // ---- Report an issue (F-13) ------------------------------------------------------------------
+
+    /// <summary>Set by the window: the window drawn to a PNG as it looks now (null when it can't be drawn).</summary>
+    public Func<byte[]?>? CaptureWindow { get; set; }
+
+    /// <summary>The window as it was when "Report an issue" opened: what "Attach a screenshot of this window" sends.</summary>
+    public byte[]? IssueShot { get; private set; }
+
+    private string _issueScreen = "";
+
+    /// <summary>True when the running service posts issue reports (an older one would never send them).</summary>
+    public bool IssuesOn => Status?.Issues == true;
+
+    /// <summary>The form, with the window captured first, before the sheet covers it.</summary>
+    public void OpenIssue()
+    {
+        _issueScreen = IssueReport.Screen(Tab, Push);
+        IssueShot = CaptureWindow?.Invoke();
+        OpenSheet(Sheet.Issue);
+    }
+
+    /// <summary>
+    /// Queues the report in the outbox; the agent posts it to the Zinwe team (offline: later). Returns null when queued,
+    /// else what to tell the member.
+    /// </summary>
+    public string? SendIssue(string description, bool attachScreenshot)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return "Tell us what went wrong.";
+        }
+        if (!IssuesOn)
+        {
+            return Status is null ? "Zinwe isn’t running right now, so this can’t be sent. Try again in a moment."
+                : "This version of Zinwe can’t send reports yet. Update Zinwe, then try again.";
+        }
+        try
+        {
+            if (_outbox.AppendIssue(IssueReport.Build(description, _issueScreen, attachScreenshot ? IssueShot : null)) is null)
+            {
+                return "Your report couldn’t be saved on this PC. Try again.";
+            }
+        }
+        catch (Exception)
+        {
+            return "Your report couldn’t be saved on this PC. Try again.";
+        }
+        IssueShot = null;
+        return null;
     }
 
     // ---- The member's picture (FR-44) ------------------------------------------------------------

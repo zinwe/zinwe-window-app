@@ -108,6 +108,25 @@ public sealed class BackendClient
     }
 
     /// <summary>
+    /// Post "Report an issue" (F-13). Same rules as <see cref="SendFeedbackAsync"/>: true when stored, or refused for good
+    /// (a 4xx other than 429: an older backend without the endpoint, a bad screenshot); throws on network errors, 429 and
+    /// 5xx so it's retried.
+    /// </summary>
+    public async Task<bool> SendIssueAsync(string deviceToken, MemberIssueRequest issue, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(
+            HttpMethod.Post, "api/devices/issues/", deviceToken,
+            JsonBody(issue, BackendJsonContext.Default.MemberIssueRequest), ct);
+        var code = (int)response.StatusCode;
+        if (code is >= 400 and < 500 and not 429)
+        {
+            return false;
+        }
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <summary>
     /// GET /api/devices/tasks/ (FR-20 v2): the member's open tasks + those approved in the last 7 days. Null when this
     /// backend has no tasks for the PC: an older backend without the endpoint (404), or a plan without it (403) - the
     /// widget then keeps only the member's own to-dos. Throws on network errors, 429 and 5xx so it's retried.

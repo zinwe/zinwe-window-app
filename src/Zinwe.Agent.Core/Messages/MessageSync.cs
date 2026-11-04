@@ -28,8 +28,9 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
         }
         try
         {
-            // 0) Feedback for the Zinwe team first: it doesn't depend on the plan having chat.
+            // 0) Feedback and issue reports for the Zinwe team first: they don't depend on the plan having chat.
             await DrainFeedbackAsync(deviceToken, ct);
+            await DrainIssuesAsync(deviceToken, ct);
 
             // 1) Push any replies the member typed in the widget, so they reach the admin...
             await DrainOutboxAsync(deviceToken, ct);
@@ -102,6 +103,39 @@ public sealed class MessageSync(BackendClient backend, NotificationWriter writer
             if (done.Count > 0)
             {
                 logger.LogInformation("Sent {Count} feedback item(s) to the Zinwe team", done.Count);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Post each "Report an issue" (F-13) and remove the ones the backend stored or refused for good; one it can't read is
+    /// dropped. A network error stops the round (the rest wait for the next one).
+    /// </summary>
+    private async Task DrainIssuesAsync(string deviceToken, CancellationToken ct)
+    {
+        var done = new List<string>();
+        try
+        {
+            foreach (var item in outbox.PendingIssues())
+            {
+                if (MessageOutbox.ReadIssue(item) is not { } issue)
+                {
+                    done.Add(item.Id); // nothing any backend could take
+                    continue;
+                }
+                if (!await backend.SendIssueAsync(deviceToken, issue, ct))
+                {
+                    logger.LogWarning("The backend refused the member's issue report; dropping it");
+                }
+                done.Add(item.Id);
+            }
+        }
+        finally
+        {
+            outbox.Remove(done);
+            if (done.Count > 0)
+            {
+                logger.LogInformation("Sent {Count} issue report(s) to the Zinwe team", done.Count);
             }
         }
     }

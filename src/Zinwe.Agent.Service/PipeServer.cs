@@ -96,8 +96,12 @@ internal sealed partial class PipeServer(
                 {
                     // TasksVersion says "this service knows tasks" and lets the tray fetch only when they changed.
                     // Picture (FR-44) says "this service knows pictures"; its Version lets the tray redraw only on change.
-                    // TodosVersion says "this service sends own to-dos": only then does the tray queue them.
-                    var status = state.Current with { TasksVersion = tasks.Version, Picture = pictures.Status, TodosVersion = todos.Version };
+                    // TodosVersion says "this service sends own to-dos": only then does the tray queue them. Issues (F-13) the same
+                    // for "Report an issue".
+                    var status = state.Current with
+                    {
+                        TasksVersion = tasks.Version, Picture = pictures.Status, TodosVersion = todos.Version, Issues = true,
+                    };
                     await writer.WriteLineAsync(PipeProtocol.Serialize(status).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Tasks)

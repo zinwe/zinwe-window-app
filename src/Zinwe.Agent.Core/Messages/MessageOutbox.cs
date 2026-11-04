@@ -12,10 +12,11 @@ namespace Zinwe.Agent.Core.Messages;
 /// (FR-44: the member's new picture - <see cref="Action"/> "avatar" / "photo" / "remove", <see cref="Body"/> = the
 /// avatar key or the photo's JPEG as base64; only the newest one is kept, and only the service writes it) or "todo"
 /// (one of the member's own to-dos as it stands now - <see cref="TodoId"/> = its client id, <see cref="Body"/> = the
-/// <see cref="DeviceTodo"/> as JSON; only the newest state of each to-do is kept).
+/// <see cref="DeviceTodo"/> as JSON; only the newest state of each to-do is kept) or "issue" (F-13: "Report an issue"
+/// for the Zinwe team - <see cref="Body"/> = the <see cref="MemberIssueRequest"/> as JSON, screenshot included).
 /// The task fields are trailing and optional, so files written by older builds still read; builds before 1.3.1
-/// posted every kind they didn't know as chat, which is why picture and todo items are written only while a service
-/// that knows them is running.
+/// posted every kind they didn't know as chat, which is why picture, todo and issue items are written only while a
+/// service that knows them is running.
 /// <see cref="Refused"/> marks a chat reply the backend turned down for good: it stays here, shown as "Not sent", and
 /// isn't posted again until the member presses Retry.
 /// </summary>
@@ -29,8 +30,12 @@ public sealed record OutboxReply(
     public const string TaskActionKind = "task_action";
     public const string PictureKind = "picture";
     public const string TodoKind = "todo";
+    public const string IssueKind = "issue";
 
     public bool IsFeedback => string.Equals(Kind, FeedbackKind, StringComparison.Ordinal);
+
+    [JsonIgnore]
+    public bool IsIssue => string.Equals(Kind, IssueKind, StringComparison.Ordinal);
 
     [JsonIgnore]
     public bool IsTaskAction => string.Equals(Kind, TaskActionKind, StringComparison.Ordinal);
@@ -82,6 +87,43 @@ public sealed class MessageOutbox
     /// <summary>Queue the member's feedback on Zinwe (FR-14; rating 1-10, clamped). Returns the new item's id.</summary>
     public string AppendFeedback(int rating, string message) => Add(new OutboxReply(
         Guid.NewGuid().ToString("N"), message, DateTimeOffset.UtcNow, OutboxReply.FeedbackKind, Math.Clamp(rating, 1, 10)));
+
+    /// <summary>
+    /// Queue "Report an issue" (F-13) for the agent to post. Returns the item, or null when it couldn't be written (nobody
+    /// signed in, or the file is locked). Only the tray calls this, and only while a service that knows issues is running.
+    /// </summary>
+    public OutboxReply? AppendIssue(MemberIssueRequest issue)
+    {
+        var body = JsonSerializer.Serialize(issue, BackendJsonContext.Default.MemberIssueRequest);
+        var item = new OutboxReply(Guid.NewGuid().ToString("N"), body, DateTimeOffset.UtcNow, OutboxReply.IssueKind);
+        lock (_lock)
+        {
+            return _folder.Use(dir =>
+            {
+                var path = Path.Combine(dir, FileName);
+                var file = Load(path);
+                file.Items.Add(item);
+                return Save(path, file) ? item : null;
+            }, null);
+        }
+    }
+
+    /// <summary>Issue reports still waiting to be posted, oldest first.</summary>
+    public IReadOnlyList<OutboxReply> PendingIssues() => [.. All().Where(i => i.IsIssue)];
+
+    /// <summary>The report in a queued item; null when the item can't be read.</summary>
+    public static MemberIssueRequest? ReadIssue(OutboxReply item)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(item.Body, BackendJsonContext.Default.MemberIssueRequest) is { Description.Length: > 0 } issue
+                ? issue : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Queue what the member did on an owner's task (FR-20 v2). The agent posts it to

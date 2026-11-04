@@ -75,7 +75,10 @@ public sealed record AgentStatus(
     /// <summary>The member's day moved to another PC (from the last heartbeat): the tray stops its timer.</summary>
     Backend.WorkDayMoved? DayMoved = null,
     /// <summary>The member's day moved here (from the last heartbeat): the tray's timer carries on from it.</summary>
-    Backend.WorkDayCarry? DayCarry = null);
+    Backend.WorkDayCarry? DayCarry = null,
+    /// <summary>F-13: this service posts "Report an issue". False = an older service: the widget writes no <c>issue</c>
+    /// outbox items (it would never send them).</summary>
+    bool Issues = false);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

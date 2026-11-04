@@ -9,7 +9,7 @@ namespace Zinwe.Agent.Tray.Views;
 
 /// <summary>
 /// The bottom sheets: reason (Take a break / End day), Ask {owner}, Can't do this, Add a note, Add / edit your task,
-/// Profile photo and Send feedback. Focus moves in when one opens and Tab stays inside it.
+/// Profile photo, Send feedback and Report an issue. Focus moves in when one opens and Tab stays inside it.
 /// </summary>
 public partial class SheetView : UserControl
 {
@@ -17,12 +17,15 @@ public partial class SheetView : UserControl
     private bool _syncing;
 
     private readonly FeedbackPanel Feedback = new();
+    private readonly IssuePanel Issue = new();
 
     public SheetView()
     {
         InitializeComponent();
         FeedbackSlot.Content = Feedback;
         Feedback.Closed += (_, _) => Model?.CloseSheet();
+        IssueSlot.Content = Issue;
+        Issue.Closed += (_, _) => Model?.CloseSheet();
     }
 
     public TrayModel? Model { get; set; }
@@ -49,6 +52,7 @@ public partial class SheetView : UserControl
         NewTaskPanel.Visibility = Show(sheet == Sheet.NewTask);
         PhotoPanel.Visibility = Show(sheet == Sheet.Photo);
         Feedback.Visibility = Show(sheet == Sheet.Feedback);
+        Issue.Visibility = Show(sheet == Sheet.Issue);
         var owner = m.OwnerFirst;
         var task = m.Selected;
 
@@ -62,6 +66,7 @@ public partial class SheetView : UserControl
             Sheet.NewTask => (m.Form.EditId is null ? "Add a to-do" : "Edit your to-do",
                 TaskBoard.FormHint(m.TaskList.FirstOrDefault(t => t.Id == m.Form.EditId), m.TodoSharingOn)),
             Sheet.Photo => ("Your picture", "Optional. It shows on your team card, here and in your header."),
+            Sheet.Issue => ("Report an issue", "Something not working? Tell the Zinwe team. Your company doesn’t see this."),
             _ => ("Send feedback", ""),
         };
         Hint.Visibility = Show(Hint.Text.Length > 0);
@@ -111,6 +116,13 @@ public partial class SheetView : UserControl
                 if (opened)
                 {
                     Feedback.Reset();
+                }
+                break;
+            case Sheet.Issue:
+                if (opened)
+                {
+                    Issue.Model = m;
+                    Issue.Reset();
                 }
                 break;
         }

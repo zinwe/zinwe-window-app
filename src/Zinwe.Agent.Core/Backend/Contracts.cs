@@ -324,6 +324,25 @@ public sealed record MemberReplyRequest(string Body);
 /// <summary>POST /api/devices/feedback/ — the member's feedback on Zinwe from the Zinwe window (FR-14).</summary>
 public sealed record MemberFeedbackRequest(int Rating, string Message);
 
+/// <summary>
+/// POST /api/devices/issues/ — "Report an issue" from the Zinwe window (F-13). It goes to the Zinwe team, not the owner.
+/// <paramref name="ScreenshotB64"/> is a PNG of the window, base64 (at most <see cref="MaxScreenshotBytes"/> decoded);
+/// left out when the member didn't attach one.
+/// </summary>
+public sealed record MemberIssueRequest(
+    string Description,
+    string Page,
+    MemberIssueContext Context,
+    [property: JsonPropertyName("screenshot_b64"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScreenshotB64 = null)
+{
+    public const string WindowPage = "Zinwe window";
+    public const int MaxDescriptionLength = 2000;
+    public const int MaxScreenshotBytes = 5 * 1024 * 1024;
+}
+
+/// <summary>Where the member was: the agent's version, Windows, and the window's screen ("Tasks", "Me › Settings").</summary>
+public sealed record MemberIssueContext(string AppVersion, string Os, string Screen);
+
 /// <summary><see cref="Accepted"/> = newly stored; <see cref="Duplicates"/> = ids the backend already had (a retry).</summary>
 public sealed record EventUploadResponse(int Accepted, int Duplicates);
 
@@ -340,6 +359,7 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(AgentMessage[]))]
 [JsonSerializable(typeof(MemberReplyRequest))]
 [JsonSerializable(typeof(MemberFeedbackRequest))]
+[JsonSerializable(typeof(MemberIssueRequest))]
 [JsonSerializable(typeof(DeviceTask))]
 [JsonSerializable(typeof(DeviceTask[]))]
 [JsonSerializable(typeof(TaskActionRequest))]

@@ -107,6 +107,7 @@ internal sealed partial class TrayIcon : IDisposable
         menu.Items.Add(Strings.TrayOpenChat, null, (_, _) => ShowChat());
         menu.Items.Add(Strings.TrayRecords, null, (_, _) => ShowRecords());
         menu.Items.Add(Strings.TrayFeedback, null, (_, _) => ShowFeedback());
+        menu.Items.Add(Strings.TrayIssue, null, (_, _) => ShowIssue());
 #if DEBUG
         menu.Items.Add("Send test chat message (debug)", null, (_, _) => SeedTestChatMessage());
         menu.Items.Add("Send test notice (debug)", null, (_, _) => SeedTestMessage());
@@ -358,6 +359,13 @@ internal sealed partial class TrayIcon : IDisposable
     {
         ShowStatus();
         _window?.ShowFeedback();
+    }
+
+    /// <summary>Opens the widget at "Report an issue" (F-13), with the window as it is captured first.</summary>
+    public void ShowIssue()
+    {
+        ShowStatus();
+        _window?.ShowIssue();
     }
 
     /// <summary>
