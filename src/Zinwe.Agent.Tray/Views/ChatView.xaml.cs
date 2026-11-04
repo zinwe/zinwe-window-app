@@ -16,7 +16,7 @@ namespace Zinwe.Agent.Tray.Views;
 /// </summary>
 public partial class ChatView : UserControl
 {
-    private const double QuickHeight = 44;
+    private const double QuickHeight = 52; // the chips and the thin bar under them (F-08)
     private const double TaskCardWidth = 300;
 
     private static readonly string[] Quick = ["On it", "Thanks!", "Running 10 min late", "Can we talk?"];
@@ -98,6 +98,17 @@ public partial class ChatView : UserControl
             Dispatcher.BeginInvoke(() => Scroller.ScrollToEnd(), DispatcherPriority.Background);
         }
         RenderJump();
+    }
+
+    /// <summary>The mouse wheel moves the quick replies sideways (a row of chips has nothing to scroll up or down).</summary>
+    private void OnQuickWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (QuickScroll.ScrollableWidth <= 0)
+        {
+            return;
+        }
+        QuickScroll.ScrollToHorizontalOffset(QuickScroll.HorizontalOffset - e.Delta / 3.0);
+        e.Handled = true;
     }
 
     /// <summary>Quick replies answer the owner: shown when they spoke last, folded away while the member types or replies.</summary>

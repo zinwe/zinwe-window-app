@@ -330,13 +330,19 @@ internal static class TaskCard
             box.BorderThickness = new Thickness(1.5);
             box.SetResourceReference(Border.BorderBrushProperty, "Z.Line2");
         }
-        var label = Ui.Text(s.Label, 12.5, fg: s.Done ? "Z.Muted" : "Z.Ink");
+        // A long step (a link, a long word) wraps inside the card instead of running off its edge (F-08).
+        var label = Ui.Text(s.Label, 12.5, fg: s.Done ? "Z.Muted" : "Z.Ink", wrap: true);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        label.Margin = new Thickness(0, 6, 0, 6);
         if (s.Done)
         {
             label.TextDecorations = TextDecorations.Strikethrough;
         }
-        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        var content = new Grid();
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition());
         content.Children.Add(box);
+        Grid.SetColumn(label, 1);
         content.Children.Add(label);
         var b = Ui.Button(content, "Z.MenuRow", toggle, (s.Done ? "Done: " : "Not done: ") + s.Label);
         b.Padding = new Thickness(0, 0, 4, 0);

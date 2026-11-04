@@ -32,7 +32,8 @@
                 Padding="12,4,12,12">
             <StackPanel>
                 <Border x:Name="QuickHost" Height="0" Opacity="0" ClipToBounds="True">
-                    <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                    <!-- F-08: the bar under the chips shows there are more to the right; the wheel scrolls them too. -->
+                    <ScrollViewer x:Name="QuickScroll" Style="{StaticResource Z.ScrollX}" PreviewMouseWheel="OnQuickWheel">
                         <StackPanel x:Name="QuickReplies" Orientation="Horizontal" AutomationProperties.Name="Quick replies" />
                     </ScrollViewer>
                 </Border>

@@ -276,7 +276,7 @@ public partial class SheetView : UserControl
             n.Margin = new Thickness(0, 0, 8, 0);
             n.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(n);
-            var label = Ui.Text(f.StepList[i], 13);
+            var label = Ui.Text(f.StepList[i], 13, wrap: true);
             label.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(label, 1);
             row.Children.Add(label);
