@@ -17,13 +17,21 @@ namespace Zinwe.Agent.Tray.Views;
 /// Upcoming, Done with its status menu), every task under a real date, and a floating + that opens the Add a to-do
 /// sheet. The due words come from the clock at each render (TaskBoard), so yesterday's "Tomorrow" reads Today after
 /// midnight. Done is final: a ticked task stays in place a few seconds with Add a note (never Undo), then moves to Done.
-/// Press and hold a task (or ⋯) for its details card. Content is black and greys; colour is kept for the status chips
-/// and a small dot on what is late or due soon.
+/// Each task is a white card on a light grey ground; ⋯ opens its menu (the details card's actions), press and hold opens
+/// its details card. Content is black and greys; colour is kept for the status chips and a small dot on what is late
+/// or due soon.
 /// </summary>
 public partial class TasksView : UserControl
 {
     // The section headings drawn this render, top to bottom, for the pinned copy at the top of the list.
     private readonly List<(FrameworkElement Heading, Func<FrameworkElement> Copy)> _headings = [];
+
+    // Each task's ⋯ drawn this render (the menu opens under it), and the task whose menu was open last render.
+    private readonly Dictionary<int, Button> _moreButtons = [];
+    private int? _menuShown;
+    private bool _menuPicked;
+    private Border? _menu;
+    private string _menuKey = "";
 
     public TasksView()
     {
@@ -64,6 +72,7 @@ public partial class TasksView : UserControl
 
         Rows.Children.Clear();
         _headings.Clear();
+        _moreButtons.Clear();
         var sections = TaskBoard.Sections(tasks, m.View, now, holding, filter);
         foreach (var s in sections)
         {
@@ -89,6 +98,110 @@ public partial class TasksView : UserControl
         Empty.Visibility = sections.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         (EmptyTitle.Text, EmptyText.Text) = TaskBoard.EmptyText(m.View, filter);
         Dispatcher.BeginInvoke(UpdatePinned, DispatcherPriority.Loaded);
+        RenderRowMenu(m, tasks, holding);
+    }
+
+    // ---- A task's ⋯ menu --------------------------------------------------------------------------------
+
+    private void RenderRowMenu(TrayModel m, IReadOnlyList<MemberTask> tasks, IReadOnlySet<int> holding)
+    {
+        var task = m.RowMenu is { } id ? tasks.FirstOrDefault(t => t.Id == id) : null;
+        if (m.RowMenu is not null && (task is null || !_moreButtons.ContainsKey(task.Id)))
+        {
+            Dispatcher.BeginInvoke(m.CloseMenu, DispatcherPriority.Background); // its task left the list
+            task = null;
+        }
+        var was = _menuShown;
+        _menuShown = task?.Id;
+        if (task is null)
+        {
+            MenuLayer.Children.Clear();
+            _menu = null;
+            _menuKey = "";
+            if (was is { } closed && !_menuPicked && _moreButtons.TryGetValue(closed, out var back))
+            {
+                // Esc or a click outside: the keyboard goes back to the ⋯ it came from.
+                Dispatcher.BeginInvoke(() => back.Focus(), DispatcherPriority.Input);
+            }
+            _menuPicked = false;
+            return;
+        }
+
+        // The menu is drawn again only when its lines change, so the status poll's re-render keeps it and its focus.
+        var items = RowMenu.Items(task, m.OwnerFirst, holding);
+        var key = task.Id + "|" + string.Join("|", items.Select(i => i.Label)) + "|" + HighContrastTheme.IsDark;
+        var opened = was != task.Id;
+        if (key != _menuKey || _menu is null)
+        {
+            _menuKey = key;
+            MenuLayer.Children.Clear();
+            var stack = new StackPanel();
+            AutomationProperties.SetName(stack, "Task actions: " + task.Title);
+            var taskId = task.Id;
+            foreach (var (label, action, danger, bold) in items)
+            {
+                var text = Ui.Text(label, 13, bold ? FontWeights.SemiBold : FontWeights.Normal, danger ? "Z.RedText" : "Z.Ink");
+                var b = Ui.Button(text, "Z.MenuRow", () =>
+                {
+                    _menuPicked = true;
+                    // The task as it is now (a sync may have changed it since the menu opened).
+                    if (m.TaskList.FirstOrDefault(x => x.Id == taskId) is { } now)
+                    {
+                        m.FromRowMenu(() => Run(m, now, action));
+                    }
+                    else
+                    {
+                        m.CloseMenu();
+                    }
+                }, label);
+                b.MinHeight = 40;
+                b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                stack.Children.Add(b);
+            }
+            _menu = Cycle(new Border
+            {
+                Width = 210, Child = stack, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), Padding = new Thickness(4),
+                Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 8, Opacity = 0.18, Direction = 270, Color = Color.FromRgb(0x14, 0x12, 0x10) },
+                Visibility = Visibility.Hidden, // until it is placed
+            }.Res(Border.BackgroundProperty, "Z.Surface").Res(Border.BorderBrushProperty, "Z.Line"));
+            MenuLayer.Children.Add(_menu);
+        }
+        var menu = _menu;
+        var anchor = _moreButtons[task.Id];
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!anchor.IsVisible || menu.Parent is null)
+            {
+                return;
+            }
+            menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var corner = anchor.TranslatePoint(new Point(anchor.ActualWidth, anchor.ActualHeight), Layout);
+            var top = anchor.TranslatePoint(new Point(0, 0), Layout).Y;
+            var height = menu.DesiredSize.Height;
+            var below = corner.Y + 2;
+            Canvas.SetLeft(menu, Math.Max(8, corner.X - menu.Width + 2));
+            Canvas.SetTop(menu, below + height > Layout.ActualHeight - 8 ? Math.Max(8, top - height - 2) : below);
+            menu.Visibility = Visibility.Visible;
+            if (opened && menu.Child is Panel lines)
+            {
+                lines.Children.OfType<Button>().FirstOrDefault()?.Focus();
+            }
+        }, DispatcherPriority.Loaded);
+    }
+
+    private static void Run(TrayModel m, MemberTask t, RowMenuAction action)
+    {
+        switch (action)
+        {
+            case RowMenuAction.MarkDone: m.DoneTask(t); break;
+            case RowMenuAction.OpenDetails: m.OpenDetail(t.Id); break;
+            case RowMenuAction.Edit: m.OpenNewTask(t); break;
+            case RowMenuAction.Tomorrow: m.MoveToTomorrow(t); break;
+            case RowMenuAction.Delete: m.DeleteOwn(t); break;
+            case RowMenuAction.Ask: m.AskInChat(t); break;
+            case RowMenuAction.AddNote: m.OpenNote(t.Id); break;
+            case RowMenuAction.Cant: m.CantFor(t); break;
+        }
     }
 
     /// <summary>+ opens the Add a to-do sheet (from Upcoming it starts on Tomorrow).</summary>
@@ -97,6 +210,7 @@ public partial class TasksView : UserControl
     private void OnPopCatcher(object sender, MouseButtonEventArgs e)
     {
         Model?.ClosePop();
+        Model?.CloseMenu();
         e.Handled = true;
     }
 
@@ -118,15 +232,18 @@ public partial class TasksView : UserControl
                 TaskView.Upcoming => "Upcoming",
                 _ => TaskBoard.DoneLabel(filter),
             };
-            var seg = Segment(m, view, label, count, on);
+            var seg = Segment(m, view, label, m.Settings.TextLarge ? 0 : count, on, count);
             seg.Margin = new Thickness(i == 0 ? 0 : 3, 0, i == order.Length - 1 ? 0 : 3, 0);
             Grid.SetColumn(seg, i);
             Segs.Children.Add(seg);
         }
     }
 
-    /// <summary>One filter: black with white text (label, count and icons) when selected, else outlined in grey.</summary>
-    private static Border Segment(TrayModel m, TaskView view, string label, int count, bool on)
+    /// <summary>
+    /// One filter: black with white text (label, count and icons) when selected, else outlined in grey. The count is
+    /// left out with large text (the label must fit); <paramref name="total"/> still names it for a screen reader.
+    /// </summary>
+    private static Border Segment(TrayModel m, TaskView view, string label, int count, bool on, int total)
     {
         var fg = on ? "Z.OnInv" : "Z.Ink2";
         var content = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
@@ -140,42 +257,45 @@ public partial class TasksView : UserControl
             n.VerticalAlignment = VerticalAlignment.Center;
             content.Children.Add(n);
         }
-        if (view == TaskView.Done)
-        {
-            var chev = new Path
-            {
-                Data = Geometry.Parse("M2,3.5 L5,6.5 L8,3.5"), StrokeThickness = 1.5, Width = 10, Height = 10, Margin = new Thickness(3, 1, 0, 0),
-                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            chev.SetResourceReference(Shape.StrokeProperty, on ? "Z.OnInv" : "Z.Muted");
-            content.Children.Add(chev);
-        }
         var main = new Button { Content = content, Cursor = Cursors.Hand, Style = Bare(center: true), Padding = new Thickness(2, 0, 2, 0), Focusable = true };
         main.FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing");
-        main.Click += (_, _) =>
+        main.Click += (_, _) => m.SetView(view);
+        AutomationProperties.SetName(main, $"{label}, {total}");
+        AutomationProperties.SetItemStatus(main, on ? "selected" : "");
+
+        var grid = new Grid();
+        if (view == TaskView.Done)
         {
-            if (view == TaskView.Done)
+            // Done opens Done; its own ⌄ beside it (a thin line between) opens Show by status.
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var chev = new Path
             {
-                m.PressDone();
+                Data = Geometry.Parse("M2,3.5 L5,6.5 L8,3.5"), StrokeThickness = 1.6, Width = 10, Height = 10,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            };
+            chev.SetResourceReference(Shape.StrokeProperty, on ? "Z.OnInv" : "Z.Muted");
+            var split = new Border { Child = chev, BorderThickness = new Thickness(1, 0, 0, 0), Margin = new Thickness(0, 6, 0, 6), Padding = new Thickness(0, 0, 6, 0) };
+            if (on)
+            {
+                split.BorderBrush = OnInkRule;
             }
             else
             {
-                m.SetView(view);
+                split.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
             }
-        };
-        AutomationProperties.SetName(main, view switch
-        {
-            TaskView.Done => $"{label}, {count}, show by status",
-            _ => $"{label}, {count}",
-        });
-        AutomationProperties.SetItemStatus(main, on ? "selected" : "");
-        if (view == TaskView.Done)
-        {
-            AutomationProperties.SetHelpText(main, "Opens the status menu");
+            var menu = new Button
+            {
+                Content = split, Cursor = Cursors.Hand, Style = Bare(), Width = 24, ToolTip = "Show by status",
+                FocusVisualStyle = (Style)Application.Current.FindResource("Z.FocusRing"),
+            };
+            menu.Click += (_, _) => m.PressDone();
+            AutomationProperties.SetName(menu, "Show by status");
+            AutomationProperties.SetItemStatus(menu, m.Pop == TaskPop.Status ? "expanded" : "collapsed");
+            Grid.SetColumn(menu, 1);
+            grid.Children.Add(menu);
         }
-
-        var grid = new Grid();
         if (view == TaskView.All)
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -253,7 +373,7 @@ public partial class TasksView : UserControl
 
     private void RenderPop(TrayModel m, IReadOnlyList<MemberTask> tasks, DateTimeOffset now, IReadOnlySet<int> holding)
     {
-        PopCatcher.Visibility = m.Pop == TaskPop.None ? Visibility.Collapsed : Visibility.Visible;
+        PopCatcher.Visibility = m.Pop == TaskPop.None && m.RowMenu is null ? Visibility.Collapsed : Visibility.Visible;
         PopSlot.Content = m.Pop switch
         {
             TaskPop.Calendar => Calendar(m, tasks, now, holding),
@@ -475,6 +595,16 @@ public partial class TasksView : UserControl
 
     // ---- Sections -------------------------------------------------------------------------------
 
+    // The line between Done and its ⌄ on the selected (black) filter.
+    private static readonly Brush OnInkRule = Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+
+    private static SolidColorBrush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
     /// <summary>"Today  Wed 4 Nov  3": the name in ink, the date grey, the count lighter grey.</summary>
     private void AddHeading(string name, string sub, int count, Func<FrameworkElement>? action)
     {
@@ -485,7 +615,7 @@ public partial class TasksView : UserControl
 
         FrameworkElement Heading()
         {
-            var row = new DockPanel { LastChildFill = false, MinHeight = 34, Margin = new Thickness(2, 10, 0, 0) };
+            var row = new DockPanel { LastChildFill = false, MinHeight = 34, Margin = new Thickness(4, 12, 0, 4) };
             var title = Ui.Text(name, 13, FontWeights.SemiBold);
             title.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(title);
@@ -506,7 +636,7 @@ public partial class TasksView : UserControl
                 row.Children.Add(a);
             }
             AutomationProperties.SetName(row, sub.Length > 0 ? $"{name}, {sub}, {count}" : $"{name}, {count}");
-            return new Border { Child = row }.Res(Border.BackgroundProperty, "Z.Surface");
+            return new Border { Child = row }.Res(Border.BackgroundProperty, "Z.Fill");
         }
     }
 
@@ -516,6 +646,7 @@ public partial class TasksView : UserControl
         if (e.VerticalChange != 0)
         {
             _hold?.Cancel(); // a scroll is not a press and hold
+            Model?.CloseMenu(); // a ⋯ menu stays with its task: scrolling closes it
         }
     }
 
@@ -569,7 +700,7 @@ public partial class TasksView : UserControl
 
         var title = new TextBlock
         {
-            Text = t.Title, FontSize = 14, TextWrapping = TextWrapping.Wrap, LineHeight = 19.5,
+            Text = t.Title, FontSize = 14, FontWeight = FontWeights.Medium, TextWrapping = TextWrapping.Wrap, LineHeight = 19.5,
             TextDecorations = struck ? TextDecorations.Strikethrough : null,
         }.Res(TextBlock.ForegroundProperty, struck ? "Z.Faint" : ticked ? "Z.Ink2" : "Z.Ink");
         var titleButton = new Button
@@ -586,6 +717,7 @@ public partial class TasksView : UserControl
         var more = MoreButton(t, m);
         Grid.SetColumn(more, 2);
         grid.Children.Add(more);
+        _moreButtons[t.Id] = more;
 
         var (meta, note) = Meta(t, m, now, held);
         if (meta.Children.Count > 0)
@@ -618,9 +750,20 @@ public partial class TasksView : UserControl
             Child = grid, Padding = new Thickness(2, 8, 0, 8), CornerRadius = new CornerRadius(8), Background = Brushes.Transparent,
             SnapsToDevicePixels = true, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1),
         };
-        AttachHold(tile, t.Id, m, [check, note]);
-        return new Border { Child = tile, BorderThickness = new Thickness(0, 0, 0, 1), SnapsToDevicePixels = true }.Res(Border.BorderBrushProperty, "Z.Line");
+        AttachHold(tile, t.Id, m, [check, note, more]);
+        // A white card with a hairline and a soft lift (a second shape, not an Effect, so the text keeps its ClearType).
+        var card = new Border
+        {
+            Child = tile, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), Padding = new Thickness(6, 2, 4, 2),
+            SnapsToDevicePixels = true,
+        }.Res(Border.BackgroundProperty, "Z.Surface").Res(Border.BorderBrushProperty, "Z.Line");
+        var lifted = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        lifted.Children.Add(new Border { CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 1, 0, -1), Background = Lift, IsHitTestVisible = false });
+        lifted.Children.Add(card);
+        return lifted;
     }
+
+    private static readonly Brush Lift = Frozen(Color.FromArgb(0x0F, 0x14, 0x12, 0x10));
 
     /// <summary>
     /// The round tick: an outline while open, black when done, mid-grey while an owner's task waits for the OK.
@@ -667,7 +810,7 @@ public partial class TasksView : UserControl
         return b;
     }
 
-    /// <summary>The line under the title: the time, who it's from, its status chip, steps, priority, Add a note.</summary>
+    /// <summary>The line under the title: the time, its status chip, steps, priority, Add a note.</summary>
     private static (WrapPanel Meta, Button? Note) Meta(MemberTask t, TrayModel m, DateTimeOffset now, bool held)
     {
         var meta = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
@@ -692,12 +835,8 @@ public partial class TasksView : UserControl
             }
             else
             {
-                Add(Ui.Text(due.Text, 12, fg: "Z.Muted"));
+                Add(Ui.Text(due.Text, 12, fg: "Z.Ink2"));
             }
-        }
-        if (!t.Mine)
-        {
-            Add(From(m.OwnerFirst));
         }
         if (TaskBoard.StatusChip(t, m.OwnerFirst) is { } chip)
         {
@@ -705,7 +844,7 @@ public partial class TasksView : UserControl
         }
         if (t.Steps.Count > 0)
         {
-            Add(Ui.Text($"{t.Steps.Count(s => s.Done)}/{t.Steps.Count} steps", 12, fg: "Z.Muted"));
+            Add(Ui.Text($"{t.Steps.Count(s => s.Done)}/{t.Steps.Count} steps", 12, fg: "Z.Ink2"));
         }
         if (t.High && !TaskBoard.Ticked(t))
         {
@@ -714,11 +853,11 @@ public partial class TasksView : UserControl
         if (TaskBoard.Finished(t) && t.Status != MemberTaskStatus.Cancelled && t.DoneAt is { } doneAt && !held)
         {
             var when = TaskCard.Sent(doneAt, now);
-            Add(Ui.Text("Done " + (when == "Yesterday" ? "yesterday" : when), 12, fg: "Z.Muted"));
+            Add(Ui.Text("Done " + (when == "Yesterday" ? "yesterday" : when), 12, fg: "Z.Ink2"));
         }
         if (TaskBoard.WaitsToSend(t) && m.Offline)
         {
-            Add(Ui.Text("Saved on this PC", 12, fg: "Z.Muted"));
+            Add(Ui.Text("Saved on this PC", 12, fg: "Z.Ink2"));
         }
         Button? note = null;
         // Done is final: a task just ticked (and every task in Done) offers Add a note, never Undo.
@@ -759,7 +898,7 @@ public partial class TasksView : UserControl
         Child = Ui.Text(label, size, FontWeights.SemiBold, $"Z.St{tone}Text"),
     }.Res(Border.BackgroundProperty, $"Z.St{tone}Tint");
 
-    /// <summary>⋯ opens the task's details card (as a press and hold does); Enter on it too.</summary>
+    /// <summary>⋯ opens the task's menu (Mark done, Open details, …); press and hold the card for its details card.</summary>
     private static Button MoreButton(MemberTask t, TrayModel m)
     {
         var dots = new GeometryGroup();
@@ -775,7 +914,9 @@ public partial class TasksView : UserControl
             Style = (Style)Application.Current.FindResource("Z.IconBtn"),
         };
         AutomationProperties.SetName(b, "More for " + t.Title);
-        b.Click += (_, _) => m.OpenDetail(t.Id);
+        AutomationProperties.SetItemStatus(b, m.RowMenu == t.Id ? "expanded" : "collapsed");
+        b.ToolTip = "More";
+        b.Click += (_, _) => m.ToggleRowMenu(t.Id);
         return b;
     }
 

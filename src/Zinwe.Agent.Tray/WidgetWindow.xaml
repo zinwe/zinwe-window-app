@@ -47,10 +47,12 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Title bar: the official Zinwe wordmark, minimize and close (both keep Zinwe running in the taskbar). -->
+        <!-- Title bar: the official Zinwe wordmark, the Ctrl+Alt+Z keys (while that shortcut is Zinwe's), minimize and
+             close (all three keep Zinwe running in the taskbar). -->
         <Grid Background="{DynamicResource Z.Surface}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -60,25 +62,41 @@
                 <TextBlock x:Name="TitleText" FontSize="12" Margin="6,0,0,0" Foreground="{DynamicResource Z.Ink2}"
                            VerticalAlignment="Center" />
             </StackPanel>
-            <Button Grid.Column="1" Style="{StaticResource Z.WinCtl}" WindowChrome.IsHitTestVisibleInChrome="True"
+            <Button x:Name="ShortcutKeys" Grid.Column="1" Style="{StaticResource Z.KeysBtn}" WindowChrome.IsHitTestVisibleInChrome="True"
+                    Margin="0,0,6,0" AutomationProperties.Name="Ctrl+Alt+Z opens or closes Zinwe from anywhere"
+                    ToolTip="Press Ctrl+Alt+Z from any app to open or close Zinwe" Click="OnTuck" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <Border Style="{StaticResource Z.Key}"><TextBlock Text="Ctrl" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                    <TextBlock Text="+" FontSize="10" Margin="2,0" VerticalAlignment="Center" Foreground="{DynamicResource Z.Faint}" />
+                    <Border Style="{StaticResource Z.Key}"><TextBlock Text="Alt" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                    <TextBlock Text="+" FontSize="10" Margin="2,0" VerticalAlignment="Center" Foreground="{DynamicResource Z.Faint}" />
+                    <Border Style="{StaticResource Z.Key}"><TextBlock Text="Z" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                    <TextBlock Text="Open / close" FontSize="11" FontWeight="Medium" Margin="6,0,0,0" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Z.Muted}" />
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Style="{StaticResource Z.WinCtl}" WindowChrome.IsHitTestVisibleInChrome="True"
                     AutomationProperties.Name="Minimize" ToolTip="Minimize" Click="OnTuck">
                 <Path Data="M0,5 H10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"
                       Width="10" Height="10" />
             </Button>
-            <Button Grid.Column="2" Style="{StaticResource Z.WinClose}" WindowChrome.IsHitTestVisibleInChrome="True"
+            <Button Grid.Column="3" Style="{StaticResource Z.WinClose}" WindowChrome.IsHitTestVisibleInChrome="True"
                     AutomationProperties.Name="Close" ToolTip="Close (Zinwe keeps running in the taskbar)" Click="OnTuck">
                 <Path Data="M0,0 L10,10 M10,0 L0,10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                       StrokeThickness="1" Width="10" Height="10" />
             </Button>
         </Grid>
 
-        <!-- Header: Back or the official Zinwe mark, the screen title with one useful line under it, the work pill + menu. -->
+        <!-- Header: Back or the official Zinwe mark, the screen title with one useful line under it, the work pill + menu,
+             Send feedback, and on Chat the ⋮ Chat options (its background). -->
         <Border Grid.Row="1" Height="56" Margin="0,0,0,8" Background="{DynamicResource Z.Surface}"
                 BorderBrush="{DynamicResource Z.Line}" BorderThickness="0,0,0,1" Padding="14,0,12,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Button x:Name="BackButton" Style="{StaticResource Z.IconBtn}" Width="40" Height="40" Margin="-8,0,6,0"
@@ -115,12 +133,46 @@
                         </ControlTemplate>
                     </Button.Template>
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="MiniDot" Width="7" Height="7" VerticalAlignment="Center" />
+                        <Grid VerticalAlignment="Center">
+                            <Ellipse x:Name="MiniRing" Width="7" Height="7" Fill="{DynamicResource Z.Orange}" Opacity="0" RenderTransformOrigin="0.5,0.5"
+                                     IsHitTestVisible="False" />
+                            <Ellipse x:Name="MiniDot" Width="7" Height="7" />
+                        </Grid>
                         <TextBlock x:Name="MiniText" FontSize="12" FontWeight="SemiBold" Margin="7,0,0,0" VerticalAlignment="Center" />
+                        <StackPanel x:Name="MiniClock" Orientation="Horizontal" Margin="7,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
+                                    TextElement.FontSize="12" TextElement.FontWeight="SemiBold" TextElement.Foreground="{DynamicResource Z.Ink}">
+                            <TextBlock x:Name="MiniHours" Typography.NumeralAlignment="Tabular" />
+                            <TextBlock x:Name="MiniColon" Text=":" />
+                            <TextBlock x:Name="MiniMins" Typography.NumeralAlignment="Tabular" />
+                        </StackPanel>
                         <Path x:Name="MiniChevron" Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource Z.Muted}" StrokeThickness="2"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Margin="7,1,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
+                <Button x:Name="FeedbackButton" Grid.Column="3" Style="{StaticResource Z.IconBtn}" Width="34" Height="34" MinWidth="34" MinHeight="34"
+                        Margin="6,0,0,0" AutomationProperties.Name="Send feedback" ToolTip="Send feedback" Click="OnFeedback" Visibility="Collapsed">
+                    <Path Data="M4 4h16v12H8l-4 4zM9 9.5h.01M15 9.5h.01M9 12.5c.8.9 1.8 1.4 3 1.4s2.2-.5 3-1.4" Stroke="{DynamicResource Z.Ink2}"
+                          StrokeThickness="1.9" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="18" Height="18"
+                          Stretch="Uniform" />
+                </Button>
+                <Button x:Name="ChatMenuButton" Grid.Column="4" Style="{StaticResource Z.IconBtn}" Width="34" Height="34" MinWidth="34" MinHeight="34"
+                        Margin="4,0,-6,0" AutomationProperties.Name="Chat options" ToolTip="Chat options" Click="OnChatMenu" Visibility="Collapsed">
+                    <Path Data="M12,3.3 A1.7,1.7 0 1 0 12,6.7 A1.7,1.7 0 1 0 12,3.3 Z M12,10.3 A1.7,1.7 0 1 0 12,13.7 A1.7,1.7 0 1 0 12,10.3 Z M12,17.3 A1.7,1.7 0 1 0 12,20.7 A1.7,1.7 0 1 0 12,17.3 Z"
+                          Fill="{DynamicResource Z.Ink2}" Height="17" Stretch="Uniform" />
+                </Button>
+                <Popup x:Name="ChatMenu" Grid.Column="4" PlacementTarget="{Binding ElementName=ChatMenuButton}" Placement="Custom"
+                       StaysOpen="False" AllowsTransparency="True" Closed="OnChatMenuClosed">
+                    <Border Width="236" Margin="0,0,8,12" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}"
+                            BorderThickness="1" CornerRadius="12" Padding="6" KeyDown="OnChatMenuKey">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="24" ShadowDepth="8" Opacity="0.18" Direction="270" Color="#141210" />
+                        </Border.Effect>
+                        <StackPanel KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle">
+                            <TextBlock Text="Chat background" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource Z.Muted}" Margin="8,4,8,6" />
+                            <StackPanel x:Name="ChatMenuItems" AutomationProperties.Name="Chat background" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
                 <Popup x:Name="WorkMenu" Grid.Column="2" PlacementTarget="{Binding ElementName=MiniPill}" Placement="Custom"
                        StaysOpen="False" AllowsTransparency="True" Closed="OnWorkMenuClosed">
                     <Border Width="236" Margin="0,0,8,12" Background="{DynamicResource Z.Surface}" BorderBrush="{DynamicResource Z.Line}"
@@ -170,10 +222,21 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Border x:Name="StripPill" CornerRadius="6" Padding="7,2" VerticalAlignment="Center">
-                            <TextBlock x:Name="StripPillText" FontSize="12" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal">
+                                <Grid x:Name="StripLive" Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <Ellipse x:Name="StripRing" Width="6" Height="6" Fill="{DynamicResource Z.Orange}" Opacity="0"
+                                             RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False" />
+                                    <Ellipse Width="6" Height="6" Fill="{DynamicResource Z.Orange}" />
+                                </Grid>
+                                <TextBlock x:Name="StripPillText" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
                         </Border>
-                        <TextBlock x:Name="BigTime" Grid.Column="1" FontFamily="{DynamicResource Z.Mono}" FontSize="18" FontWeight="SemiBold"
-                                   Margin="8,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                        <StackPanel x:Name="BigTime" Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    TextElement.FontFamily="{DynamicResource Z.Mono}" TextElement.FontSize="18" TextElement.FontWeight="SemiBold">
+                            <TextBlock x:Name="BigHours" Typography.NumeralAlignment="Tabular" />
+                            <TextBlock x:Name="BigColon" Text=":" />
+                            <TextBlock x:Name="BigMins" Typography.NumeralAlignment="Tabular" />
+                        </StackPanel>
                         <!-- The day moved to another PC: says where, instead of the pill and the time. -->
                         <TextBlock x:Name="StripMoved" Grid.ColumnSpan="3" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"
                                    Foreground="{DynamicResource Z.Ink}" TextTrimming="CharacterEllipsis"

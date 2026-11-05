@@ -95,6 +95,63 @@ internal static class Motion
         el.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
+    /// <summary>
+    /// The live clock's colon (the work time while it runs): fades to a third and back once a second, so the time
+    /// reads as running though its digits change once a minute. Off, or with animations off, it stays solid.
+    /// </summary>
+    public static void Blink(UIElement colon, bool on)
+    {
+        if (on && On)
+        {
+            if (colon.HasAnimatedProperties)
+            {
+                return; // already blinking: keep its rhythm through re-renders
+            }
+            var blink = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(1), RepeatBehavior = RepeatBehavior.Forever };
+            blink.KeyFrames.Add(new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            blink.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.35, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(500))));
+            colon.BeginAnimation(UIElement.OpacityProperty, blink);
+            return;
+        }
+        colon.BeginAnimation(UIElement.OpacityProperty, null);
+        colon.Opacity = 1;
+    }
+
+    /// <summary>
+    /// The live dot's ring (working): a soft orange ring grows out of the dot and fades, every 1.6 s. Off, or with
+    /// animations off, there is no ring (the dot stays).
+    /// </summary>
+    public static void Ring(FrameworkElement ring, bool on)
+    {
+        if (on && On)
+        {
+            if (ring.HasAnimatedProperties)
+            {
+                return;
+            }
+            var grow = new ScaleTransform();
+            ring.RenderTransform = grow;
+            ring.RenderTransformOrigin = new Point(0.5, 0.5);
+            var to = (ring.Width + 12) / Math.Max(1, ring.Width); // 6 px of ring all round
+            grow.BeginAnimation(ScaleTransform.ScaleXProperty, RingFrames(1, to));
+            grow.BeginAnimation(ScaleTransform.ScaleYProperty, RingFrames(1, to));
+            ring.BeginAnimation(UIElement.OpacityProperty, RingFrames(0.55, 0));
+            return;
+        }
+        ring.BeginAnimation(UIElement.OpacityProperty, null);
+        ring.Opacity = 0;
+        ring.RenderTransform = Transform.Identity;
+    }
+
+    private static DoubleAnimationUsingKeyFrames RingFrames(double from, double to)
+    {
+        var a = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1600), RepeatBehavior = RepeatBehavior.Forever };
+        a.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        a.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1120)), Out));
+        a.KeyFrames.Add(new DiscreteDoubleKeyFrame(to, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1600))));
+        return a;
+    }
+
     /// <summary>Folds a strip open or shut (the quick replies): height and opacity together.</summary>
     public static void Fold(FrameworkElement el, double height, double opacity)
     {

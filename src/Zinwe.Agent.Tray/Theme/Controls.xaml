@@ -4,7 +4,7 @@
         Tray app controls on the admin panel's theme: hairlines, 12 px cards, 8 px controls, black primary buttons,
         orange for state only (active tab, progress, badges, focus).
           Z.Btn / .Pri / .Dark, Z.BtnSm*, Z.Chip, Z.Seg, Z.Tab, Z.ListItem, Z.LinkBtn, Z.TextAction (plain-text actions:
-          Reply, Log, Retry), Z.QuickReply, Z.WinCtl, Z.Input, Z.InputPill, Z.SwitchRow, Z.FilterBtn, Z.Menu, Z.ViewSeg.
+          Reply, Log, Retry), Z.QuickReply, Z.ComposerBtn, Z.PillBtn / Z.InkAction (task actions), Z.WinCtl, Z.Input, Z.InputPill, Z.SwitchRow, Z.FilterBtn, Z.Menu, Z.ViewSeg.
         Small controls keep their 30-34 px look but get a 44 px hit area (a transparent frame around the visual).
         Keyboard focus is a 2 px orange ring; the mouse never shows it.
     -->
@@ -204,18 +204,41 @@
         </Setter>
     </Style>
 
-    <!-- Composer send: 32 px, ink when there is something to send. -->
-    <Style x:Key="Z.SendBtn" TargetType="Button">
-        <Setter Property="Foreground" Value="{DynamicResource Z.OnInv}" />
-        <Setter Property="Background" Value="{DynamicResource Z.Inv}" />
-        <Setter Property="Width" Value="32" />
-        <Setter Property="Height" Value="32" />
+    <!-- Composer ⚡ quick replies and 🙂 emoji: 38 px, a grey fill on hover and while their list is open. -->
+    <Style x:Key="Z.ComposerBtn" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="38" />
+        <Setter Property="Height" Value="38" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource Z.FocusRing}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" CornerRadius="6" Background="{TemplateBinding Background}" ClipToBounds="True">
+                    <Border x:Name="b" CornerRadius="8" Background="{TemplateBinding Background}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Z.Fill}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Composer send: 38 px, ink when there is something to send. -->
+    <Style x:Key="Z.SendBtn" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Z.OnInv}" />
+        <Setter Property="Background" Value="{DynamicResource Z.Inv}" />
+        <Setter Property="Width" Value="38" />
+        <Setter Property="Height" Value="38" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Z.FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" CornerRadius="8" Background="{TemplateBinding Background}" ClipToBounds="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                 </ControlTemplate>
@@ -561,15 +584,15 @@
         </Setter>
     </Style>
 
-    <!-- Quick reply: 30 px look, 36 px hit area. -->
+    <!-- Quick reply (the starred row over the composer): 32 px look, 44 px hit area. -->
     <Style x:Key="Z.QuickReply" TargetType="ButtonBase">
         <Setter Property="Foreground" Value="{DynamicResource Z.Ink}" />
         <Setter Property="Background" Value="{DynamicResource Z.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Z.Line2}" />
         <Setter Property="FontFamily" Value="{DynamicResource Zinwe.Font}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Padding" Value="11,0" />
         <Setter Property="MinHeight" Value="44" />
         <Setter Property="Margin" Value="0,0,6,0" />
         <Setter Property="Cursor" Value="Hand" />
@@ -578,7 +601,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ButtonBase">
                     <Grid Background="Transparent">
-                        <Border x:Name="b" CornerRadius="8" MinHeight="30" VerticalAlignment="Center" BorderThickness="1"
+                        <Border x:Name="b" CornerRadius="8" MinHeight="32" VerticalAlignment="Center" BorderThickness="1"
                                 Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="False" />
@@ -592,6 +615,108 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- A task's main action under its details (Tasks list, chat cards): a black pill, 28 px look, 36 px hit area. -->
+    <Style x:Key="Z.PillBtn" TargetType="ButtonBase">
+        <Setter Property="Foreground" Value="{DynamicResource Z.OnInv}" />
+        <Setter Property="Background" Value="{DynamicResource Z.Inv}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Zinwe.Font}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Z.FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ButtonBase">
+                    <Grid Background="Transparent">
+                        <Border x:Name="b" CornerRadius="14" Height="28" VerticalAlignment="Center" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="False" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Opacity" Value="0.86" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A task's other actions beside the pill: ink text, underlined on hover, 36 px hit area. -->
+    <Style x:Key="Z.InkAction" TargetType="ButtonBase">
+        <Setter Property="Foreground" Value="{DynamicResource Z.Ink}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="FontFamily" Value="{DynamicResource Zinwe.Font}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Z.FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ButtonBase">
+                    <Grid Background="Transparent">
+                        <TextBlock x:Name="t" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" VerticalAlignment="Center"
+                                   Margin="{TemplateBinding Padding}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="t" Property="TextDecorations" Value="Underline" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The title bar's Ctrl + Alt + Z keys ("Open / close"): 26 px, a grey fill on hover. -->
+    <Style x:Key="Z.KeysBtn" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FontFamily" Value="{DynamicResource Zinwe.Font}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Z.FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" CornerRadius="7" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Z.Fill}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- One key cap: a small raised box with the key's name in mono. -->
+    <Style x:Key="Z.Key" TargetType="Border">
+        <Setter Property="MinWidth" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Padding" Value="4,0" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="BorderThickness" Value="1,1,1,2" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Z.Line2}" />
+        <Setter Property="Background" Value="{DynamicResource Z.Surface}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextElement.FontFamily" Value="{DynamicResource Z.Mono}" />
+        <Setter Property="TextElement.FontSize" Value="10" />
+        <Setter Property="TextElement.FontWeight" Value="SemiBold" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Z.Ink2}" />
     </Style>
 
     <!-- .win-ctl: title bar minimize / close (both tuck Zinwe away to the taskbar). -->

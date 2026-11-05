@@ -152,6 +152,10 @@ public sealed record TraySettings
     public string RemindedDay { get; init; } = "";
     public IReadOnlyList<string> Reminded { get; init; } = [];
     public IReadOnlyList<int> Nudged { get; init; } = [];
+    /// <summary>The chat's background pattern (Chat options): a <see cref="ChatPatterns"/> key; null = the default.</summary>
+    public string? ChatPattern { get; init; }
+    /// <summary>The quick replies starred for the row over the composer (at most 3); null = never changed, the default three.</summary>
+    public IReadOnlyList<string>? QuickFavourites { get; init; }
 
     public bool Paused(DateTimeOffset now) => PausedUntil is { } until && now < until;
 }
