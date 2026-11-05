@@ -8,8 +8,8 @@ namespace Zinwe.Agent.Tray.Tests;
 
 /// <summary>
 /// F-13 · "Report an issue" attaches the screen the member was on: drawn before the form shows, from the window's own
-/// visuals without the bottom sheet (never the Report form, never the desktop), offered ticked, and not offered at
-/// all when nothing could be drawn.
+/// visuals without the bottom sheet (never the Report form, never the desktop), already added (× takes it out), and
+/// when nothing could be drawn the member can pick a PNG or JPG (at most 2 MB) from the PC.
 /// </summary>
 [Collection(WpfCollection.Name)]
 public sealed class IssueCaptureTests
@@ -84,27 +84,55 @@ public sealed class IssueCaptureTests
     }
 
     [Fact]
-    public void Without_a_screenshot_the_option_is_not_offered_and_with_one_it_is_ticked()
+    public void Without_a_screenshot_add_is_offered_and_with_one_it_is_already_added_and_can_be_taken_out()
     {
         OnSta((_, model) =>
         {
             var panel = new IssuePanel { Model = model };
-            var attach = (System.Windows.Controls.CheckBox)panel.FindName("Attach");
+            var tile = (FrameworkElement)panel.FindName("ShotTile");
+            var add = (FrameworkElement)panel.FindName("AddShot");
 
             model.CaptureWindow = () => null; // nothing could be drawn
             model.OpenIssue();
             panel.Reset();
-            Assert.Equal(Visibility.Collapsed, attach.Visibility);
-            Assert.False(attach.IsChecked == true);
+            Assert.Equal(Visibility.Collapsed, tile.Visibility);
+            Assert.Equal(Visibility.Visible, add.Visibility); // the member can still pick one from the PC
 
             model.CloseSheet();
             model.CaptureWindow = () => TinyPng();
             model.OpenIssue();
             panel.Reset();
-            Assert.Equal(Visibility.Visible, attach.Visibility);
-            Assert.True(attach.IsChecked); // ticked by default; the member can untick it
-            Assert.Equal(Visibility.Visible, ((FrameworkElement)panel.FindName("ShotFrame")).Visibility);
+            Assert.Equal(Visibility.Visible, tile.Visibility); // the screen they were on, already added
+            Assert.Equal(Visibility.Collapsed, add.Visibility); // one picture per report
+
+            var remove = (System.Windows.Controls.Button)panel.FindName("RemoveShot");
+            remove.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(Visibility.Collapsed, tile.Visibility);
+            Assert.Equal(Visibility.Visible, add.Visibility);
         });
+    }
+
+    [Fact]
+    public void A_picked_screenshot_must_be_a_png_or_jpg_of_at_most_2_mb()
+    {
+        byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0];
+        byte[] jpg = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0];
+        Assert.Null(IssueReport.CheckPicked(png, "a.png"));
+        Assert.Null(IssueReport.CheckPicked(jpg, "a.jpg"));
+        Assert.Equal("That file isn’t a PNG or JPG image. Try another one.", IssueReport.CheckPicked("GIF89a...."u8.ToArray(), "a.gif"));
+        Assert.Equal("That file isn’t a PNG or JPG image. Try another one.", IssueReport.CheckPicked([0x52, 0x49, 0x46, 0x46], "a.webp"));
+        var big = new byte[IssueReport.MaxPickedBytes + 1];
+        png.CopyTo(big, 0);
+        Assert.Equal("“big.png” is over 2 MB. Pick a smaller image.", IssueReport.CheckPicked(big, "big.png"));
+        Assert.True(IssueReport.MaxPickedBytes <= MemberIssueRequest.MaxScreenshotBytes);
+    }
+
+    [Fact]
+    public void A_thumbnail_says_its_size_in_kb_or_mb()
+    {
+        Assert.Equal("1 KB", IssueReport.Size(10));
+        Assert.Equal("340 KB", IssueReport.Size(340 * 1024));
+        Assert.Equal("1.5 MB", IssueReport.Size(1024 * 1024 * 3 / 2));
     }
 
     [Fact]

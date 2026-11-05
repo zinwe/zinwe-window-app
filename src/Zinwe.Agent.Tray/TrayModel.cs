@@ -1993,7 +1993,7 @@ public sealed class TrayModel : IDisposable
     /// <summary>Set by the window: the window drawn to a PNG as it looks now (null when it can't be drawn).</summary>
     public Func<byte[]?>? CaptureWindow { get; set; }
 
-    /// <summary>The window as it was when "Report an issue" opened: what "Attach a screenshot of this window" sends.</summary>
+    /// <summary>The window as it was when "Report an issue" opened: the form offers it as its screenshot.</summary>
     public byte[]? IssueShot { get; private set; }
 
     private string _issueScreen = "";
@@ -2010,10 +2010,11 @@ public sealed class TrayModel : IDisposable
     }
 
     /// <summary>
-    /// Queues the report in the outbox; the agent posts it to the Zinwe team (offline: later). Returns null when queued,
-    /// else what to tell the member.
+    /// Queues the report in the outbox, with the screenshot the form kept (the window as it was, or one the member
+    /// picked; null = none); the agent posts it to the Zinwe team (offline: later). Returns null when queued, else what
+    /// to tell the member.
     /// </summary>
-    public string? SendIssue(string description, bool attachScreenshot)
+    public string? SendIssue(string description, byte[]? screenshot)
     {
         if (string.IsNullOrWhiteSpace(description))
         {
@@ -2026,7 +2027,7 @@ public sealed class TrayModel : IDisposable
         }
         try
         {
-            if (_outbox.AppendIssue(IssueReport.Build(description, _issueScreen, attachScreenshot ? IssueShot : null)) is null)
+            if (_outbox.AppendIssue(IssueReport.Build(description, _issueScreen, screenshot)) is null)
             {
                 return "Your report couldn’t be saved on this PC. Try again.";
             }

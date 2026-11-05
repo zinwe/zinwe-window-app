@@ -2,8 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!--
-        F-13: the member tells the Zinwe team something isn't working. What happened, optionally a screenshot of this
-        window (shown before it's sent), Send. Like Send feedback, it goes to the Zinwe team through the agent, not to
+        F-13: the member tells the Zinwe team something isn't working. What happened, optionally a screenshot (the
+        screen they were on, already added and shown before it's sent, or one picked from the PC), Send. Like Send feedback, it goes to the Zinwe team through the agent, not to
         their company.
     -->
     <Grid>
@@ -12,43 +12,62 @@
                      TextWrapping="Wrap" VerticalContentAlignment="Top" MinHeight="96" MaxHeight="160" VerticalScrollBarVisibility="Auto"
                      SpellCheck.IsEnabled="True" Tag="What happened? What did you expect?"
                      AutomationProperties.Name="What went wrong" TextChanged="OnTextChanged" />
-            <CheckBox x:Name="Attach" Margin="0,10,0,0" Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}"
-                      Checked="OnAttachChanged" Unchecked="OnAttachChanged" AutomationProperties.Name="Attach a screenshot of this window">
-                <CheckBox.Template>
-                    <ControlTemplate TargetType="CheckBox">
-                        <Grid Background="Transparent" MinHeight="36">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="box" Width="18" Height="18" CornerRadius="5" BorderThickness="1.5" VerticalAlignment="Center"
-                                    BorderBrush="{DynamicResource Z.Line2}" Background="{DynamicResource Z.Surface}">
-                                <Path x:Name="tick" Data="M2,6.5 L4.5,9 L10,3.5" Stroke="{DynamicResource Z.OnInv}" StrokeThickness="2" Width="12" Height="12"
-                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="Attach a screenshot of this window" Margin="10,0,0,0" VerticalAlignment="Center"
-                                       FontSize="13" Foreground="{DynamicResource Z.Ink}" TextWrapping="Wrap" />
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="box" Property="Background" Value="{DynamicResource Z.Inv}" />
-                                <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource Z.Inv}" />
-                                <Setter TargetName="tick" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource Z.Ink}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </CheckBox.Template>
-            </CheckBox>
-            <Border x:Name="ShotFrame" Margin="28,6,0,0" HorizontalAlignment="Left" CornerRadius="8" BorderThickness="1"
-                    BorderBrush="{DynamicResource Z.Line}" Visibility="Collapsed">
-                <Image x:Name="Shot" MaxHeight="150" Stretch="Uniform" AutomationProperties.Name="The screenshot that will be sent" />
-            </Border>
-            <TextBlock x:Name="ShotNote" Margin="28,4,0,0" FontSize="12" Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap"
-                       Visibility="Collapsed" Text="This is what the Zinwe team sees. Untick it if something private shows." />
+            <!-- Screenshots (optional): the screen the member was on, already added (× takes it out), or one picked from
+                 the PC. The backend keeps one picture per report, so the Add tile shows while there is none. -->
+            <TextBlock Margin="0,12,0,0" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink2}">
+                <Run Text="Screenshot" /><Run Text=" (optional)" FontWeight="Normal" Foreground="{DynamicResource Z.Muted}" />
+            </TextBlock>
+            <WrapPanel Margin="0,6,0,0">
+                <Grid x:Name="ShotTile" Width="72" Height="72" Margin="0,0,8,0" Visibility="Collapsed">
+                    <Border CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource Z.Line}" Background="{DynamicResource Z.Fill}"
+                            ClipToBounds="True">
+                        <Image x:Name="Shot" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"
+                               AutomationProperties.Name="The screenshot that will be sent" />
+                    </Border>
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4,0,0,4" CornerRadius="4" Padding="4,0"
+                            Background="#B8141210" IsHitTestVisible="False">
+                        <TextBlock x:Name="ShotSize" FontSize="10" FontWeight="SemiBold" Foreground="White" />
+                    </Border>
+                    <Button x:Name="RemoveShot" Width="22" Height="22" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0"
+                            Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}" Click="OnRemoveShot"
+                            AutomationProperties.Name="Remove the screenshot" ToolTip="Remove">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border CornerRadius="11" Background="#B8141210">
+                                    <Path Data="M6 6l12 12M18 6 6 18" Stroke="White" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Width="9" Height="9" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+                <Button x:Name="AddShot" Width="72" Height="72" Cursor="Hand" FocusVisualStyle="{StaticResource Z.FocusRing}" Click="OnAddShot"
+                        AutomationProperties.Name="Add a screenshot" ToolTip="Add a screenshot from this PC">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Grid Background="Transparent">
+                                <Rectangle x:Name="r" RadiusX="8" RadiusY="8" StrokeThickness="1.5" StrokeDashArray="3 2" Stroke="{DynamicResource Z.Line2}"
+                                           Fill="{DynamicResource Z.Surface}" />
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Path Data="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" Stroke="{DynamicResource Z.Ink2}"
+                                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="18"
+                                          Height="18" Stretch="Uniform" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Add" FontSize="11.5" FontWeight="SemiBold" Margin="0,4,0,0" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource Z.Ink2}" />
+                                </StackPanel>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="r" Property="Stroke" Value="{DynamicResource Z.Ink2}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </WrapPanel>
+            <TextBlock x:Name="ShotNote" Margin="0,6,0,0" FontSize="12" Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" />
+            <TextBlock x:Name="ShotError" Margin="0,4,0,0" FontSize="12.5" FontWeight="Medium" Foreground="{DynamicResource Z.RedText}"
+                       TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Assertive" />
             <TextBlock x:Name="Error" Margin="0,8,0,0" FontSize="12.5" FontWeight="Medium" Foreground="{DynamicResource Z.RedText}"
                        TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Assertive" />
             <Grid Margin="0,12,0,0">
