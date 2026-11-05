@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -76,6 +77,8 @@ public partial class WidgetWindow : Window
         }
         WorkMenu.CustomPopupPlacementCallback = (popup, target, _) =>
             [new CustomPopupPlacement(new Point(target.Width - popup.Width + 8, target.Height + 2), PopupPrimaryAxis.Horizontal)];
+        ChatMenu.CustomPopupPlacementCallback = (popup, target, _) =>
+            [new CustomPopupPlacement(new Point(target.Width - popup.Width + 8, target.Height + 2), PopupPrimaryAxis.Horizontal)];
 
         _model.Changed += Render;
         _model.Ticked += OnTick;
@@ -123,6 +126,8 @@ public partial class WidgetWindow : Window
         {
             _shortcut = value;
             MeView.ShortcutOn = value is not null;
+            // The title bar shows the keys only while they really open Zinwe (another app may hold them).
+            ShortcutKeys.Visibility = Show(value is not null);
         }
     }
 
@@ -314,9 +319,119 @@ public partial class WidgetWindow : Window
         {
             RenderMini(m);
         }
-        else if (WorkMenu.IsOpen)
+        else
         {
-            WorkMenu.IsOpen = false;
+            if (WorkMenu.IsOpen)
+            {
+                WorkMenu.IsOpen = false;
+            }
+            Views.Motion.Blink(MiniColon, false);
+            Views.Motion.Ring(MiniRing, false);
+        }
+
+        // Send feedback on every screen of the app; Chat options (its background) on Chat.
+        FeedbackButton.Visibility = Show(inApp);
+        var chatMenu = inApp && m.Tab == Tab.Chat && !pushed;
+        ChatMenuButton.Visibility = Show(chatMenu);
+        RenderChatMenu(m, chatMenu && m.ChatMenuOpen);
+    }
+
+    private string _chatMenuShown = "";
+
+    /// <summary>⋮ on Chat: Chat background, each pattern with a small swatch, the one in use ticked.</summary>
+    private void RenderChatMenu(TrayModel m, bool open)
+    {
+        AutomationProperties.SetItemStatus(ChatMenuButton, open ? "expanded" : "collapsed");
+        if (!open)
+        {
+            ChatMenu.IsOpen = false;
+            _chatMenuShown = "";
+            return;
+        }
+        var key = $"{m.ChatPattern}|{HighContrastTheme.IsDark}|{SystemParameters.HighContrast}";
+        if (key != _chatMenuShown)
+        {
+            _chatMenuShown = key;
+            ChatMenuItems.Children.Clear();
+            foreach (var (pattern, name, sub) in ChatPatterns.All)
+            {
+                ChatMenuItems.Children.Add(PatternRow(m, pattern, name, sub, pattern == m.ChatPattern));
+            }
+        }
+        if (!ChatMenu.IsOpen)
+        {
+            ChatMenu.IsOpen = true;
+            Dispatcher.BeginInvoke(() =>
+            {
+                var picked = ChatMenuItems.Children.OfType<Button>().FirstOrDefault(b => b.Tag is true) ?? ChatMenuItems.Children.OfType<Button>().FirstOrDefault();
+                picked?.Focus();
+            }, DispatcherPriority.Input);
+        }
+    }
+
+    private static Button PatternRow(TrayModel m, string pattern, string name, string sub, bool on)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var swatch = new Border
+        {
+            Width = 46, Height = 32, CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 10, 0),
+            Background = Views.ChatPatternBrush.For(pattern, 90),
+        };
+        swatch.SetResourceReference(Border.BorderBrushProperty, "Z.Line2");
+        grid.Children.Add(swatch);
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        texts.Children.Add(Views.Ui.Text(name, 13, on ? FontWeights.SemiBold : FontWeights.Normal));
+        texts.Children.Add(Views.Ui.Text(sub, 11.5, fg: "Z.Muted"));
+        Grid.SetColumn(texts, 1);
+        grid.Children.Add(texts);
+        if (on)
+        {
+            var tick = Views.Ui.Glyph(Views.Ui.Icon.Check, 14, "Z.Ink", 2.6);
+            tick.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(tick, 2);
+            grid.Children.Add(tick);
+        }
+        var b = Views.Ui.Button(grid, "Z.MenuRow", () => m.SetChatPattern(pattern), $"{name}, {sub}");
+        b.Padding = new Thickness(8, 0, 8, 0);
+        b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        b.Tag = on;
+        AutomationProperties.SetItemStatus(b, on ? "selected" : "");
+        return b;
+    }
+
+    private void OnFeedback(object sender, RoutedEventArgs e) => _model.OpenSheet(Sheet.Feedback);
+
+    // When the menu last closed: a press on ⋮ that closed it (the popup takes that press) must not open it again.
+    private long _chatMenuClosedAt;
+
+    private void OnChatMenu(object sender, RoutedEventArgs e)
+    {
+        if (!_model.ChatMenuOpen && Environment.TickCount64 - _chatMenuClosedAt < 250)
+        {
+            return;
+        }
+        _model.ToggleChatMenu();
+    }
+
+    private void OnChatMenuClosed(object? sender, EventArgs e)
+    {
+        _chatMenuClosedAt = Environment.TickCount64;
+        if (_model.ChatMenuOpen)
+        {
+            _model.CloseMenu();
+        }
+    }
+
+    private void OnChatMenuKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            _model.CloseMenu();
+            ChatMenuButton.Focus();
         }
     }
 
@@ -328,9 +443,15 @@ public partial class WidgetWindow : Window
         {
             WorkState.NotStarted or WorkState.Moved => "Start day",
             WorkState.Ended => "Start again",
-            _ => DayLog.Hm(m.Running),
+            _ => "",
         };
-        MiniText.FontFamily = clocked ? (FontFamily)FindResource("Z.Mono") : (FontFamily)FindResource("Zinwe.Font");
+        MiniText.FontFamily = (FontFamily)FindResource("Zinwe.Font");
+        MiniText.Visibility = Show(!clocked);
+        // The live time: hours and minutes in mono, the colon blinking while the day runs (not on a break).
+        MiniClock.Visibility = Show(clocked);
+        (MiniHours.Text, MiniMins.Text) = DayLog.SplitHm(DayLog.Hm(m.Running));
+        Views.Motion.Blink(MiniColon, state == WorkState.Working);
+        Views.Motion.Ring(MiniRing, state == WorkState.Working);
         MiniChevron.Visibility = Show(clocked);
         var (bg, border, fg, dot) = state switch
         {
@@ -341,6 +462,7 @@ public partial class WidgetWindow : Window
         MiniPill.SetResourceReference(BackgroundProperty, bg);
         MiniPill.SetResourceReference(BorderBrushProperty, border);
         MiniText.SetResourceReference(TextBlock.ForegroundProperty, fg);
+        MiniClock.SetResourceReference(TextElement.ForegroundProperty, fg);
         MiniDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, dot);
         AutomationProperties.SetName(MiniPill, state switch
         {
@@ -390,7 +512,15 @@ public partial class WidgetWindow : Window
         StripPillText.SetResourceReference(TextBlock.ForegroundProperty, fg);
         Strip.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
         Strip.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
-        BigTime.Text = DayLog.Hm(m.Running);
+        (BigHours.Text, BigMins.Text) = DayLog.SplitHm(DayLog.Hm(m.Running));
+        foreach (var part in new[] { BigHours, BigColon, BigMins })
+        {
+            part.SetResourceReference(TextBlock.ForegroundProperty, "Z.Ink");
+        }
+        // Live: the colon blinks while the clock runs (work or break), and the Working pill's dot rings.
+        Views.Motion.Blink(BigColon, onHome && state is WorkState.Working or WorkState.OnBreak);
+        StripLive.Visibility = Show(state == WorkState.Working);
+        Views.Motion.Ring(StripRing, onHome && state == WorkState.Working);
         AutomationProperties.SetName(BigTime, (state == WorkState.OnBreak ? "Break time now: " : "Work time today: ") + DayLog.HoursMinutes(m.Running));
         var moved = state == WorkState.Moved;
         StripMoved.Text = moved ? WorkSummary.MovedLine(m.Timer) : "";

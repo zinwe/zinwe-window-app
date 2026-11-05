@@ -150,15 +150,15 @@ public partial class SheetView : UserControl
     private void RenderReason(TrayModel m, bool opened)
     {
         var prompt = m.Prompt!;
-        // Break keeps its one-line note (Enter takes the break); End day gets a text area (F-05b).
-        var note = prompt == WorkPrompt.LogOut ? EndNote : ReasonNote;
-        ReasonNote.Visibility = Show(note == ReasonNote);
-        EndNote.Visibility = Show(note == EndNote);
+        // Both get a text area ("Windows app next" for the break; F-05b for End day): Enter makes a new line.
+        var note = WorkNote;
+        var endDay = prompt == WorkPrompt.LogOut;
+        WorkNote.MaxLength = endDay ? 1000 : 280;
+        WorkNote.MinHeight = endDay ? 96 : 76;
         if (opened)
         {
             _syncing = true;
-            ReasonNote.Text = "";
-            EndNote.Text = "";
+            WorkNote.Text = "";
             _syncing = false;
         }
         ReasonChips.Children.Clear();
@@ -199,15 +199,6 @@ public partial class SheetView : UserControl
         }
         m.SetReasonNote(((TextBox)sender).Text);
         UpdateReasonCta(m);
-    }
-
-    private void OnReasonKey(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && ReasonCta.IsEnabled)
-        {
-            e.Handled = true;
-            Model?.ConfirmReason();
-        }
     }
 
     private void OnReasonCta(object sender, RoutedEventArgs e) => Model?.ConfirmReason();

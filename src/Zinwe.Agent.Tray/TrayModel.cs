@@ -628,6 +628,7 @@ public sealed class TrayModel : IDisposable
         DetailId = null;
         Pop = TaskPop.None;
         WorkMenuOpen = false;
+        CloseMenus();
         if (tab == Tab.Chat)
         {
             ReadChat();
@@ -640,6 +641,7 @@ public sealed class TrayModel : IDisposable
         Push = push;
         Sheet = Sheet.None;
         WorkMenuOpen = false;
+        CloseMenus();
         if (push == Push.Privacy)
         {
             PrivacyTab = "pc";
@@ -669,6 +671,12 @@ public sealed class TrayModel : IDisposable
             SetWorkMenu(false);
             return true;
         }
+        if (MenuOpen)
+        {
+            CloseMenus();
+            Raise();
+            return true;
+        }
         if (Sheet != Sheet.None)
         {
             CloseSheet();
@@ -684,12 +692,136 @@ public sealed class TrayModel : IDisposable
             ClosePop();
             return true;
         }
+        if (ReplyTo is not null && Tab == Tab.Chat && Push == Push.None)
+        {
+            CancelReply(); // the composer says "Esc cancels"
+            return true;
+        }
         if (Push != Push.None)
         {
             Back();
             return true;
         }
         return false;
+    }
+
+    // ---- Small menus: Chat options, the quick replies and emoji in the composer, a task's ⋯ ----------------------
+
+    /// <summary>The ⋮ Chat options menu (the chat's background).</summary>
+    public bool ChatMenuOpen { get; private set; }
+
+    /// <summary>The ⚡ quick replies list over the composer.</summary>
+    public bool QuickOpen { get; private set; }
+
+    /// <summary>The emoji over the composer.</summary>
+    public bool EmojiOpen { get; private set; }
+
+    /// <summary>What the quick replies list says after a star it couldn't take ("The row holds 3").</summary>
+    public string? QuickNote { get; private set; }
+
+    /// <summary>The task whose ⋯ menu is open on the Tasks list.</summary>
+    public int? RowMenu { get; private set; }
+
+    public bool MenuOpen => ChatMenuOpen || QuickOpen || EmojiOpen || RowMenu is not null;
+
+    private void CloseMenus()
+    {
+        ChatMenuOpen = QuickOpen = EmojiOpen = false;
+        QuickNote = null;
+        RowMenu = null;
+    }
+
+    public void ToggleChatMenu()
+    {
+        var open = !ChatMenuOpen;
+        CloseMenus();
+        ChatMenuOpen = open;
+        Raise();
+    }
+
+    public void ToggleQuick()
+    {
+        var open = !QuickOpen;
+        CloseMenus();
+        QuickOpen = open;
+        Raise();
+    }
+
+    public void ToggleEmoji()
+    {
+        var open = !EmojiOpen;
+        CloseMenus();
+        EmojiOpen = open;
+        Raise();
+    }
+
+    /// <summary>A click outside a small menu (or a popup losing focus): every one closes.</summary>
+    public void CloseMenu()
+    {
+        if (MenuOpen)
+        {
+            CloseMenus();
+            Raise();
+        }
+    }
+
+    /// <summary>The quick replies starred for the row over the composer.</summary>
+    public IReadOnlyList<string> QuickFavourites => QuickReplies.Favourites(Settings);
+
+    /// <summary>A star in the quick replies list: into the row (at most three) or out of it. Kept on this PC.</summary>
+    public void StarQuick(string reply)
+    {
+        var favourites = QuickReplies.Toggle(QuickFavourites, reply, out var note);
+        QuickNote = note;
+        if (note is null)
+        {
+            Settings = Settings with { QuickFavourites = favourites };
+            _settingsStore.Save(Settings);
+        }
+        Raise();
+    }
+
+    /// <summary>A quick reply sent: the lists close; what the member was typing stays in the composer.</summary>
+    public bool SendQuick(string reply)
+    {
+        CloseMenus();
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            Raise();
+            return false;
+        }
+        var sent = Post(reply, clearDraft: false);
+        Raise();
+        return sent;
+    }
+
+    /// <summary>The chat background the member picked (Chat options), kept on this PC.</summary>
+    public string ChatPattern => ChatPatterns.Of(Settings);
+
+    public void SetChatPattern(string key)
+    {
+        CloseMenus();
+        Settings = Settings with { ChatPattern = key };
+        _settingsStore.Save(Settings);
+        Raise();
+    }
+
+    /// <summary>⋯ on a task row: its menu (Mark done, Open details, …) opens under it; again, it closes.</summary>
+    public void ToggleRowMenu(int id)
+    {
+        var open = RowMenu != id;
+        CloseMenus();
+        Pop = TaskPop.None;
+        RowMenu = open ? id : null;
+        Raise();
+    }
+
+    /// <summary>A line of a task's ⋯ menu: the menu closes, then it runs.</summary>
+    public void FromRowMenu(Action run)
+    {
+        RowMenu = null;
+        run();
+        Raise();
     }
 
     /// <summary>Where a notice or reminder leads (CompNotify table): messages → Chat, tasks → Tasks, the rest → Home.</summary>
@@ -1145,6 +1277,7 @@ public sealed class TrayModel : IDisposable
     {
         View = view;
         Pop = TaskPop.None;
+        RowMenu = null;
         OpenCard = null;
         Raise();
     }
@@ -1169,6 +1302,7 @@ public sealed class TrayModel : IDisposable
     /// <summary>The calendar icon on All: open or close the month.</summary>
     public void ToggleCalendar()
     {
+        RowMenu = null;
         if (Pop == TaskPop.Calendar)
         {
             Pop = TaskPop.None;
@@ -1198,9 +1332,10 @@ public sealed class TrayModel : IDisposable
         Raise();
     }
 
-    /// <summary>Done: opens its status menu (and the view); a second press closes the menu.</summary>
+    /// <summary>Done's ⌄ (the Done filter's own menu button): opens its status menu (and the view); again, it closes.</summary>
     public void PressDone()
     {
+        RowMenu = null;
         Pop = Pop == TaskPop.Status ? TaskPop.None : TaskPop.Status;
         if (View != TaskView.Done)
         {
@@ -1240,6 +1375,7 @@ public sealed class TrayModel : IDisposable
     {
         DetailId = id;
         Pop = TaskPop.None;
+        CloseMenus();
         ReadTask(id);
         Raise();
     }
@@ -1773,6 +1909,18 @@ public sealed class TrayModel : IDisposable
 
     public bool Send(string raw)
     {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+        var sent = Post(raw, clearDraft: true);
+        Raise();
+        return sent;
+    }
+
+    // Queues a message (with the quote being replied to); the composer's draft is emptied only when it was the message.
+    private bool Post(string raw, bool clearDraft)
+    {
         var text = (raw ?? "").Trim();
         if (text.Length == 0)
         {
@@ -1781,7 +1929,6 @@ public sealed class TrayModel : IDisposable
         if (!TryAppendOutbox(text))
         {
             SendError = "Couldn’t send right now. Please try again.";
-            Raise();
             return false;
         }
         if (ReplyTo is { } quote)
@@ -1789,9 +1936,11 @@ public sealed class TrayModel : IDisposable
             Quotes.Add(text, quote with { Who = quote.Who == "me" ? "You" : OwnerNameStart }, DateTimeOffset.UtcNow);
         }
         ReplyTo = null;
-        Draft = "";
+        if (clearDraft)
+        {
+            Draft = "";
+        }
         SendError = null;
-        Raise();
         return true;
     }
 
@@ -1824,6 +1973,7 @@ public sealed class TrayModel : IDisposable
     public void OpenSheet(Sheet sheet)
     {
         Sheet = sheet;
+        CloseMenus();
         Snack = null;
         PhotoError = null;
         PhotoStatus = null;
@@ -1843,7 +1993,7 @@ public sealed class TrayModel : IDisposable
     /// <summary>Set by the window: the window drawn to a PNG as it looks now (null when it can't be drawn).</summary>
     public Func<byte[]?>? CaptureWindow { get; set; }
 
-    /// <summary>The window as it was when "Report an issue" opened: what "Attach a screenshot of this window" sends.</summary>
+    /// <summary>The window as it was when "Report an issue" opened: the form offers it as its screenshot.</summary>
     public byte[]? IssueShot { get; private set; }
 
     private string _issueScreen = "";
@@ -1860,10 +2010,11 @@ public sealed class TrayModel : IDisposable
     }
 
     /// <summary>
-    /// Queues the report in the outbox; the agent posts it to the Zinwe team (offline: later). Returns null when queued,
-    /// else what to tell the member.
+    /// Queues the report in the outbox, with the screenshot the form kept (the window as it was, or one the member
+    /// picked; null = none); the agent posts it to the Zinwe team (offline: later). Returns null when queued, else what
+    /// to tell the member.
     /// </summary>
-    public string? SendIssue(string description, bool attachScreenshot)
+    public string? SendIssue(string description, byte[]? screenshot)
     {
         if (string.IsNullOrWhiteSpace(description))
         {
@@ -1876,7 +2027,7 @@ public sealed class TrayModel : IDisposable
         }
         try
         {
-            if (_outbox.AppendIssue(IssueReport.Build(description, _issueScreen, attachScreenshot ? IssueShot : null)) is null)
+            if (_outbox.AppendIssue(IssueReport.Build(description, _issueScreen, screenshot)) is null)
             {
                 return "Your report couldn’t be saved on this PC. Try again.";
             }

@@ -253,12 +253,12 @@ internal static class TaskCard
             body.Children.Add(q);
         }
 
+        // The actions: the main one as a black pill, the others as words beside it.
         var actions = new List<(string Label, string Style, Action Run, bool Grow)>();
         var lane = TaskBoard.LaneOf(t);
         if (t.Mine)
         {
-            actions.Add(("Edit", "Z.BtnSm", () => m.OpenNewTask(t), true));
-            actions.Add(("Delete", "Z.BtnSm", () => m.DeleteOwn(t), false));
+            // None here: an own to-do's Edit, Move to tomorrow and Delete are in its ⋯ menu and on its details card.
         }
         else if (lane == TaskLane.Todo && t.RemoteId is not null && TaskBoard.NeedsConfirm(t))
         {
@@ -299,14 +299,11 @@ internal static class TaskCard
         }
         if (actions.Count > 0)
         {
-            var row = new Grid { Margin = new Thickness(0, 2, 0, -6) };
-            for (var i = 0; i < actions.Count; i++)
+            var row = new WrapPanel { Margin = new Thickness(0, 4, 0, -4) };
+            foreach (var (label, style, run, _) in actions)
             {
-                var (label, style, run, grow) = actions[i];
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = grow ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
-                var b = Ui.Button(label, style, run, label + ": " + t.Title);
-                b.Margin = new Thickness(0, 0, i < actions.Count - 1 ? 6 : 0, 0);
-                Grid.SetColumn(b, i);
+                var b = Ui.Button(label, style == "Z.BtnSm.Pri" ? "Z.PillBtn" : "Z.InkAction", run, label + ": " + t.Title);
+                b.Margin = new Thickness(0, 0, 16, 0);
                 row.Children.Add(b);
             }
             body.Children.Add(row);

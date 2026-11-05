@@ -23,10 +23,9 @@
                     <!-- Take a break / End day -->
                     <StackPanel x:Name="ReasonPanel" Margin="0,10,0,0">
                         <WrapPanel x:Name="ReasonChips" AutomationProperties.Name="Reason" />
-                        <TextBox x:Name="ReasonNote" Style="{StaticResource Z.InputPill}" Margin="0,10,0,0" MaxLength="280"
-                                 AutomationProperties.Name="Note" TextChanged="OnReasonNote" KeyDown="OnReasonKey" />
-                        <!-- End day (F-05b): a few lines on what they worked on. Enter makes a new line; only the button ends the day. -->
-                        <TextBox x:Name="EndNote" Style="{StaticResource Z.Input}" Margin="0,10,0,0" MaxLength="1000" Padding="12,9"
+                        <!-- A few lines for the admin (End day F-05b: what they worked on; Take a break: why). Enter makes a new
+                             line; only the button takes the break or ends the day. -->
+                        <TextBox x:Name="WorkNote" Style="{StaticResource Z.Input}" Margin="0,10,0,0" MaxLength="1000" Padding="12,9"
                                  AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" MinHeight="96" MaxHeight="140"
                                  VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True"
                                  AutomationProperties.Name="Note" TextChanged="OnReasonNote" />

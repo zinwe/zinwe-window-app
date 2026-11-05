@@ -12,15 +12,19 @@ namespace Zinwe.Agent.Tray.Views;
 /// <summary>
 /// The chat with the owner: the real conversation (notifications file + outbox) with the owner's task cards, quick
 /// replies and reply-with-quote. Enter sends, Shift+Enter is a new line, Esc cancels the reply. "Reply" is plain text
-/// under a message; a reply the backend refused says "Not sent" with Retry and Delete.
+/// under a message; a reply the backend refused says "Not sent" with Retry and Delete. The composer's ⚡ lists every
+/// quick reply (a star puts up to three in the row over the composer), its 🙂 adds an emoji where the member types,
+/// and the thread sits on the background picked in Chat options.
 /// </summary>
 public partial class ChatView : UserControl
 {
-    private const double QuickHeight = 52; // the chips and the thin bar under them (F-08)
+    private const double QuickHeight = 52; // the starred chips and the thin bar under them when they run wide (F-08)
     private const double TaskCardWidth = 300;
 
-    private static readonly string[] Quick = ["On it", "Thanks!", "Running 10 min late", "Can we talk?"];
     private string _signature = "";
+    private string _quickRow = "";
+    private string _quickList = "";
+    private string _background = "";
     private bool _atBottom = true;
     private bool _primed;
     private bool? _quickShown;
@@ -32,10 +36,19 @@ public partial class ChatView : UserControl
     public ChatView()
     {
         InitializeComponent();
-        foreach (var q in Quick)
+        foreach (var emoji in QuickReplies.Emoji)
         {
-            QuickReplies.Children.Add(Ui.Button(q, "Z.QuickReply", () => Model?.Send(q), "Send: " + q));
+            EmojiGrid.Children.Add(EmojiKey(emoji));
         }
+        // A click anywhere but the open list (or its button) closes the quick replies or the emoji.
+        PreviewMouseDown += (_, e) =>
+        {
+            if (Model is { } m && (m.QuickOpen || m.EmojiOpen) && e.OriginalSource is DependencyObject src
+                && !new FrameworkElement[] { QuickPanel, EmojiPanel, QuickButton, EmojiButton }.Any(p => IsInside(src, p)))
+            {
+                m.CloseMenu();
+            }
+        };
     }
 
     public TrayModel? Model { get; set; }
@@ -58,9 +71,13 @@ public partial class ChatView : UserControl
         ConnectionText.Text = note ?? "";
         ConnectionNote.Visibility = note is null ? Visibility.Collapsed : Visibility.Visible;
 
-        Input.Tag = m.Offline ? $"Message {m.OwnerFirst} (sends when you’re back online)" : $"Message {m.OwnerFirst}…";
+        Input.Tag = m.Offline ? $"Message {m.OwnerFirst} (sends when you’re back online)"
+            : m.ReplyTo is not null ? $"Reply to {m.OwnerFirst} · Esc cancels"
+            : m.Settings.TextLarge ? $"Message {m.OwnerFirst}…"
+            : "Message · Shift+Enter for a new line";
         AutomationProperties.SetName(Input, "Message " + m.OwnerName);
-        ComposerNote.Text = m.ReplyTo is not null ? "Enter to send · Esc cancels the reply" : "Enter to send · Shift+Enter for a new line";
+        AutomationProperties.SetHelpText(Input, "Enter sends, Shift+Enter makes a new line");
+        RenderBackground(m);
         ReplyBar.Visibility = m.ReplyTo is null ? Visibility.Collapsed : Visibility.Visible;
         if (m.ReplyTo is { } quote)
         {
@@ -81,6 +98,7 @@ public partial class ChatView : UserControl
 
         var rows = m.Thread;
         UpdateQuick(m, rows);
+        RenderLists(m);
         var signature = string.Join("|", rows.Select(r => r.Key + "@" + r.Meta + "@" + r.Task?.Status + r.Task?.IsNew
             + string.Concat(r.Task?.Steps.Select(s => s.Done ? "1" : "0") ?? []) + r.Task?.Notes.Count + "@" + r.Task?.Activity.Count + r.Task?.Queued))
             + "#" + m.OpenCard + "#" + m.OpenLog + "#" + m.Now.ToLocalTime().Date.ToString("yyyyMMdd") + "#" + m.OwnerName;
@@ -111,11 +129,28 @@ public partial class ChatView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>Quick replies answer the owner: shown when they spoke last, folded away while the member types or replies.</summary>
+    /// <summary>
+    /// The starred quick replies answer the owner: shown when they spoke last, folded away while the member types or
+    /// replies (and when nothing is starred).
+    /// </summary>
     private void UpdateQuick(TrayModel m, IReadOnlyList<ThreadRow> rows)
     {
+        var favourites = m.QuickFavourites;
+        var key = string.Join("|", favourites);
+        if (key != _quickRow)
+        {
+            _quickRow = key;
+            QuickRow.Children.Clear();
+            foreach (var q in favourites)
+            {
+                QuickRow.Children.Add(Ui.Button(q, "Z.QuickReply", () => Model?.SendQuick(q), "Send: " + q));
+            }
+        }
         var last = rows.Count > 0 ? rows[^1] : null;
-        var show = last is { Mine: false, Kind: ThreadKind.Text or ThreadKind.Task } && Input.Text.Length == 0 && m.ReplyTo is null;
+        var show = last is { Mine: false, Kind: ThreadKind.Text or ThreadKind.Task } && Input.Text.Length == 0 && m.ReplyTo is null
+            && favourites.Count > 0;
+        QuickHint.Visibility = show && !m.QuickOpen ? Visibility.Visible : Visibility.Collapsed;
+        QuickGlyph.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, show || m.QuickOpen ? "Z.Ink" : "Z.Muted");
         if (show == _quickShown)
         {
             return;
@@ -131,6 +166,142 @@ public partial class ChatView : UserControl
         }
         Motion.Fold(QuickHost, show ? QuickHeight : 0, show ? 1 : 0);
     }
+
+    /// <summary>The chat's background (Chat options), redrawn when it or the look (dark, High Contrast) changes.</summary>
+    private void RenderBackground(TrayModel m)
+    {
+        var key = $"{m.ChatPattern}|{HighContrastTheme.IsDark}|{SystemParameters.HighContrast}";
+        if (key == _background)
+        {
+            return;
+        }
+        _background = key;
+        Scroller.Background = ChatPatternBrush.For(m.ChatPattern);
+    }
+
+    /// <summary>⚡'s list (a star per reply) and 🙂's emoji, over the composer while open.</summary>
+    private void RenderLists(TrayModel m)
+    {
+        QuickPanel.Visibility = m.QuickOpen ? Visibility.Visible : Visibility.Collapsed;
+        EmojiPanel.Visibility = m.EmojiOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (m.QuickOpen)
+        {
+            QuickButton.SetResourceReference(BackgroundProperty, "Z.Fill");
+        }
+        else
+        {
+            QuickButton.Background = Brushes.Transparent;
+        }
+        if (m.EmojiOpen)
+        {
+            EmojiButton.SetResourceReference(BackgroundProperty, "Z.Fill");
+        }
+        else
+        {
+            EmojiButton.Background = Brushes.Transparent;
+        }
+        EmojiGlyph.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, m.EmojiOpen ? "Z.Ink" : "Z.Muted");
+        AutomationProperties.SetItemStatus(QuickButton, m.QuickOpen ? "expanded" : "collapsed");
+        AutomationProperties.SetItemStatus(EmojiButton, m.EmojiOpen ? "expanded" : "collapsed");
+        QuickNoteText.Text = m.QuickNote ?? "";
+        QuickNoteText.Visibility = m.QuickNote is null ? Visibility.Collapsed : Visibility.Visible;
+
+        var favourites = m.QuickFavourites;
+        var key = m.QuickOpen + "|" + string.Join("|", favourites);
+        if (key == _quickList)
+        {
+            return;
+        }
+        var opened = m.QuickOpen && !_quickList.StartsWith("True", StringComparison.Ordinal);
+        _quickList = key;
+        QuickList.Children.Clear();
+        if (!m.QuickOpen)
+        {
+            return;
+        }
+        foreach (var q in QuickReplies.All)
+        {
+            QuickList.Children.Add(QuickLine(q, favourites.Contains(q)));
+        }
+        if (opened)
+        {
+            Motion.Arrive(QuickPanel, 0, 8, 1, 140);
+        }
+    }
+
+    /// <summary>One quick reply in ⚡'s list: its star (into or out of the row), then the reply itself (sends it).</summary>
+    private FrameworkElement QuickLine(string reply, bool starred)
+    {
+        var star = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"), Width = 16, Height = 16,
+            Stretch = Stretch.Uniform, StrokeThickness = 1.6, StrokeLineJoin = PenLineJoin.Round,
+        };
+        star.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, starred ? "Z.Orange" : "Z.Muted");
+        if (starred)
+        {
+            star.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Z.Orange");
+        }
+        var starButton = Ui.Button(star, "Z.IconBtn", () => Model?.StarQuick(reply), (starred ? "Remove from the row: " : "Add to the row: ") + reply);
+        starButton.Width = starButton.Height = starButton.MinWidth = starButton.MinHeight = 34;
+        AutomationProperties.SetItemStatus(starButton, starred ? "starred" : "not starred");
+
+        var send = Ui.Button(Ui.Text(reply, 13), "Z.MenuRow", () => Model?.SendQuick(reply), "Send: " + reply);
+        send.MinHeight = 34;
+        send.Padding = new Thickness(8, 0, 8, 0);
+        var line = new DockPanel();
+        DockPanel.SetDock(starButton, Dock.Left);
+        line.Children.Add(starButton);
+        line.Children.Add(send);
+        return line;
+    }
+
+    /// <summary>One key of 🙂's grid: adds its emoji where the member is typing.</summary>
+    private Button EmojiKey(string emoji)
+    {
+        var face = new TextBlock
+        {
+            Text = emoji, FontSize = 19, FontFamily = new FontFamily("Segoe UI Emoji"), HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var b = Ui.Button(face, "Z.MenuRow", () => Insert(emoji), emoji);
+        b.MinHeight = 36;
+        b.Height = 36;
+        b.Padding = new Thickness(0);
+        b.HorizontalContentAlignment = HorizontalAlignment.Center;
+        return b;
+    }
+
+    /// <summary>Puts text at the caret (over a selection), and the keyboard back in the message.</summary>
+    private void Insert(string text)
+    {
+        if (Input.Text.Length + text.Length > Input.MaxLength)
+        {
+            return;
+        }
+        var at = Math.Clamp(Input.SelectionStart, 0, Input.Text.Length);
+        var length = Math.Clamp(Input.SelectionLength, 0, Input.Text.Length - at);
+        Input.Text = Input.Text.Remove(at, length).Insert(at, text);
+        Input.SelectionStart = at + text.Length;
+        Input.SelectionLength = 0;
+        Input.Focus();
+    }
+
+    private static bool IsInside(DependencyObject node, DependencyObject ancestor)
+    {
+        for (var d = node; d is not null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+        {
+            if (d == ancestor)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void OnQuickButton(object sender, RoutedEventArgs e) => Model?.ToggleQuick();
+
+    private void OnEmojiButton(object sender, RoutedEventArgs e) => Model?.ToggleEmoji();
 
     private void RenderRows(TrayModel m, IReadOnlyList<ThreadRow> rows)
     {
@@ -322,14 +493,36 @@ public partial class ChatView : UserControl
         text.SetResourceReference(TextBlock.ForegroundProperty, "Z.Ink");
         stack.Children.Add(text);
 
+        var corners = row.Mine ? new CornerRadius(12, 12, 4, 12) : new CornerRadius(12, 12, 12, 4);
         var bubble = new Border
         {
-            MaxWidth = 288, Child = stack, Opacity = row.Pending ? 0.7 : 1, Padding = new Thickness(12, 8, 12, 8),
-            CornerRadius = row.Mine ? new CornerRadius(12, 12, 4, 12) : new CornerRadius(12, 12, 12, 4),
+            MaxWidth = 288, Child = stack, Opacity = row.Pending ? 0.7 : 1, Padding = new Thickness(12, 8, 12, 8), CornerRadius = corners,
             HorizontalAlignment = row.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left,
         };
-        bubble.SetResourceReference(Border.BackgroundProperty, row.Mine ? "Z.OrangeTint" : "Z.Fill");
-        return bubble;
+        if (row.Mine)
+        {
+            bubble.SetResourceReference(Border.BackgroundProperty, "Z.OrangeTint"); // yours: the light orange, dark text
+            return bubble;
+        }
+        // Theirs: white with a hairline and a soft lift, so it reads on the patterned background.
+        bubble.BorderThickness = new Thickness(1);
+        bubble.Padding = new Thickness(11, 7, 11, 7);
+        bubble.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
+        bubble.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
+        var lifted = new Grid { HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = 288 };
+        lifted.Children.Add(new Border { CornerRadius = corners, Margin = new Thickness(0, 1, 0, -1), Background = Lift, IsHitTestVisible = false });
+        lifted.Children.Add(bubble);
+        return lifted;
+    }
+
+    // The soft shadow under their bubbles (a second shape, not an Effect, so the text keeps its ClearType).
+    private static readonly Brush Lift = Frozen(Color.FromArgb(0x14, 0x14, 0x12, 0x10));
+
+    private static SolidColorBrush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
     }
 
     private static ControlTemplate QuoteTemplate()
@@ -420,8 +613,7 @@ public partial class ChatView : UserControl
         var on = Input.IsKeyboardFocused;
         Composer.SetResourceReference(Border.BorderBrushProperty, on ? "Z.Focus" : "Z.Line2");
         Composer.BorderThickness = new Thickness(on ? 2 : 1);
-        Composer.Padding = on ? new Thickness(11, 2, 2, 2) : new Thickness(12, 3, 3, 3); // the thicker border must not move the text
-        ComposerNote.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        Composer.Padding = new Thickness(on ? 5 : 6); // the thicker border must not move the text
     }
 
     private void OnSend(object sender, RoutedEventArgs e) => Send();

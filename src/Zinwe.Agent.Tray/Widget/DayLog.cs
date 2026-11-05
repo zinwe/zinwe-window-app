@@ -141,6 +141,13 @@ public static class DayLog
 
     /// <summary>"4:02": hours and minutes only (no ticking seconds in the corner of the eye).</summary>
     public static string Hm(TimeSpan t) => $"{(int)t.TotalHours}:{t.Minutes:D2}";
+
+    /// <summary>"3:42" → ("3", "42"): the parts either side of the live clock's blinking colon.</summary>
+    public static (string Hours, string Minutes) SplitHm(string hm)
+    {
+        var at = hm.IndexOf(':');
+        return at < 0 ? (hm, "") : (hm[..at], hm[(at + 1)..]);
+    }
 }
 
 /// <summary>A gentle reminder (a toast while Zinwe is minimized, always a line in the history).</summary>

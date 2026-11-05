@@ -702,6 +702,46 @@ public sealed record TaskFilter(DateOnly? Day = null, TaskStatusKey? Status = nu
 /// <summary>What a tap on a task's tick does (done is final: never back to open).</summary>
 public enum TickAction { None, MarkDone, AddNote }
 
+/// <summary>What a line of a task's ⋯ menu does (the same actions as its details card).</summary>
+public enum RowMenuAction { MarkDone, OpenDetails, Edit, Tomorrow, Delete, Ask, AddNote, Cant }
+
+/// <summary>A task's ⋯ menu on the Tasks list ("Windows app next"): the details card's actions, a tap away.</summary>
+public static class RowMenu
+{
+    /// <summary>
+    /// The lines, top to bottom: an open task starts with Mark done (bold), then Open details and its own actions
+    /// (Edit · Move to tomorrow · Delete for an own to-do, Ask · Add a note · Can't do it for an owner's task). Done is
+    /// final: a done (or just ticked) task offers Add a note and Open details; a cancelled one only Open details.
+    /// </summary>
+    public static IReadOnlyList<(string Label, RowMenuAction Action, bool Danger, bool Bold)> Items(MemberTask t, string owner,
+        IReadOnlySet<int>? holding = null)
+    {
+        if (t.Status == MemberTaskStatus.Cancelled)
+        {
+            return [("Open details", RowMenuAction.OpenDetails, false, false)];
+        }
+        if (TaskBoard.TickActionOf(t, holding) == TickAction.AddNote)
+        {
+            return [("Add a note", RowMenuAction.AddNote, false, true), ("Open details", RowMenuAction.OpenDetails, false, false)];
+        }
+        if (t.Mine)
+        {
+            return
+            [
+                ("Mark done", RowMenuAction.MarkDone, false, true), ("Open details", RowMenuAction.OpenDetails, false, false),
+                ("Edit", RowMenuAction.Edit, false, false), ("Move to tomorrow", RowMenuAction.Tomorrow, false, false),
+                ("Delete", RowMenuAction.Delete, true, false),
+            ];
+        }
+        return
+        [
+            ($"Mark done · send to {owner}", RowMenuAction.MarkDone, false, true), ("Open details", RowMenuAction.OpenDetails, false, false),
+            ($"Ask {owner}", RowMenuAction.Ask, false, false), ("Add a note", RowMenuAction.AddNote, false, false),
+            ("Can’t do it", RowMenuAction.Cant, true, false),
+        ];
+    }
+}
+
 /// <summary>
 /// Press and hold a task row: after <see cref="SinkAfter"/> the row sinks a little, at <see cref="OpenAfter"/> its
 /// details open. Moving the pointer more than <see cref="Slop"/> px (a scroll or a drag) cancels it.
