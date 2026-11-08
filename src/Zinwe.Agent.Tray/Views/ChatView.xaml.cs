@@ -397,7 +397,14 @@ public partial class ChatView : UserControl
         if (row.Kind == ThreadKind.Task && row.Task is { } task)
         {
             wrap.Children.Add(new Border { Width = 32 });
-            wrap.Children.Add(TaskCard.Build(task, m, m.OpenCard == task.Id, TaskCardWidth));
+            // v1.4: the task card with its thread footer (last reply, replies, Open task chat, reply box).
+            var item = (task.RemoteId is { } rid ? m.ItemByRemote(rid) : null) ?? m.Item(task.Id);
+            if (item is not null)
+            {
+                var card = TaskCardV2.Build(item, m, thread: true);
+                card.Width = TaskCardWidth;
+                wrap.Children.Add(card);
+            }
             return wrap;
         }
 

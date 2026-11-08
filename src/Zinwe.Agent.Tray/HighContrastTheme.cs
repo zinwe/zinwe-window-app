@@ -46,6 +46,11 @@ internal static class HighContrastTheme
         ["Z.Snack"] = "#333333", ["Z.Dim"] = "#99000000", ["Z.ProgressTrack"] = "#5A3315",
         // Tasks v2 details card
         ["Z.DetailBg"] = "#141414", ["Z.IconSoft"] = "#333333", ["Z.CloseFill"] = "#333333", ["Z.DimCard"] = "#B3000000",
+        // v1.4 team tasks + chat
+        ["Z.TvWorkBg"] = "#1F150D", ["Z.TvWorkLine"] = "#5A3315", ["Z.TvRedBg"] = "#24130F", ["Z.TvRedLine"] = "#5A2A21",
+        ["Z.TvNeedsBg"] = "#1F1F1F", ["Z.TvOkBg"] = "#0F1F16", ["Z.TvOkLine"] = "#1F4A32", ["Z.TvPast"] = "#8A4A1C",
+        ["Z.TvTrack"] = "#333333", ["Z.TvWorkInk"] = "#FF8A3D", ["Z.TvTodayBg"] = "#3A2414", ["Z.TvMineBg"] = "#3A2414",
+        ["Z.TvTheirsBg"] = "#262626",
         // legacy keys (v1 widget, FeedbackPanel, ChatRow / NotificationRow)
         ["Zinwe.White"] = "#1A1A1A", ["Zinwe.Paper"] = "#0E0E0E", ["Zinwe.Ink"] = "#F5F5F5", ["Zinwe.Muted"] = "#A3A3A3",
         ["Zinwe.Line"] = "#333333", ["Zinwe.LineStrong"] = "#4A4A4A", ["Zinwe.OrangeText"] = "#FF8A3D",
@@ -76,6 +81,10 @@ internal static class HighContrastTheme
         ["Z.StDoingText"] = Hc.WindowText, ["Z.StDoingTint"] = Hc.Window, ["Z.StHelpText"] = Hc.WindowText, ["Z.StHelpTint"] = Hc.Window,
         ["Z.StWaitText"] = Hc.WindowText, ["Z.StWaitTint"] = Hc.Window, ["Z.StApprovedText"] = Hc.WindowText, ["Z.StApprovedTint"] = Hc.Window,
         ["Z.StCancelledText"] = Hc.WindowText, ["Z.StCancelledTint"] = Hc.Window,
+        ["Z.TvWorkBg"] = Hc.Window, ["Z.TvWorkLine"] = Hc.WindowText, ["Z.TvRedBg"] = Hc.Window, ["Z.TvRedLine"] = Hc.WindowText,
+        ["Z.TvNeedsBg"] = Hc.Window, ["Z.TvOkBg"] = Hc.Window, ["Z.TvOkLine"] = Hc.WindowText, ["Z.TvPast"] = Hc.Gray,
+        ["Z.TvTrack"] = Hc.Window, ["Z.TvWorkInk"] = Hc.WindowText, ["Z.TvTodayBg"] = Hc.Window, ["Z.TvMineBg"] = Hc.Window,
+        ["Z.TvTheirsBg"] = Hc.Window,
         ["Zinwe.White"] = Hc.Window, ["Zinwe.Paper"] = Hc.Window, ["Zinwe.Ink"] = Hc.WindowText, ["Zinwe.Muted"] = Hc.WindowText,
         ["Zinwe.Line"] = Hc.WindowText, ["Zinwe.LineStrong"] = Hc.WindowText, ["Zinwe.Orange"] = Hc.Control,
         ["Zinwe.OrangeDeep"] = Hc.Control, ["Zinwe.OrangeStrong"] = Hc.Highlight, ["Zinwe.OrangeText"] = Hc.WindowText,

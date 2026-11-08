@@ -603,11 +603,14 @@ public partial class WidgetWindow : Window
     // seconds keeps the card, its scroll and its focus; the card arrives with a short scale-in only when it opens.
     private (int Id, string Seen)? _detailShown;
 
-    /// <summary>A task's details card over the window (press and hold a task, or ⋯); gone when it closes or the task does.</summary>
+    /// <summary>
+    /// v1.4 · the member task panel over the window (a card, Home, a notice, a chat card); gone when it closes or the task
+    /// does. Rebuilt only when what it shows changed, so the 3 s chat poll keeps its scroll, its focus and what's typed.
+    /// </summary>
     private void RenderDetail(TrayModel m)
     {
-        var task = m.Tab == Tab.Tasks || m.DetailId is not null ? m.Detail : null;
-        if (task is null)
+        var item = m.Tab is Tab.Tasks or Tab.Chat || m.DetailId is not null ? m.PanelItem : null;
+        if (item is null)
         {
             if (m.DetailId is not null)
             {
@@ -618,14 +621,16 @@ public partial class WidgetWindow : Window
             _detailShown = null;
             return;
         }
-        var seen = System.Text.Json.JsonSerializer.Serialize(task) + $"|{m.Now:yyyyMMddHHmm}|{m.OwnerFirst}|{m.OwnerNameStart}|{m.TodoSharingOn}|{m.Offline}";
-        if (_detailShown is { } shown && shown.Id == task.Id && shown.Seen == seen && DetailLayer.Content is not null)
+        var chat = m.PanelTab == "chat" ? string.Join("|", m.TaskChat(item).Select(l => l.Text + l.Sending + l.At.Ticks)) : "";
+        var seen = System.Text.Json.JsonSerializer.Serialize(item.Task) + $"|{m.Now:yyyyMMddHHmm}|{m.OwnerFirst}|{m.PanelTab}|{m.PanelCard}|{m.PanelMenu}"
+            + $"|{m.TodoSharingOn}|{m.Offline}|{chat}|{m.TaskChatSummary(item)}|{item.Ctx.GroupName}|{m.Profile.DisplayName}";
+        if (_detailShown is { } shown && shown.Id == item.Key && shown.Seen == seen && DetailLayer.Content is not null)
         {
             return;
         }
-        var arriving = _detailShown?.Id != task.Id;
-        _detailShown = (task.Id, seen);
-        DetailLayer.Content = Views.TaskDetailCard.Build(task, m, arriving);
+        var arriving = _detailShown?.Id != item.Key;
+        _detailShown = (item.Key, seen);
+        DetailLayer.Content = Views.TaskPanel.Build(item, m, arriving);
         DetailLayer.Visibility = Visibility.Visible;
     }
 
