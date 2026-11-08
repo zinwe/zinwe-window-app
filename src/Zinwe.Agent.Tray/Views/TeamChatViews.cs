@@ -453,7 +453,7 @@ public sealed class TeamThreadView : UserControl
     /// <summary>A line's words with every "@Name" in a stronger style (v1.4.1).</summary>
     internal static TextBlock BodyText(string body, IReadOnlyList<string> names, double size = 14)
     {
-        var t = new TextBlock { FontSize = size, TextWrapping = TextWrapping.Wrap, LineHeight = Math.Round(size * 1.45) };
+        var t = new TextBlock { FontSize = size, TextWrapping = TextWrapping.Wrap, LineHeight = size == 13.5 ? 19 : Math.Round(size * 1.45) };
         t.SetResourceReference(TextBlock.ForegroundProperty, "Z.Ink");
         var pos = 0;
         foreach (var s in Mentions.Find(body, names))
@@ -477,7 +477,7 @@ public sealed class TeamThreadView : UserControl
     private static FrameworkElement Bubble(TrayModel m, TeamLine l, bool showName, bool lastOfRun, bool showSeen, bool group, IReadOnlyList<string> names)
     {
         var msg = l.Message;
-        var column = new StackPanel { MaxWidth = 268, HorizontalAlignment = l.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left };
+        var column = new StackPanel { MaxWidth = 288, HorizontalAlignment = l.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left };
         var inner = new StackPanel();
         if (showName)
         {
@@ -495,18 +495,18 @@ public sealed class TeamThreadView : UserControl
         TextBlock body;
         if (msg.Deleted)
         {
-            body = Ui.Text(ChatEdits.DeletedText, 14, fg: "Z.Muted", wrap: true);
+            body = Ui.Text(ChatEdits.DeletedText, 13.5, fg: "Z.Muted", wrap: true);
             body.FontStyle = FontStyles.Italic;
         }
         else
         {
-            body = BodyText(msg.Body, names);
+            body = BodyText(msg.Body, names, 13.5);
         }
         body.Margin = new Thickness(0, showName ? 2 : 0, 0, 0);
         inner.Children.Add(body);
         var editing = m.TeamEditing?.Id == msg.Id && msg.Id > 0;
         // v1.4.1: a line that names the member stands out (orange tint and edge), as on the phone.
-        var bubble = new Border { CornerRadius = new CornerRadius(14), Padding = new Thickness(12, 8, 12, 9), Child = inner,
+        var bubble = new Border { CornerRadius = l.Mine ? new CornerRadius(12, 12, 4, 12) : new CornerRadius(12, 12, 12, 4), Padding = new Thickness(12, 8, 12, 8), Child = inner,
             BorderThickness = new Thickness(l.MentionsMe || editing ? 1.5 : l.Mine ? 0 : 1), Opacity = l.Sending ? 0.7 : 1 }
             .Res(Border.BackgroundProperty, l.MentionsMe ? "Z.OrangeTint" : l.Mine ? "Z.TvMineBg" : "Z.Surface")
             .Res(Border.BorderBrushProperty, l.MentionsMe || editing ? "Z.Orange" : "Z.Line");
@@ -516,7 +516,7 @@ public sealed class TeamThreadView : UserControl
         var meta = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = l.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left, Margin = new Thickness(2, 3, 2, 2) };
         var when = l.Sending ? "Sending…" : TeamTaskEngine.Clock(msg.At) + (msg.Edited && !msg.Deleted ? " (edited)" : "")
             + (showSeen ? group ? msg.SeenBy > 0 ? $" · Seen by {msg.SeenBy}" : "" : msg.SeenBy > 0 ? " · Seen" : "" : "");
-        var time = Ui.Text(when, 11.5, fg: "Z.Muted");
+        var time = Ui.Text(when, 12, fg: "Z.Muted");
         if (showSeen && msg.SeenNames is { Count: > 0 } seenNames)
         {
             time.ToolTip = "Seen by " + string.Join(", ", seenNames);
@@ -524,8 +524,8 @@ public sealed class TeamThreadView : UserControl
         meta.Children.Add(time);
         if (!l.Sending && !msg.Deleted && msg.Id > 0)
         {
-            meta.Children.Add(Ui.Text(" · ", 11.5, fg: "Z.Muted"));
-            meta.Children.Add(Tv.Bare(Ui.Text("Reply", 11.5, FontWeights.SemiBold, "Z.Ink2"), () => m.StartTeamReply(msg), "Reply to " + l.Who));
+            meta.Children.Add(Ui.Text(" · ", 12, fg: "Z.Muted"));
+            meta.Children.Add(Tv.Bare(Ui.Text("Reply", 12, FontWeights.SemiBold, "Z.Ink2"), () => m.StartTeamReply(msg), "Reply to " + l.Who));
             if (!l.Mine && !msg.ByOwner)
             {
                 var report = Tv.Bare(Ui.Text("Report", 11.5, FontWeights.SemiBold, "Z.Muted"), () => m.OpenReport(m.ChatOpen ?? "", msg), "Report this message");
@@ -570,8 +570,8 @@ public sealed class TeamThreadView : UserControl
         if (!l.Mine)
         {
             FrameworkElement face = lastOfRun
-                ? Tv.Face(l.Initials.Length > 0 ? l.Initials : "•", 26, msg.ByOwner ? "Z.OrangeTint" : "Z.Fill", msg.ByOwner ? "Z.OrangeInk" : "Z.Ink")
-                : new Border { Width = 26 };
+                ? Tv.Face(l.Initials.Length > 0 ? l.Initials : "•", 24, msg.ByOwner ? "Z.OrangeTint" : "Z.Fill", msg.ByOwner ? "Z.OrangeInk" : "Z.Ink")
+                : new Border { Width = 24 };
             face.VerticalAlignment = VerticalAlignment.Bottom;
             face.Margin = new Thickness(0, 0, 8, 22);
             row.Children.Add(face);

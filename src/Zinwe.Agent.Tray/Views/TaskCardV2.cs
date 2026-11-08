@@ -32,7 +32,8 @@ internal static class TaskCardV2
             tone = TaskTone.Work;
         }
 
-        var body = new StackPanel { Margin = new Thickness(14, 12, 12, thread ? 10 : 12) };
+        // The window's card (.tvw-card): 10 px in (13 on the edge side), 7 px between its parts, 20 px pills.
+        var body = new StackPanel { Margin = new Thickness(13, 10, 10, 10) };
         var top = new WrapPanel();
         void Top(FrameworkElement? el)
         {
@@ -40,30 +41,30 @@ internal static class TaskCardV2
             {
                 return;
             }
-            el.Margin = new Thickness(0, 0, 6, 4);
+            el.Margin = new Thickness(0, 0, 6, 3);
             top.Children.Add(el);
         }
-        Top(Tv.Pill(pill.Label, pill.Tone));
-        Top(Tv.Due(due));
+        Top(Tv.Pill(pill.Label, pill.Tone, compact: true));
+        Top(Tv.Due(due, compact: true));
         if (string.Equals(t.Priority, "high", StringComparison.OrdinalIgnoreCase))
         {
-            Top(Tv.High());
+            Top(Tv.High(compact: true));
         }
         body.Children.Add(top);
 
-        var title = Ui.Text(t.Title, 14, FontWeights.SemiBold, wrap: true);
-        title.Margin = new Thickness(0, 4, 0, 6);
+        var title = Ui.Text(t.Title, 13.5, FontWeights.SemiBold, wrap: true);
+        title.Margin = new Thickness(0, 4, 0, 7);
         body.Children.Add(title);
-        body.Children.Add(Tv.Say(TeamTaskEngine.CardLine(t, c), tone));
+        body.Children.Add(Tv.Say(TeamTaskEngine.CardLine(t, c), tone, size: 12));
         if (!it.Own)
         {
             var bar = Tv.JourneyBar(TeamTaskEngine.Journey(t, c));
-            bar.Margin = new Thickness(0, 10, 0, 0);
+            bar.Margin = new Thickness(0, 7, 0, 0);
             body.Children.Add(bar);
         }
 
-        // Foot: faces (a team task), the chat count, the button.
-        var foot = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        // Foot: faces (a team task), the chat count (not in a thread: its footer says it), the button.
+        var foot = new Grid { Margin = new Thickness(0, 5, 0, -2) };
         foot.ColumnDefinitions.Add(new ColumnDefinition());
         foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -73,23 +74,23 @@ internal static class TaskCardV2
             var who = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             who.Children.Add(Tv.Faces([.. people.Select(p => TeamTaskEngine.Initials(p.Name))]));
             var names = people.Count > 3 ? people.Count + " people" : TeamTaskEngine.List(people.Select(p => p.Name.Split(' ')[0]));
-            var n = Ui.Text(names, 12.5, fg: "Z.Ink2", trim: true);
-            n.Margin = new Thickness(8, 0, 0, 0);
+            var n = Ui.Text(names, 11.5, fg: "Z.Muted", trim: true);
+            n.Margin = new Thickness(6, 0, 0, 0);
             n.VerticalAlignment = VerticalAlignment.Center;
             who.Children.Add(n);
             foot.Children.Add(who);
         }
         var key = it.Key;
-        if (!it.Own)
+        if (!it.Own && !thread)
         {
             var chat = m.TaskChatSummary(it);
-            var count = Tv.ChatCount(chat.Count, chat.Unread, () => m.OpenPanel(key, "chat"));
+            var count = Tv.ChatCount(chat.Count, chat.Unread, () => m.OpenPanel(key, "chat"), compact: true);
             Grid.SetColumn(count, 1);
             foot.Children.Add(count);
         }
         if (h.Buttons.FirstOrDefault() is { } b)
         {
-            var btn = Tv.Btn(b.Label, b.Primary, () => m.RunTaskAct(it, b.Act), b.Label + ": " + t.Title, small: true);
+            var btn = Tv.Btn(b.Label, b.Primary, () => m.RunTaskAct(it, b.Act), b.Label + ": " + t.Title, compact: true);
             btn.Margin = new Thickness(6, 0, 0, 0);
             Grid.SetColumn(btn, 2);
             foot.Children.Add(btn);
@@ -106,7 +107,7 @@ internal static class TaskCardV2
             stack.Children.Add(Footer(it, m));
         }
 
-        var card = Tv.EdgeCard(stack, tone);
+        var card = Tv.EdgeCard(stack, tone, 12);
         card.Cursor = Cursors.Hand;
         card.MouseLeftButtonUp += (_, e) =>
         {
@@ -164,7 +165,7 @@ internal static class TaskCardV2
         foot.SetResourceReference(Panel.BackgroundProperty, "Z.Surface2");
         var rule = new Border { Height = 1 }.Res(Border.BackgroundProperty, "Z.Line");
         foot.Children.Add(rule);
-        var inner = new StackPanel { Margin = new Thickness(14, 8, 12, 10) };
+        var inner = new StackPanel { Margin = new Thickness(13, 8, 10, 9) };
         if (chat.LastText is { Length: > 0 } last)
         {
             var row = new Grid();
@@ -175,7 +176,7 @@ internal static class TaskCardV2
                 : Tv.Face(TeamTaskEngine.Initials(chat.LastWho == "You" ? m.MyName : chat.LastWho), 22);
             face.Margin = new Thickness(0, 0, 8, 0);
             row.Children.Add(face);
-            var text = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center };
+            var text = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
             text.Inlines.Add(new System.Windows.Documents.Run((chat.LastWho ?? "") + " ") { FontWeight = FontWeights.Bold });
             text.Inlines.Add(new System.Windows.Documents.Run(last));
             text.SetResourceReference(TextBlock.ForegroundProperty, "Z.Ink");
@@ -183,7 +184,7 @@ internal static class TaskCardV2
             row.Children.Add(text);
             if (chat.LastAt is { } at)
             {
-                var when = Ui.Text(TeamTaskEngine.Clock(at), 11.5, fg: "Z.Muted");
+                var when = Ui.Text(TeamTaskEngine.Clock(at), 11, fg: "Z.Muted");
                 when.Margin = new Thickness(8, 0, 0, 0);
                 when.VerticalAlignment = VerticalAlignment.Center;
                 Grid.SetColumn(when, 2);
@@ -219,7 +220,8 @@ internal static class TaskCardV2
         var box = Inputs.Keep("card-reply:" + key, () =>
         {
             var tb = Tv.Field("Reply to this task…");
-            tb.MinHeight = 38;
+            tb.MinHeight = 36;
+            tb.FontSize = 12.5;
             tb.Padding = new Thickness(10, 0, 44, 0);
             tb.PreviewKeyDown += (_, e) =>
             {

@@ -100,6 +100,39 @@
         <Setter Property="Foreground" Value="{DynamicResource Z.OnOrange}" />
     </Style>
 
+    <!-- .tvw-card .tv-btn: the window's task card button: 28 px look (32 px hit area), 8 px corners, 12 px text. -->
+    <Style x:Key="Z.TvBtnXs" TargetType="ButtonBase" BasedOn="{StaticResource Z.TvBtn}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ButtonBase">
+                    <Grid Background="Transparent">
+                        <Border x:Name="b" CornerRadius="8" MinHeight="28" VerticalAlignment="Center"
+                                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Z.Ink}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="Z.TvBtnXs.Pri" TargetType="ButtonBase" BasedOn="{StaticResource Z.TvBtnXs}">
+        <Setter Property="Background" Value="{DynamicResource Z.Orange}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Z.Orange}" />
+        <Setter Property="Foreground" Value="{DynamicResource Z.OnOrange}" />
+    </Style>
+
     <!-- The grey rounded search field ("Search tasks", "Search chats and people"): a magnifier, the placeholder in Tag. -->
     <Style x:Key="Z.TvSearch" TargetType="TextBox">
         <Setter Property="Foreground" Value="{DynamicResource Z.Ink}" />
