@@ -39,7 +39,8 @@ public sealed partial class TrayModel
         || (_files?.Previews ?? []).Any(s => s.State == FileState.Working);
 
     /// <summary>Changes whenever something a file card shows changes (the views redraw on it).</summary>
-    public string FilesSignature => $"{_files?.Version}|{FilesOn}|{_copying.Count}|{string.Join(",", _attach.Keys)}";
+    public string FilesSignature =>
+        $"{_files?.Version}|{FilesOn}|{_copying.Count}|{string.Join(",", _attach.Select(a => a.Key + "=" + a.Value.Path + ":" + a.Value.Size))}";
 
     /// <summary>The files reply, fetched when the status says it moved.</summary>
     private async Task RefreshFilesIfMovedAsync()

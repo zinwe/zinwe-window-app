@@ -396,6 +396,32 @@ public sealed class ChatFilesTests : IDisposable
     }
 
     [Fact]
+    public async Task The_send_loop_wakes_for_the_info_every_5_minutes_and_for_a_file_that_may_go()
+    {
+        var down = true;
+        ServeSend(r => down && r.Path == "/api/devices/chat/3/messages/" ? throw new HttpRequestException("offline") : null);
+        var outbox = Outbox();
+        var sync = Sync(outbox);
+        Assert.True(sync.SendDue); // the info, first thing
+        await sync.SyncSendAsync("tok", CancellationToken.None);
+        Assert.False(sync.SendDue);
+
+        outbox.AppendChatFile("conv:3", Copy(), "a.pdf", 2048, "");
+        Assert.True(sync.SendDue);
+        await sync.SyncSendAsync("tok", CancellationToken.None); // offline: backs off
+        Assert.False(sync.SendDue);
+        _now += ChatFileSync.FirstRetry;
+        Assert.True(sync.SendDue);
+        down = false;
+        await sync.SyncSendAsync("tok", CancellationToken.None);
+        Assert.Empty(outbox.PendingFiles());
+
+        _now += ChatFileSync.InfoEvery;
+        Assert.True(sync.SendDue);
+        Assert.Equal(1, Calls("GET", "/api/devices/chat/files/"));
+    }
+
+    [Fact]
     public async Task A_refused_upload_is_final_and_says_why()
     {
         ServeSend(r => r.Method == HttpMethod.Post && r.Path == "/api/devices/chat/files/"

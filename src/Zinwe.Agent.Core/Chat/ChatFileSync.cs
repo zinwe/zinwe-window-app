@@ -91,10 +91,7 @@ public sealed class ChatFileSync
             }
             try
             {
-                lock (_lock)
-                {
-                    return _outbox.PendingFiles().Any(i => !i.Refused && Ready(i.Id, now));
-                }
+                return _outbox.PendingFiles().Any(i => !i.Refused && Ready(i.Id, now));
             }
             catch (Exception)
             {
