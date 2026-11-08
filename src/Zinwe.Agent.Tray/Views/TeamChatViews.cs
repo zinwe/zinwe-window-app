@@ -399,9 +399,9 @@ public sealed class TeamThreadView : UserControl
             var next = i < lines.Count - 1 ? lines[i + 1] : null;
             if (l.Message.System)
             {
-                var sys = Ui.Text(l.Message.Body, 12, fg: "Z.Muted", wrap: true);
-                sys.TextAlignment = TextAlignment.Center;
-                sys.Margin = new Thickness(24, 8, 24, 8);
+                // v1.4.2: centred, wraps onto up to three lines (as in the admin chat), never cut at the edge.
+                var sys = ChatView.NoticeLine(l.Message.Body, null);
+                sys.Margin = new Thickness(12, 8, 12, 8);
                 _lines.Children.Add(sys);
                 continue;
             }
@@ -410,7 +410,7 @@ public sealed class TeamThreadView : UserControl
                 if (m.ItemByRemote(taskId) is { } item)
                 {
                     var card = TaskCardV2.Build(item, m, thread: true);
-                    card.Margin = new Thickness(group ? 34 : 0, 8, 0, 8);
+                    card.Margin = new Thickness(0, 8, 0, 8); // at the left margin, as in the prototype
                     _lines.Children.Add(card);
                 }
                 else

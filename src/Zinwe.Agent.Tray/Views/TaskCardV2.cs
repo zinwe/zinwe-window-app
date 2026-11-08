@@ -16,6 +16,9 @@ namespace Zinwe.Agent.Tray.Views;
 /// </summary>
 internal static class TaskCardV2
 {
+    /// <summary>A task card's width in a chat thread (prototype .tvw-chat .tv-card max-width).</summary>
+    public const double ThreadCardWidth = 300;
+
     public static FrameworkElement Build(TaskItem it, TrayModel m, bool thread = false)
     {
         var t = it.Task;
@@ -117,12 +120,16 @@ internal static class TaskCardV2
         card.MouseEnter += (_, _) => card.SetResourceReference(Border.BorderBrushProperty, "Z.Line2");
         card.MouseLeave += (_, _) => card.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
         AutomationProperties.SetName(card, $"{t.Title}. {pill.Label}. {TeamTaskEngine.CardLine(t, c)}");
-        if (thread)
+        if (!thread)
         {
-            card.MaxWidth = 300;
-            card.HorizontalAlignment = HorizontalAlignment.Left;
+            return card;
         }
-        return card;
+        // In a chat thread (.tvw-chat): the width there is up to 300 px, left-aligned, narrower only in a narrower window.
+        var host = new Grid();
+        host.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MaxWidth = ThreadCardWidth });
+        host.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        host.Children.Add(card);
+        return host;
     }
 
     /// <summary>True when the click landed on a control inside the card (a button, the reply box), not on the card itself.</summary>

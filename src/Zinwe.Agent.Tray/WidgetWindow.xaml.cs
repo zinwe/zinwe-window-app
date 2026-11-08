@@ -202,6 +202,7 @@ public partial class WidgetWindow : Window
         // v1.4: with team chat, Chat is a list; the admin chat and the team threads open from it.
         var onChat = m.Tab == Tab.Chat && m.Push == Push.None;
         var team = m.TeamChatOn;
+        var chatWasShown = ChatView.Visibility == Visibility.Visible;
         ChatView.Visibility = Show(onChat && (!team || m.ChatOpen == "admin"));
         ChatList.Visibility = Show(onChat && team && m.ChatOpen is null);
         TeamThread.Visibility = Show(onChat && team && m.ChatOpen is { } open && open != "admin");
@@ -215,6 +216,10 @@ public partial class WidgetWindow : Window
         if (ChatView.Visibility == Visibility.Visible)
         {
             ChatView.Render();
+            if (!chatWasShown)
+            {
+                ChatView.ShowLatest(); // v1.4.2: an opened chat starts at its latest line
+            }
         }
         if (ChatList.Visibility == Visibility.Visible)
         {

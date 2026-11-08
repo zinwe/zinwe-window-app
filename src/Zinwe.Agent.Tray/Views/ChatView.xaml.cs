@@ -19,7 +19,6 @@ namespace Zinwe.Agent.Tray.Views;
 public partial class ChatView : UserControl
 {
     private const double QuickHeight = 52; // the starred chips and the thin bar under them when they run wide (F-08)
-    private const double TaskCardWidth = 300;
 
     private string _signature = "";
     private string _quickRow = "";
@@ -376,17 +375,33 @@ public partial class ChatView : UserControl
         static Border Rule() => new Border { Height = 1, VerticalAlignment = VerticalAlignment.Center }.Res(Border.BackgroundProperty, "Z.Line");
     }
 
-    private static FrameworkElement SysLine(ThreadRow row)
+    private static FrameworkElement SysLine(ThreadRow row) => NoticeLine(row.Text, row.ToneNo ? "Z.Warn" : "Z.Ok");
+
+    /// <summary>
+    /// A centred notice line ("About your Lunch break at 11:07 PM: …") with its tone dot: it wraps onto up to three lines
+    /// (then an ellipsis, the whole line in the tooltip), never cut at the window's edge. Also used in team threads.
+    /// </summary>
+    internal static FrameworkElement NoticeLine(string text, string? dot, double maxWidth = 300)
     {
-        var text = Ui.Text(row.Text, 12, FontWeights.Medium, "Z.Muted", wrap: true);
-        text.MaxWidth = 300;
-        var dot = Ui.Dot(7, row.ToneNo ? "Z.Warn" : "Z.Ok");
-        dot.Margin = new Thickness(0, 5, 6, 0);
-        dot.VerticalAlignment = VerticalAlignment.Top;
-        var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        line.Children.Add(dot);
-        line.Children.Add(text);
-        AutomationProperties.SetName(line, row.Text);
+        var words = Ui.Text(text, 12, FontWeights.Medium, "Z.Muted", wrap: true);
+        words.TextAlignment = TextAlignment.Center;
+        words.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+        words.MaxHeight = words.LineHeight * 3;
+        words.TextTrimming = TextTrimming.CharacterEllipsis;
+        words.ToolTip = text;
+        var line = new Grid { HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = maxWidth };
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        if (dot is not null)
+        {
+            var d = Ui.Dot(7, dot);
+            d.Margin = new Thickness(0, 5, 6, 0);
+            d.VerticalAlignment = VerticalAlignment.Top;
+            line.Children.Add(d);
+        }
+        Grid.SetColumn(words, 1);
+        line.Children.Add(words);
+        AutomationProperties.SetName(line, text);
         return line;
     }
 
@@ -396,16 +411,10 @@ public partial class ChatView : UserControl
         var wrap = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = side, Background = Brushes.Transparent };
         if (row.Kind == ThreadKind.Task && row.Task is { } task)
         {
-            wrap.Children.Add(new Border { Width = 32 });
-            // v1.4: the task card with its thread footer (last reply, replies, Open task chat, reply box).
+            // v1.4: the task card with its thread footer (last reply, replies, Open task chat, reply box), at the left
+            // margin and up to 300 px wide like the prototype (v1.4.2: no longer pushed past the window's right edge).
             var item = (task.RemoteId is { } rid ? m.ItemByRemote(rid) : null) ?? m.Item(task.Id);
-            if (item is not null)
-            {
-                var card = TaskCardV2.Build(item, m, thread: true);
-                card.Width = TaskCardWidth;
-                wrap.Children.Add(card);
-            }
-            return wrap;
+            return item is not null ? TaskCardV2.Build(item, m, thread: true) : new Border();
         }
 
         if (!row.Mine)
@@ -567,8 +576,27 @@ public partial class ChatView : UserControl
 
     private static string Cut(string s, int n) => s.Length > n ? s[..n] : s;
 
+    /// <summary>The thread was opened (from the list, a notice, or the Chat tab): it shows the latest lines.</summary>
+    public void ShowLatest()
+    {
+        _atBottom = true;
+        _unseen = 0;
+        RenderJump();
+        Dispatcher.BeginInvoke(() => Scroller.ScrollToEnd(), DispatcherPriority.Loaded);
+    }
+
     private void OnScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        // v1.4.2: the list got shorter (the quick replies folding in, the reply bar, a taller composer) or longer while
+        // the member was at the end: stay at the end, so the last line never hides behind the composer.
+        if ((e.ViewportHeightChange != 0 || e.ExtentHeightChange != 0) && _atBottom)
+        {
+            if (Scroller.VerticalOffset < Scroller.ScrollableHeight)
+            {
+                Scroller.ScrollToEnd();
+            }
+            return;
+        }
         _atBottom = Scroller.VerticalOffset >= Scroller.ScrollableHeight - 24;
         if (_atBottom && _unseen > 0)
         {
