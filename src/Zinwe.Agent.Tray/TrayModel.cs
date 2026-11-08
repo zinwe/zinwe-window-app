@@ -26,7 +26,7 @@ public enum TaskPop { None, Calendar, Status }
 public enum Push { None, Time, Privacy, Settings, Notifications, Help }
 
 /// <summary>Bottom sheets.</summary>
-public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback, Issue }
+public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback, Issue, Leave }
 
 /// <summary>The dark bar at the bottom ("Done: …  Add a note", "Deleted: …  Undo").</summary>
 public sealed record Snack(string Text, IReadOnlyList<(string Label, Action Run)> Actions, DateTimeOffset Born);
@@ -704,6 +704,11 @@ public sealed partial class TrayModel : IDisposable
             CloseReport();
             return true;
         }
+        if (DeleteAsk is not null)
+        {
+            CancelDelete();
+            return true;
+        }
         if (ConvMenu is not null)
         {
             ToggleConvMenu(null);
@@ -729,6 +734,11 @@ public sealed partial class TrayModel : IDisposable
         if (ReplyTo is not null && Tab == Tab.Chat && Push == Push.None)
         {
             CancelReply(); // the composer says "Esc cancels"
+            return true;
+        }
+        if (TeamEditing is not null && Tab == Tab.Chat && Push == Push.None)
+        {
+            CancelEdit(); // the composer says "Esc cancels"
             return true;
         }
         if (TeamReplyTo is not null && Tab == Tab.Chat && Push == Push.None)
@@ -1919,7 +1929,8 @@ public sealed partial class TrayModel : IDisposable
                 {
                     var key = c.Key;
                     var who = c.Last is { } l ? (l.ByOwner ? OwnerFirstStart : l.ByName.Split(' ')[0]) : "";
-                    list.Add(("chat", $"{c.Unread} new message{(c.Unread == 1 ? "" : "s")} " + (c.IsGroup ? "in " : "from ") + c.Name,
+                    list.Add(("chat", LastMentionsMe(c) && who.Length > 0 ? $"{who} mentioned you in {c.Name}" // v1.4.1
+                        : $"{c.Unread} new message{(c.Unread == 1 ? "" : "s")} " + (c.IsGroup ? "in " : "from ") + c.Name,
                         c.Last is { } last ? (c.IsGroup && who.Length > 0 ? who + ": " : "") + (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : last.Body) : "",
                         () => OpenConv(key)));
                 }

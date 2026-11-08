@@ -34,6 +34,22 @@
                 </Grid>
             </Border>
 
+            <!-- v1.4.1: today is a holiday, or approved leave (work_rules.holiday_today / leave_today). -->
+            <Border x:Name="TodayNoteCard" CornerRadius="12" Padding="12,9,12,9" Margin="0,0,0,12" BorderThickness="1" Visibility="Collapsed"
+                    Background="{DynamicResource Z.OkTint}" BorderBrush="{DynamicResource Z.Line}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Path Data="M5 5h14v15H5zM5 9h14M9 3v4M15 3v4" Stroke="{DynamicResource Z.Ok}" StrokeThickness="2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="16" Height="16" Stretch="Uniform" Margin="0,1,10,0"
+                          VerticalAlignment="Top" />
+                    <TextBlock x:Name="TodayNoteText" Grid.Column="1" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource Z.Ink}"
+                               AutomationProperties.LiveSetting="Polite" />
+                </Grid>
+            </Border>
+
             <Border Style="{StaticResource Z.Card}" Margin="0,0,0,12" ClipToBounds="True">
                 <StackPanel>
                     <Grid Margin="14,12,14,6">
@@ -54,6 +70,20 @@
                     <StackPanel x:Name="Timeline" Margin="0,2,0,0" />
                     <TextBlock x:Name="NoTimeline" Text="Nothing yet. Press Start day when you begin work." FontSize="12.5"
                                Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- v1.4.1: Ask for a day off, and the recent asks with the admin's answer. -->
+            <Border x:Name="LeaveCard" Style="{StaticResource Z.Card}" Padding="14,12" Margin="0,12,0,0" Visibility="Collapsed">
+                <StackPanel>
+                    <Grid>
+                        <TextBlock Text="Days off" Style="{StaticResource Z.H2}" VerticalAlignment="Center" />
+                        <Button x:Name="AskLeaveButton" Style="{StaticResource Z.LinkBtn}" MinHeight="28" FontSize="12" Content="Ask for a day off"
+                                HorizontalAlignment="Right" Click="OnAskLeave" />
+                    </Grid>
+                    <StackPanel x:Name="LeaveList" Margin="0,4,0,0" />
+                    <TextBlock x:Name="NoLeave" Text="Need a day off? Ask here, and your admin answers here too." FontSize="12.5"
+                               Foreground="{DynamicResource Z.Muted}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
 

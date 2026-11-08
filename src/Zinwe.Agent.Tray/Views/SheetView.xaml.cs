@@ -18,6 +18,7 @@ public partial class SheetView : UserControl
 
     private readonly FeedbackPanel Feedback = new();
     private readonly IssuePanel Issue = new();
+    private readonly LeavePanel Leave = new() { Margin = new Thickness(0, 10, 0, 0) };
 
     public SheetView()
     {
@@ -26,6 +27,11 @@ public partial class SheetView : UserControl
         Feedback.Closed += (_, _) => Model?.CloseSheet();
         IssueSlot.Content = Issue;
         Issue.Closed += (_, _) => Model?.CloseSheet();
+        // v1.4.1: Ask for a day off, code-built, in the same slot pattern.
+        if (IssueSlot.Parent is Panel slots)
+        {
+            slots.Children.Add(Leave);
+        }
     }
 
     public TrayModel? Model { get; set; }
@@ -53,6 +59,7 @@ public partial class SheetView : UserControl
         PhotoPanel.Visibility = Show(sheet == Sheet.Photo);
         Feedback.Visibility = Show(sheet == Sheet.Feedback);
         Issue.Visibility = Show(sheet == Sheet.Issue);
+        Leave.Visibility = Show(sheet == Sheet.Leave);
         var owner = m.OwnerFirst;
         var task = m.Selected;
 
@@ -67,6 +74,7 @@ public partial class SheetView : UserControl
                 TaskBoard.FormHint(m.TaskList.FirstOrDefault(t => t.Id == m.Form.EditId), m.TodoSharingOn)),
             Sheet.Photo => ("Your picture", "Optional. It shows on your team card, here and in your header."),
             Sheet.Issue => ("Report an issue", "Something not working? Tell the Zinwe team. Your company doesn’t see this."),
+            Sheet.Leave => ("Ask for a day off", $"Pick the day. {m.OwnerFirstStart} gets your ask and answers here, on Home."),
             _ => ("Send feedback", ""),
         };
         Hint.Visibility = Show(Hint.Text.Length > 0);
@@ -123,6 +131,17 @@ public partial class SheetView : UserControl
                 {
                     Issue.Model = m;
                     Issue.Reset();
+                }
+                break;
+            case Sheet.Leave:
+                Leave.Model = m;
+                if (opened)
+                {
+                    Leave.Reset();
+                }
+                else
+                {
+                    Leave.Render();
                 }
                 break;
         }

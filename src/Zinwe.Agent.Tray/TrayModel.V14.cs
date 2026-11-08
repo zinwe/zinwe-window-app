@@ -36,10 +36,14 @@ public sealed record TaskChatLine(string Who, string Initials, bool Mine, bool O
 
 /// <summary>One row of the v1.4 chat list: the admin chat, a group, a direct chat, or a teammate not written to yet.</summary>
 public sealed record ChatRowView(string Key, string Name, string Initials, bool IsGroup, bool IsAdmin, string Line, bool LineMuted,
-    string Time, int Unread, bool Marked, bool Pinned, bool Muted, string? Status, DateTimeOffset At, long? WithMemberId);
+    string Time, int Unread, bool Marked, bool Pinned, bool Muted, string? Status, DateTimeOffset At, long? WithMemberId, bool Mention = false);
 
-/// <summary>A line of a group / direct thread as the view draws it.</summary>
-public sealed record TeamLine(TeamMessage Message, bool Mine, bool Sending, string Who, string Initials);
+/// <summary>
+/// A line of a group / direct thread as the view draws it. v1.4.1: <paramref name="MentionsMe"/> = someone named the member in
+/// it (highlighted); <paramref name="CanChange"/> = the member's own line, still within 15 minutes (Edit · Delete).
+/// </summary>
+public sealed record TeamLine(TeamMessage Message, bool Mine, bool Sending, string Who, string Initials, bool MentionsMe = false,
+    bool CanChange = false);
 
 public sealed partial class TrayModel
 {
@@ -579,6 +583,7 @@ public sealed partial class TrayModel
     /// <summary>The thread the member is reading now (pulled every 3 s): a team thread or an open task chat.</summary>
     public string? ChatFocus =>
         !WindowVisible || Stage != Stage.App ? null
+        : Sheet == Sheet.Leave ? TeamChatSync.LeaveFocus // v1.4.1: the day-off sheet asks for the asks at once
         : Tab == Tab.Chat && Push == Push.None && ChatKeys.Parse(ChatOpen) is not null && DetailId is null ? ChatOpen
         : PanelItem is { Own: false } p && PanelTab == "chat" ? p.ChatKey
         : null;
@@ -602,33 +607,64 @@ public sealed partial class TrayModel
         {
             return;
         }
+        TakeChat(reply);
+    }
+
+    /// <summary>The service's chat answer, taken in: deleted chats, the server's pins and mutes, notices, refusals.</summary>
+    internal void TakeChat(ChatReply reply)
+    {
         var changed = reply.Version != _chat?.Version || _chat is null;
+        var before = _chat;
         _chat = reply;
-        SeedPrefs(reply.Conversations ?? []);
+        HandleGone(reply, before);
+        if (reply.Backend == TaskBackend.On && (reply.Conversations?.Count ?? 0) > 0)
+        {
+            ReconcilePrefs(reply.Conversations!);
+        }
         ResolveDirect();
         AnnounceChat(reply);
+        AnnounceLeave(reply);
+        ShowNotices(reply);
         if (changed)
         {
             Raise();
         }
     }
 
-    /// <summary>A conversation seen for the first time takes the pin and mute the backend has for it (set on another PC or the web).</summary>
-    private void SeedPrefs(IReadOnlyList<TeamConversation> conversations)
+    /// <summary>
+    /// v1.4.1 · the server's <c>pinned</c> / <c>muted</c> are the truth on every list refresh (a change on another PC, the web
+    /// or a reinstall shows up here); chat-prefs.json is only the offline cache, and a change still waiting in the outbox
+    /// wins until it is sent.
+    /// </summary>
+    private void ReconcilePrefs(IReadOnlyList<TeamConversation> conversations)
     {
-        var changed = false;
-        foreach (var c in conversations.Where(c => !_prefs.Known.Contains(c.Key)))
+        HashSet<string> pins = [], mutes = [];
+        try
         {
-            _prefs = _prefs with
+            foreach (var i in _outbox.PendingChat())
             {
-                Known = [.. _prefs.Known, c.Key],
-                Pins = c.Pinned && !_prefs.Pins.Contains(c.Key) && _prefs.Pins.Count < 3 ? [.. _prefs.Pins, c.Key] : _prefs.Pins,
-                Muted = c.Muted && !_prefs.Muted.Contains(c.Key) ? [.. _prefs.Muted, c.Key] : _prefs.Muted,
-            };
-            changed = true;
+                if (i.ChatKey is not { } k)
+                {
+                    continue;
+                }
+                if (i.Action is OutboxReply.ChatPin or OutboxReply.ChatUnpin)
+                {
+                    pins.Add(k);
+                }
+                else if (i.Action is OutboxReply.ChatMute or OutboxReply.ChatUnmute)
+                {
+                    mutes.Add(k);
+                }
+            }
         }
-        if (changed)
+        catch (Exception)
         {
+            // the file is busy: reconcile with what the server says
+        }
+        var next = ChatPrefs.Reconcile(_prefs, conversations, pins, mutes);
+        if (next != _prefs)
+        {
+            _prefs = next;
             _prefs.Save();
         }
     }
@@ -659,14 +695,17 @@ public sealed partial class TrayModel
         {
             var before = _unreadSeen.GetValueOrDefault(c.Id, -1);
             _unreadSeen[c.Id] = c.Unread;
-            if (before < 0 || c.Unread <= before || ChatFocus == c.Key || _prefs.Muted.Contains(c.Key) || Stage != Stage.App)
+            // v1.4.1: a line that names the member raises the notice even in a muted chat.
+            var mention = LastMentionsMe(c);
+            if (before < 0 || c.Unread <= before || ChatFocus == c.Key || (_prefs.Muted.Contains(c.Key) && !mention) || Stage != Stage.App)
             {
                 continue;
             }
             var who = c.Last is { } l ? (l.ByOwner ? OwnerFirstStart : First(l.ByName)) : "";
             var text = c.Last is { } last ? (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : last.Body) : "";
-            Notify(c.IsGroup ? "New message in " + c.Name : "New message from " + c.Name,
-                (c.IsGroup && who.Length > 0 ? who + ": " : "") + text, "chat:" + c.Key, "Open", "chat:" + c.Key + ":" + c.Last?.Id);
+            Notify(mention ? (who.Length > 0 ? who : "Someone") + " mentioned you in " + c.Name
+                : c.IsGroup ? "New message in " + c.Name : "New message from " + c.Name,
+                (c.IsGroup && who.Length > 0 && !mention ? who + ": " : "") + text, "chat:" + c.Key, "Open", "chat:" + c.Key + ":" + c.Last?.Id);
         }
     }
 
@@ -688,12 +727,19 @@ public sealed partial class TrayModel
 
     public void OpenConv(string key)
     {
+        if (IsGone(key))
+        {
+            ShowSnack("This group was deleted.", [("OK", CloseSnack)]); // an old notice pointing at it
+            return;
+        }
         Tab = Tab.Chat;
         Push = Push.None;
         DetailId = null;
         ChatOpen = key;
         ConvMenu = null;
         TeamReplyTo = null;
+        TeamEditing = null;
+        DeleteAsk = null;
         Report = null;
         if (key == "admin")
         {
@@ -723,6 +769,8 @@ public sealed partial class TrayModel
     {
         ChatOpen = null;
         TeamReplyTo = null;
+        TeamEditing = null;
+        DeleteAsk = null;
         Report = null;
         ConvMenu = null;
         Raise();
@@ -791,9 +839,10 @@ public sealed partial class TrayModel
                 }
                 var at = c.LastAt ?? (last?.At is { } la && la != default ? la : (DateTimeOffset?)null);
                 var person = c.WithMemberId is { } wid ? _chat?.People?.FirstOrDefault(p => p.MemberId == wid) : null;
+                var unread = ChatFocus == c.Key ? 0 : c.Unread;
                 rows.Add(new ChatRowView(c.Key, c.Name, TeamTaskEngine.Initials(c.Name), c.IsGroup, false, line, muted,
-                    at is { } x ? When(x, now) : "", ChatFocus == c.Key ? 0 : c.Unread, _prefs.Marked.Contains(c.Key), _prefs.Pins.Contains(c.Key),
-                    _prefs.Muted.Contains(c.Key), person?.Status, at ?? DateTimeOffset.MinValue, c.WithMemberId));
+                    at is { } x ? When(x, now) : "", unread, _prefs.Marked.Contains(c.Key), _prefs.Pins.Contains(c.Key),
+                    _prefs.Muted.Contains(c.Key), person?.Status, at ?? DateTimeOffset.MinValue, c.WithMemberId, unread > 0 && LastMentionsMe(c)));
             }
             // Teammates one can message but hasn't yet
             foreach (var p in _chat?.People ?? [])
@@ -928,11 +977,21 @@ public sealed partial class TrayModel
             var me = MeId;
             if (_chat?.Thread is { } thread && thread.Key == key)
             {
-                foreach (var m in thread.Messages ?? [])
+                // v1.4.1: an edit or delete still in the outbox shows at once.
+                var changes = PendingChanges(key!);
+                var now = Now;
+                var myName = MyMentionName;
+                var group = OpenConversation?.IsGroup ?? false;
+                foreach (var raw in thread.Messages ?? [])
                 {
+                    var m = changes.TryGetValue(raw.Id, out var change)
+                        ? change.Action == OutboxReply.ChatDelete ? raw with { Deleted = true, Body = "" } : raw with { Body = change.Body, Edited = true }
+                        : raw;
                     var mine = m.Mine ?? (me is not null && m.ByMemberId == me && !m.ByOwner);
                     var who = mine ? "You" : m.ByOwner ? OwnerFirstStart : First(m.ByName);
-                    lines.Add(new TeamLine(m, mine, false, who, TeamTaskEngine.Initials(m.ByOwner ? Status?.OwnerName ?? m.ByName : m.ByName)));
+                    lines.Add(new TeamLine(m, mine, false, who, TeamTaskEngine.Initials(m.ByOwner ? Status?.OwnerName ?? m.ByName : m.ByName),
+                        group && !mine && !m.Deleted && !m.System && Mentions.MentionsMe(m.Body, myName),
+                        ChatEditsOn && ChatEdits.CanChange(m, mine, now)));
                 }
             }
             if (key is not null)
@@ -973,6 +1032,10 @@ public sealed partial class TrayModel
     public bool SendTeam(string raw)
     {
         var body = (raw ?? "").Trim();
+        if (TeamEditing is not null)
+        {
+            return SaveEdit(body); // v1.4.1: the composer is editing one of the member's own lines
+        }
         if (body.Length == 0 || ChatOpen is not { } key || !ThreadPosting.CanPost)
         {
             return false;
@@ -1083,11 +1146,52 @@ public sealed partial class TrayModel
 }
 
 /// <summary>
-/// The member's own chat list choices, kept on this PC (chat-prefs.json): up to 3 pins, muted chats, chats marked
-/// unread. The device API has no endpoint for them, so they never leave the PC.
+/// The member's own chat list choices on this PC (chat-prefs.json): up to 3 pins, muted chats, chats marked unread. Since
+/// v1.4.1 the server's <c>pinned</c> / <c>muted</c> of a group or direct chat are the truth (<see cref="Reconcile"/> on every
+/// list refresh); the file is only the offline cache, and keeps what the server has no field for (the admin chat's mute,
+/// a teammate not written to yet, "marked unread").
 /// </summary>
 public sealed record ChatPrefs(List<string> Pins, List<string> Muted, List<string> Marked, List<string>? KnownKeys = null)
 {
+    /// <summary>
+    /// The list as the server has it: each listed conversation takes its <c>pinned</c> / <c>muted</c>, except one whose own
+    /// change still waits in the outbox (<paramref name="pendingPins"/> / <paramref name="pendingMutes"/>: the member's
+    /// newer choice). Pins keep their order, newly pinned ones go last (at most 3). A "conv:" key the list no longer has
+    /// (a deleted group) is forgotten. The same instance comes back when nothing changed.
+    /// </summary>
+    public static ChatPrefs Reconcile(ChatPrefs local, IReadOnlyList<TeamConversation> listed, IReadOnlySet<string> pendingPins,
+        IReadOnlySet<string> pendingMutes)
+    {
+        var byKey = listed.GroupBy(c => c.Key).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        bool Stale(string key) => key.StartsWith("conv:", StringComparison.Ordinal) && !byKey.ContainsKey(key);
+
+        var pins = local.Pins.Where(k => !Stale(k) && (!byKey.TryGetValue(k, out var c) || pendingPins.Contains(k) || c.Pinned)).ToList();
+        foreach (var c in listed.Where(c => c.Pinned && !pins.Contains(c.Key) && !pendingPins.Contains(c.Key)).OrderByDescending(c => c.LastAt))
+        {
+            pins.Add(c.Key);
+        }
+        if (pins.Count > 3)
+        {
+            // The server allows 3: its own pins first, then the local ones.
+            var keep = pins.OrderBy(k => byKey.TryGetValue(k, out var c) && c.Pinned ? 0 : 1).Take(3).ToHashSet(StringComparer.Ordinal);
+            pins = [.. pins.Where(keep.Contains)];
+        }
+        var muted = local.Muted.Where(k => !Stale(k) && (!byKey.TryGetValue(k, out var c) || pendingMutes.Contains(k) || c.Muted)).ToList();
+        muted.AddRange(listed.Where(c => c.Muted && !muted.Contains(c.Key) && !pendingMutes.Contains(c.Key)).Select(c => c.Key));
+        var marked = local.Marked.Where(k => !Stale(k)).ToList();
+        var known = local.Known.Where(k => !Stale(k)).Concat(byKey.Keys.Where(k => !local.Known.Contains(k))).ToList();
+
+        return pins.SequenceEqual(local.Pins) && muted.SequenceEqual(local.Muted) && marked.SequenceEqual(local.Marked) && known.SequenceEqual(local.Known)
+            ? local
+            : new ChatPrefs(pins, muted, marked, known);
+    }
+
+    /// <summary>A deleted conversation: forget every local choice about it.</summary>
+    public ChatPrefs Forget(string key) =>
+        Pins.Contains(key) || Muted.Contains(key) || Marked.Contains(key) || Known.Contains(key)
+            ? new ChatPrefs([.. Pins.Where(k => k != key)], [.. Muted.Where(k => k != key)], [.. Marked.Where(k => k != key)], [.. Known.Where(k => k != key)])
+            : this;
+
     /// <summary>Conversations already seen (their backend pin / mute was taken once).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public List<string> Known
@@ -1096,7 +1200,10 @@ public sealed record ChatPrefs(List<string> Pins, List<string> Muted, List<strin
         init => KnownKeys = value;
     }
 
-    private static string PathOf() => System.IO.Path.Combine(WidgetPaths.Directory, "chat-prefs.json");
+    /// <summary>Tests: a file of their own instead of the member's (%LOCALAPPDATA%\Zinwe\chat-prefs.json).</summary>
+    internal static string? PathOverride { get; set; }
+
+    private static string PathOf() => PathOverride ?? System.IO.Path.Combine(WidgetPaths.Directory, "chat-prefs.json");
 
     public ChatPrefs Unmark(string key) => Marked.Contains(key) ? Save(this with { Marked = [.. Marked.Where(m => m != key)] }) : this;
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -122,8 +123,22 @@ public sealed class ChatListView : UserControl
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         texts.Children.Add(Ui.Text(r.Name, 14.5, bold ? FontWeights.Bold : FontWeights.SemiBold, trim: true));
         var line = Ui.Text(r.Line, 13, bold ? FontWeights.Medium : FontWeights.Normal, bold ? "Z.Ink" : r.LineMuted ? "Z.Muted" : "Z.Ink2", trim: true);
-        line.Margin = new Thickness(0, 2, 0, 0);
-        texts.Children.Add(line);
+        var lineRow = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+        lineRow.ColumnDefinitions.Add(new ColumnDefinition());
+        lineRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        lineRow.Children.Add(line);
+        if (r.Mention)
+        {
+            // v1.4.1: someone named you here (prototype: an orange "@" after the line).
+            var at = new Border { Width = 17, Height = 17, CornerRadius = new CornerRadius(9), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                Child = Ui.Text("@", 11, FontWeights.ExtraBold, "Z.OnOrange").Centered() }.Res(Border.BackgroundProperty, "Z.Orange");
+            ((TextBlock)at.Child).HorizontalAlignment = HorizontalAlignment.Center;
+            at.ToolTip = "You were mentioned";
+            AutomationProperties.SetName(at, "You were mentioned");
+            Grid.SetColumn(at, 1);
+            lineRow.Children.Add(at);
+        }
+        texts.Children.Add(lineRow);
         Grid.SetColumn(texts, 1);
         grid.Children.Add(texts);
 
@@ -166,7 +181,7 @@ public sealed class ChatListView : UserControl
         grid.Children.Add(side);
 
         var row = new Grid();
-        var main = Tv.Bare(grid, () => m.OpenConv(r.Key), $"{r.Name}{(r.Unread > 0 ? $", {r.Unread} unread" : "")}{(r.Pinned || r.IsAdmin ? ", pinned" : "")}. {r.Line}");
+        var main = Tv.Bare(grid, () => m.OpenConv(r.Key), $"{r.Name}{(r.Unread > 0 ? $", {r.Unread} unread" : "")}{(r.Mention ? ", you were mentioned" : "")}{(r.Pinned || r.IsAdmin ? ", pinned" : "")}. {r.Line}");
         row.Children.Add(main);
 
         // ⋯ only on hover (or while its menu is open), so the rows stay calm.
@@ -245,14 +260,32 @@ public sealed class TeamThreadView : UserControl
     private string _shown = "";
     private int _lastCount = -1;
     private string? _lastKey;
+    private long? _editingId;
+
+    // v1.4.1 · the "@" list over the composer: the group's people filtered by what follows the "@".
+    private readonly Border _mentionBox = new() { CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 0, 8),
+        Padding = new Thickness(4), Visibility = Visibility.Collapsed };
+    private readonly StackPanel _mentionRows = new();
+    private IReadOnlyList<TeamMember> _mentionPeople = [];
+    private (int At, string Query)? _mentionQuery;
+    private int _mentionIndex;
+    private int _mentionDismissedAt = -1;
 
     public TeamThreadView()
     {
         _scroll = new ScrollViewer { Content = _lines, Style = (Style)Application.Current.FindResource("Z.Scroll") };
         _composer.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
         _composer.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
+        _mentionBox.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
+        _mentionBox.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
+        _mentionBox.Child = _mentionRows;
+        AutomationProperties.SetName(_mentionBox, "People you can mention");
         _input = Tv.Field("Message · Shift+Enter for a new line", multiLine: true, aria: "Message");
         _input.MinHeight = 44;
+        // Registered before Enter-sends, so Enter / Tab pick a name while the list is open.
+        _input.PreviewKeyDown += OnMentionKey;
+        _input.TextChanged += (_, _) => UpdateMentions();
+        _input.SelectionChanged += (_, _) => UpdateMentions();
         Tv.EnterSends(_input, text =>
         {
             if (Model?.SendTeam(text) == false)
@@ -284,8 +317,23 @@ public sealed class TeamThreadView : UserControl
         _scroll.Background = ChatPatternBrush.For(m.ChatPattern);
         var lines = m.TeamThread;
         var (canPost, note) = m.ThreadPosting;
-        var sig = m.ChatOpen + "|" + string.Join("#", lines.Select(l => $"{l.Message}{l.Sending}"))
-            + $"|{m.TeamReplyTo?.Id}|{canPost}|{m.Report}|{m.Now:yyyyMMddHHmm}|{m.ChatPattern}|"
+        if (m.TeamEditing?.Id != _editingId)
+        {
+            // v1.4.1: Edit puts the line's words in the composer; Cancel (or Save) empties it again.
+            if (m.TeamEditing is { } editing)
+            {
+                _input.Text = editing.Body;
+                _input.CaretIndex = _input.Text.Length;
+            }
+            else if (_editingId is not null)
+            {
+                _input.Text = "";
+            }
+            _editingId = m.TeamEditing?.Id;
+        }
+        var sig = m.ChatOpen + "|" + string.Join("#", lines)
+            + $"|{m.TeamReplyTo?.Id}|{m.TeamEditing?.Id}|{m.DeleteAsk?.Id}|{canPost}|{m.Report}|{m.Now:yyyyMMddHHmm}|{m.ChatPattern}|"
+            + string.Join(",", m.MentionNames) + "|"
             + string.Join(",", lines.Where(l => l.Message.TaskId is not null).Select(l => l.Message.TaskId is { } id && m.ItemByRemote(id) is { } i
                 ? System.Text.Json.JsonSerializer.Serialize(i.Task) + m.TaskChatSummary(i) : ""));
         if (sig != _shown)
@@ -294,6 +342,10 @@ public sealed class TeamThreadView : UserControl
             BuildLines(m, lines);
             BuildComposer(m, canPost, note);
             BuildReport(m);
+            if (m.Report is null)
+            {
+                BuildDelete(m);
+            }
             var newKey = _lastKey != m.ChatOpen;
             if (newKey || lines.Count != _lastCount)
             {
@@ -322,6 +374,7 @@ public sealed class TeamThreadView : UserControl
             return;
         }
         DateOnly? lastDay = null;
+        var names = m.MentionNames;
         var lastSeen = lines.Select((l, i) => (l, i)).LastOrDefault(x => x.l.Mine && !x.l.Sending).i;
         var lastMine = lines.Select((l, i) => (l, i)).LastOrDefault(x => x.l.Mine).i;
         for (var i = 0; i < lines.Count; i++)
@@ -362,7 +415,7 @@ public sealed class TeamThreadView : UserControl
             }
             var firstOfRun = prev is null || prev.Mine != l.Mine || prev.Who != l.Who || prev.Message.TaskId is not null || prev.Message.System;
             var lastOfRun = next is null || next.Mine != l.Mine || next.Who != l.Who || next.Message.TaskId is not null || next.Message.System;
-            _lines.Children.Add(Bubble(m, l, group && firstOfRun && !l.Mine, lastOfRun, l.Mine && i == lastMine && i == lastSeen, group));
+            _lines.Children.Add(Bubble(m, l, group && firstOfRun && !l.Mine, lastOfRun, l.Mine && i == lastMine && i == lastSeen, group, names));
         }
     }
 
@@ -385,7 +438,31 @@ public sealed class TeamThreadView : UserControl
         return grid;
     }
 
-    private static FrameworkElement Bubble(TrayModel m, TeamLine l, bool showName, bool lastOfRun, bool showSeen, bool group)
+    /// <summary>A line's words with every "@Name" in a stronger style (v1.4.1).</summary>
+    internal static TextBlock BodyText(string body, IReadOnlyList<string> names, double size = 14)
+    {
+        var t = new TextBlock { FontSize = size, TextWrapping = TextWrapping.Wrap, LineHeight = Math.Round(size * 1.45) };
+        t.SetResourceReference(TextBlock.ForegroundProperty, "Z.Ink");
+        var pos = 0;
+        foreach (var s in Mentions.Find(body, names))
+        {
+            if (s.Start > pos)
+            {
+                t.Inlines.Add(new Run(body[pos..s.Start]));
+            }
+            var at = new Run(body.Substring(s.Start, s.Length)) { FontWeight = FontWeights.Bold };
+            at.SetResourceReference(TextElement.ForegroundProperty, "Z.OrangeInk");
+            t.Inlines.Add(at);
+            pos = s.Start + s.Length;
+        }
+        if (pos < body.Length)
+        {
+            t.Inlines.Add(new Run(body[pos..]));
+        }
+        return t;
+    }
+
+    private static FrameworkElement Bubble(TrayModel m, TeamLine l, bool showName, bool lastOfRun, bool showSeen, bool group, IReadOnlyList<string> names)
     {
         var msg = l.Message;
         var column = new StackPanel { MaxWidth = 268, HorizontalAlignment = l.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left };
@@ -403,25 +480,34 @@ public sealed class TeamThreadView : UserControl
                 .Res(Border.BorderBrushProperty, "Z.Orange").Res(Border.BackgroundProperty, "Z.Fill");
             inner.Children.Add(quote);
         }
-        var body = Ui.Text(msg.Deleted ? (l.Mine ? "You deleted this message" : "This message was deleted") : msg.Body, 14, fg: msg.Deleted ? "Z.Muted" : "Z.Ink", wrap: true);
+        TextBlock body;
         if (msg.Deleted)
         {
+            body = Ui.Text(ChatEdits.DeletedText, 14, fg: "Z.Muted", wrap: true);
             body.FontStyle = FontStyles.Italic;
+        }
+        else
+        {
+            body = BodyText(msg.Body, names);
         }
         body.Margin = new Thickness(0, showName ? 2 : 0, 0, 0);
         inner.Children.Add(body);
-        var bubble = new Border { CornerRadius = new CornerRadius(14), Padding = new Thickness(12, 8, 12, 9), Child = inner, BorderThickness = new Thickness(l.Mine ? 0 : 1), Opacity = l.Sending ? 0.7 : 1 }
-            .Res(Border.BackgroundProperty, l.Mine ? "Z.TvMineBg" : "Z.Surface").Res(Border.BorderBrushProperty, "Z.Line");
+        var editing = m.TeamEditing?.Id == msg.Id && msg.Id > 0;
+        // v1.4.1: a line that names the member stands out (orange tint and edge), as on the phone.
+        var bubble = new Border { CornerRadius = new CornerRadius(14), Padding = new Thickness(12, 8, 12, 9), Child = inner,
+            BorderThickness = new Thickness(l.MentionsMe || editing ? 1.5 : l.Mine ? 0 : 1), Opacity = l.Sending ? 0.7 : 1 }
+            .Res(Border.BackgroundProperty, l.MentionsMe ? "Z.OrangeTint" : l.Mine ? "Z.TvMineBg" : "Z.Surface")
+            .Res(Border.BorderBrushProperty, l.MentionsMe || editing ? "Z.Orange" : "Z.Line");
         column.Children.Add(bubble);
 
-        // Meta: the time (· Edited · Seen by N) and the line's actions.
+        // Meta: the time ((edited) · Seen by N) and the line's actions.
         var meta = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = l.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left, Margin = new Thickness(2, 3, 2, 2) };
-        var when = l.Sending ? "Sending…" : (msg.Edited && !msg.Deleted ? "Edited · " : "") + TeamTaskEngine.Clock(msg.At)
+        var when = l.Sending ? "Sending…" : TeamTaskEngine.Clock(msg.At) + (msg.Edited && !msg.Deleted ? " (edited)" : "")
             + (showSeen ? group ? msg.SeenBy > 0 ? $" · Seen by {msg.SeenBy}" : "" : msg.SeenBy > 0 ? " · Seen" : "" : "");
         var time = Ui.Text(when, 11.5, fg: "Z.Muted");
-        if (showSeen && msg.SeenNames is { Count: > 0 } names)
+        if (showSeen && msg.SeenNames is { Count: > 0 } seenNames)
         {
-            time.ToolTip = "Seen by " + string.Join(", ", names);
+            time.ToolTip = "Seen by " + string.Join(", ", seenNames);
         }
         meta.Children.Add(time);
         if (!l.Sending && !msg.Deleted && msg.Id > 0)
@@ -439,8 +525,32 @@ public sealed class TeamThreadView : UserControl
                 column.MouseLeave += (_, _) => report.Opacity = dot.Opacity = report.IsKeyboardFocused ? 1 : 0;
                 report.GotKeyboardFocus += (_, _) => report.Opacity = dot.Opacity = 1;
             }
+            if (l.CanChange)
+            {
+                // v1.4.1: the member's own line, for 15 minutes: Edit · Delete (on hover / focus, like the prototype).
+                var hover = new StackPanel { Orientation = Orientation.Horizontal, Opacity = 0 };
+                hover.Children.Add(Ui.Text(" · ", 11.5, fg: "Z.Muted"));
+                hover.Children.Add(Tv.Bare(Ui.Text("Edit", 11.5, FontWeights.SemiBold, "Z.Ink2"), () => m.StartEdit(msg), "Edit your message"));
+                hover.Children.Add(Ui.Text(" · ", 11.5, fg: "Z.Muted"));
+                hover.Children.Add(Tv.Bare(Ui.Text("Delete", 11.5, FontWeights.SemiBold, "Z.RedText"), () => m.AskDelete(msg), "Delete for everyone"));
+                meta.Children.Add(hover);
+                column.MouseEnter += (_, _) => hover.Opacity = 1;
+                column.MouseLeave += (_, _) => hover.Opacity = hover.IsKeyboardFocusWithin || editing ? 1 : 0;
+                hover.GotKeyboardFocus += (_, _) => hover.Opacity = 1;
+                if (editing)
+                {
+                    hover.Opacity = 1;
+                }
+            }
         }
         column.Children.Add(meta);
+        if (!l.Sending && !msg.Deleted && msg.Id > 0)
+        {
+            // Filled when it opens (a right-click), not for every line on every render.
+            var menu = new ContextMenu();
+            column.ContextMenu = menu;
+            column.ContextMenuOpening += (_, _) => FillLineMenu(menu, m, l);
+        }
 
         var row = new Grid { Margin = new Thickness(0, showName ? 8 : 2, 0, 2), Background = Brushes.Transparent };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -456,8 +566,31 @@ public sealed class TeamThreadView : UserControl
         }
         Grid.SetColumn(column, 1);
         row.Children.Add(column);
-        AutomationProperties.SetName(row, $"{l.Who}: {msg.Body}. {when}");
+        AutomationProperties.SetName(row, $"{l.Who}: {(msg.Deleted ? ChatEdits.DeletedText : msg.Body)}. {when}{(l.MentionsMe ? ". Mentions you" : "")}");
         return row;
+    }
+
+    /// <summary>The line's right-click menu: Reply · Edit · Delete (own, 15 min) · Report (someone else's).</summary>
+    internal static void FillLineMenu(ContextMenu menu, TrayModel m, TeamLine l)
+    {
+        var msg = l.Message;
+        menu.Items.Clear();
+        void Add(string label, Action run)
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) => run();
+            menu.Items.Add(item);
+        }
+        Add("Reply", () => m.StartTeamReply(msg));
+        if (l.CanChange)
+        {
+            Add("Edit", () => m.StartEdit(msg));
+            Add("Delete for everyone", () => m.AskDelete(msg));
+        }
+        if (!l.Mine && !msg.ByOwner)
+        {
+            Add("Report this message", () => m.OpenReport(m.ChatOpen ?? "", msg));
+        }
     }
 
     private void BuildComposer(TrayModel m, bool canPost, string note)
@@ -472,7 +605,22 @@ public sealed class TeamThreadView : UserControl
             _composer.Child = stack;
             return;
         }
-        if (m.TeamReplyTo is { } reply)
+        if (m.TeamEditing is { } editing)
+        {
+            var chip = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            chip.ColumnDefinitions.Add(new ColumnDefinition());
+            chip.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var q = new StackPanel();
+            q.Children.Add(Ui.Text("Editing your message", 12, FontWeights.SemiBold, "Z.Ink2"));
+            q.Children.Add(Ui.Text(editing.Body, 12, fg: "Z.Muted", trim: true));
+            var quote = new Border { BorderThickness = new Thickness(3, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3), Child = q }.Res(Border.BorderBrushProperty, "Z.Orange");
+            chip.Children.Add(quote);
+            var x = Tv.Icon(Tv.IcoX, m.CancelEdit, "Cancel editing", "Transparent", 10, "Z.Ink2", 3);
+            Grid.SetColumn(x, 1);
+            chip.Children.Add(x);
+            stack.Children.Add(chip);
+        }
+        else if (m.TeamReplyTo is { } reply)
         {
             var chip = new Grid { Margin = new Thickness(0, 0, 0, 8) };
             chip.ColumnDefinitions.Add(new ColumnDefinition());
@@ -488,7 +636,12 @@ public sealed class TeamThreadView : UserControl
             stack.Children.Add(chip);
         }
         var (title, _) = m.ThreadHeader;
-        _input.Tag = m.TeamReplyTo is not null ? "Reply · Esc cancels" : m.Offline ? $"Message {title} (sends when you’re back online)" : "Message · Shift+Enter for a new line";
+        _input.Tag = m.TeamEditing is not null ? "Edit your message · Enter saves · Esc cancels"
+            : m.TeamReplyTo is not null ? "Reply · Esc cancels"
+            : m.Offline ? $"Message {title} (sends when you’re back online)"
+            : m.OpenConversation?.IsGroup == true ? "Message · @ to mention someone" : "Message · Shift+Enter for a new line";
+        Inputs.Detach(_mentionBox);
+        stack.Children.Add(_mentionBox);
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -501,7 +654,7 @@ public sealed class TeamThreadView : UserControl
             {
                 _input.Text = "";
             }
-        }, "Send message", 40);
+        }, m.TeamEditing is not null ? "Save changes" : "Send message", 40);
         send.Margin = new Thickness(8, 0, 0, 2);
         Grid.SetColumn(send, 1);
         row.Children.Add(send);
@@ -559,5 +712,161 @@ public sealed class TeamThreadView : UserControl
         layer.Children.Add(card);
         _overlay.Content = layer;
         card.Loaded += (_, _) => box.Focus();
+    }
+
+    /// <summary>v1.4.1 · "Delete for everyone?" over the thread.</summary>
+    private void BuildDelete(TrayModel m)
+    {
+        if (m.DeleteAsk is not { } msg)
+        {
+            _overlay.Content = null;
+            return;
+        }
+        var layer = new Grid();
+        var scrim = new Border().Res(Border.BackgroundProperty, "Z.DimCard");
+        scrim.MouseLeftButtonDown += (_, e) =>
+        {
+            m.CancelDelete();
+            e.Handled = true;
+        };
+        layer.Children.Add(scrim);
+        var stack = new StackPanel { Margin = new Thickness(16, 16, 16, 14) };
+        stack.Children.Add(Ui.Text("Delete for everyone?", 16, FontWeights.Bold));
+        var q = new Border { BorderThickness = new Thickness(3, 0, 0, 0), Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0, 10, 0, 0), CornerRadius = new CornerRadius(4),
+            Child = Ui.Text(msg.Body, 12.5, fg: "Z.Ink2", wrap: true) }
+            .Res(Border.BorderBrushProperty, "Z.Line2").Res(Border.BackgroundProperty, "Z.Fill");
+        stack.Children.Add(q);
+        var hint = Ui.Text("Everyone in this chat will see “" + ChatEdits.DeletedText + "” instead.", 12.5, fg: "Z.Muted", wrap: true);
+        hint.Margin = new Thickness(0, 10, 0, 0);
+        stack.Children.Add(hint);
+        var buttons = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var delete = Tv.Btn("Delete", true, m.ConfirmDelete, "Delete for everyone");
+        delete.Margin = new Thickness(0, 0, 8, 0);
+        buttons.Children.Add(delete);
+        buttons.Children.Add(Tv.Btn("Cancel", false, m.CancelDelete));
+        stack.Children.Add(buttons);
+        var card = new Border
+        {
+            Child = stack, CornerRadius = new CornerRadius(16), Margin = new Thickness(14), VerticalAlignment = VerticalAlignment.Center,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 30, ShadowDepth = 8, Opacity = 0.25, Direction = 270 },
+        }.Res(Border.BackgroundProperty, "Z.Surface");
+        card.MouseLeftButtonDown += (_, e) => e.Handled = true;
+        AutomationProperties.SetName(card, "Delete for everyone?");
+        layer.Children.Add(card);
+        _overlay.Content = layer;
+        card.Loaded += (_, _) => delete.Focus();
+    }
+
+    // ---- v1.4.1 · @mentions in the composer --------------------------------------------------------------
+
+    /// <summary>Show the group's people matching what follows the "@" before the caret (hidden otherwise).</summary>
+    private void UpdateMentions()
+    {
+        var q = Model?.OpenConversation is { IsGroup: true } ? Mentions.Query(_input.Text, _input.CaretIndex) : null;
+        if (q is null || q.Value.At == _mentionDismissedAt)
+        {
+            if (q is null)
+            {
+                _mentionDismissedAt = -1;
+            }
+            HideMentions();
+            return;
+        }
+        var people = Mentions.Suggest(q.Value.Query, Model!.MentionPeople);
+        if (people.Count == 0)
+        {
+            HideMentions();
+            return;
+        }
+        if (_mentionQuery?.Query != q.Value.Query)
+        {
+            _mentionIndex = 0;
+        }
+        _mentionQuery = q;
+        _mentionPeople = people;
+        _mentionIndex = Math.Clamp(_mentionIndex, 0, people.Count - 1);
+        _mentionRows.Children.Clear();
+        for (var i = 0; i < people.Count; i++)
+        {
+            var p = people[i];
+            var row = new Grid { MinHeight = 36 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            var face = Tv.Face(TeamTaskEngine.Initials(p.Name), 24, p.MemberId == 0 ? "Z.OrangeTint" : "Z.Fill", p.MemberId == 0 ? "Z.OrangeInk" : "Z.Ink");
+            face.Margin = new Thickness(6, 0, 10, 0);
+            face.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(face);
+            var texts = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            texts.Children.Add(Ui.Text(p.Name, 13.5, FontWeights.SemiBold));
+            if (p.Role is { Length: > 0 } role)
+            {
+                var r = Ui.Text("  " + char.ToUpperInvariant(role[0]) + role[1..], 12, fg: "Z.Muted");
+                r.VerticalAlignment = VerticalAlignment.Center;
+                texts.Children.Add(r);
+            }
+            Grid.SetColumn(texts, 1);
+            row.Children.Add(texts);
+            var cell = new Border { CornerRadius = new CornerRadius(8), Child = row, Background = Brushes.Transparent };
+            if (i == _mentionIndex)
+            {
+                cell.SetResourceReference(Border.BackgroundProperty, "Z.Hover");
+            }
+            var pick = p;
+            var b = Tv.Bare(cell, () => InsertMention(pick), "Mention " + p.Name);
+            b.Focusable = false; // the caret stays in the composer
+            _mentionRows.Children.Add(b);
+        }
+        _mentionBox.Visibility = Visibility.Visible;
+    }
+
+    private void HideMentions()
+    {
+        _mentionBox.Visibility = Visibility.Collapsed;
+        _mentionQuery = null;
+        _mentionPeople = [];
+    }
+
+    private void InsertMention(TeamMember person)
+    {
+        if (_mentionQuery is not { } q)
+        {
+            return;
+        }
+        var (text, caret) = Mentions.Insert(_input.Text, q.At, _input.CaretIndex, person.Name);
+        HideMentions();
+        _input.Text = text;
+        _input.CaretIndex = caret;
+        _input.Focus();
+    }
+
+    /// <summary>While the "@" list is open: ↑ ↓ move, Enter / Tab put the name in, Esc closes it.</summary>
+    private void OnMentionKey(object sender, KeyEventArgs e)
+    {
+        if (_mentionBox.Visibility != Visibility.Visible || _mentionPeople.Count == 0)
+        {
+            return;
+        }
+        switch (e.Key)
+        {
+            case Key.Down:
+                _mentionIndex = (_mentionIndex + 1) % _mentionPeople.Count;
+                UpdateMentions();
+                e.Handled = true;
+                break;
+            case Key.Up:
+                _mentionIndex = (_mentionIndex - 1 + _mentionPeople.Count) % _mentionPeople.Count;
+                UpdateMentions();
+                e.Handled = true;
+                break;
+            case Key.Enter or Key.Tab when (Keyboard.Modifiers & ModifierKeys.Shift) == 0:
+                InsertMention(_mentionPeople[_mentionIndex]);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                _mentionDismissedAt = _mentionQuery?.At ?? -1;
+                HideMentions();
+                e.Handled = true;
+                break;
+        }
     }
 }

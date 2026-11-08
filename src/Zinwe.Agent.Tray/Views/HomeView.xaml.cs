@@ -30,6 +30,9 @@ public partial class HomeView : UserControl
 
         BreakNoteText.Text = m.BreakNote ?? "";
         BreakNoteCard.Visibility = m.BreakNote is null ? Visibility.Collapsed : Visibility.Visible;
+        TodayNoteText.Text = m.TodayNote ?? "";
+        TodayNoteCard.Visibility = m.TodayNote is null ? Visibility.Collapsed : Visibility.Visible;
+        RenderLeave(m);
         NeedsList.Children.Clear();
         var needs = m.NeedsYou;
         foreach (var (kind, title, sub, run) in needs)
@@ -80,4 +83,46 @@ public partial class HomeView : UserControl
     }
 
     private void OnMyTime(object sender, RoutedEventArgs e) => Model?.Open(Push.Time);
+
+    private void OnAskLeave(object sender, RoutedEventArgs e) => Model?.OpenLeave();
+
+    /// <summary>v1.4.1 · Days off: the recent asks, each with Waiting / Approved / Declined.</summary>
+    private void RenderLeave(TrayModel m)
+    {
+        LeaveCard.Visibility = m.LeaveOn ? Visibility.Visible : Visibility.Collapsed;
+        if (!m.LeaveOn)
+        {
+            return;
+        }
+        LeaveList.Children.Clear();
+        var rows = m.LeaveRows;
+        foreach (var r in rows)
+        {
+            var row = new Grid { Margin = new Thickness(0, 5, 0, 5) };
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            texts.Children.Add(Ui.Text(r.Label, 13, FontWeights.SemiBold));
+            if (r.Note.Length > 0)
+            {
+                texts.Children.Add(Ui.Text(r.Note, 12, fg: "Z.Muted", trim: true));
+            }
+            row.Children.Add(texts);
+            var (bg, fg) = r.Status switch
+            {
+                "Approved" => ("Z.OkTint", "Z.Ok"),
+                "Declined" => ("Z.RedTint", "Z.RedInk"),
+                "Waiting" => ("Z.WarnTint", "Z.WarnInk"),
+                _ => ("Z.Fill", "Z.Muted"),
+            };
+            var pill = Ui.Pill(r.Status, bg, fg, 12, FontWeights.SemiBold);
+            pill.VerticalAlignment = VerticalAlignment.Center;
+            pill.Margin = new Thickness(8, 0, 0, 0);
+            Grid.SetColumn(pill, 1);
+            row.Children.Add(pill);
+            System.Windows.Automation.AutomationProperties.SetName(row, $"{r.Label}: {r.Status}");
+            LeaveList.Children.Add(row);
+        }
+        NoLeave.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
 }
