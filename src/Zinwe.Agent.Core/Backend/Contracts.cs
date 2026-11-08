@@ -215,8 +215,9 @@ public sealed record DeviceTaskMe(bool Turn = false, IReadOnlyList<long>? CanTic
 public sealed record DeviceTaskStep(long Id, string Title = "", bool Done = false, long? OwnerId = null, long? DoneById = null,
     DateTimeOffset? DoneAt = null);
 
-/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member".</summary>
-public sealed record DeviceTaskActivity(DateTimeOffset At, string By = "", string Action = "", string? Note = null);
+/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member"; v1.4 may say which member (<paramref name="MemberId"/>, <paramref name="Name"/>).</summary>
+public sealed record DeviceTaskActivity(DateTimeOffset At, string By = "", string Action = "", string? Note = null,
+    long? MemberId = null, string? Name = null);
 
 /// <summary>
 /// POST /api/devices/tasks/&lt;id&gt;/action/ — what the member did: "seen" | "accept" | "start" | "help" | "done" |

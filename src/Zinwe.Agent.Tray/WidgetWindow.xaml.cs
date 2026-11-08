@@ -670,7 +670,7 @@ public partial class WidgetWindow : Window
         }
         var chat = m.PanelTab == "chat" ? string.Join("|", m.TaskChat(item).Select(l => l.Text + l.Sending + l.At.Ticks)) : "";
         var seen = System.Text.Json.JsonSerializer.Serialize(item.Task) + $"|{m.Now:yyyyMMddHHmm}|{m.OwnerFirst}|{m.PanelTab}|{m.PanelCard}|{m.PanelMenu}"
-            + $"|{m.TodoSharingOn}|{m.Offline}|{chat}|{m.TaskChatSummary(item)}|{item.Ctx.GroupName}|{m.Profile.DisplayName}";
+            + $"|{m.TodoSharingOn}|{m.Offline}|{chat}|{m.TaskChatSummary(item)}|{item.Ctx.GroupName}|{m.MyName}";
         if (_detailShown is { } shown && shown.Id == item.Key && shown.Seen == seen && DetailLayer.Content is not null)
         {
             return;

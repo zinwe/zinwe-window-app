@@ -43,4 +43,9 @@
     <ProjectReference Include="..\Zinwe.Agent.Core\Zinwe.Agent.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- v1.4: the view tests build the code-made cards, panel and chat views with sample data. -->
+    <InternalsVisibleTo Include="Zinwe.Agent.Tray.Tests" />
+  </ItemGroup>
+
 </Project>

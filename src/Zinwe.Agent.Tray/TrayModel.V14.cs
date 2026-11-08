@@ -53,6 +53,11 @@ public sealed partial class TrayModel
     /// </summary>
     public long? MeId => _todos?.MemberId ?? _remote?.Tasks?.Select(t => t.Me?.MemberId).FirstOrDefault(x => x is not null);
 
+    /// <summary>The member's name as the backend has it on a task (for their initials), else the profile's.</summary>
+    public string MyName =>
+        (MeId is { } me ? _remote?.Tasks?.SelectMany(t => t.People ?? []).FirstOrDefault(p => p.MemberId == me && p.Name.Length > 0)?.Name : null)
+        ?? Profile.DisplayName;
+
     private TaskContext Ctx(DeviceTask? t, bool own) => new(MeId, OwnerFirst, OwnerFirstStart, Now,
         t?.GroupId is { } g ? _chat?.Conversations?.FirstOrDefault(c => c.Id == g)?.Name : null, own);
 
@@ -428,7 +433,7 @@ public sealed partial class TrayModel
             {
                 var mine = m.Mine ?? (me is not null && m.ByMemberId == me && !m.ByOwner);
                 var who = mine ? "You" : m.ByOwner ? OwnerFirstStart : First(m.ByName);
-                lines.Add(new TaskChatLine(who, mine ? Initials(Profile.DisplayName) : TeamTaskEngine.Initials(m.ByOwner ? Status?.OwnerName ?? m.ByName : m.ByName),
+                lines.Add(new TaskChatLine(who, mine ? Initials(MyName) : TeamTaskEngine.Initials(m.ByOwner ? Status?.OwnerName ?? m.ByName : m.ByName),
                     mine, m.ByOwner, m.Deleted ? "This message was deleted" : m.Body, m.At, false));
             }
         }
@@ -443,7 +448,7 @@ public sealed partial class TrayModel
                     continue; // an own to-do's history line, not words
                 }
                 var who = mine ? "You" : string.Equals(a.By, "owner", StringComparison.OrdinalIgnoreCase) ? OwnerFirstStart : First(a.Name) is { Length: > 0 } f ? f : "A teammate";
-                lines.Add(new TaskChatLine(who, mine ? Initials(Profile.DisplayName) : TeamTaskEngine.Initials(who == OwnerFirstStart ? Status?.OwnerName : a.Name),
+                lines.Add(new TaskChatLine(who, mine ? Initials(MyName) : TeamTaskEngine.Initials(who == OwnerFirstStart ? Status?.OwnerName : a.Name),
                     mine, !mine && who == OwnerFirstStart, a.Note!.Trim(), a.At, false));
             }
         }
@@ -453,7 +458,7 @@ public sealed partial class TrayModel
             {
                 continue;
             }
-            lines.Add(new TaskChatLine("You", Initials(Profile.DisplayName), true, false, p.Body, p.CreatedAtUtc, true));
+            lines.Add(new TaskChatLine("You", Initials(MyName), true, false, p.Body, p.CreatedAtUtc, true));
         }
         return [.. lines.OrderBy(l => l.At)];
     }
@@ -488,7 +493,7 @@ public sealed partial class TrayModel
         var reading = PanelItem?.Key == item.Key && PanelTab == "chat";
         if (item.Task.Chat is { } c)
         {
-            var who = c.Last?.By is { Length: > 0 } by ? (string.Equals(First(by), First(Profile.DisplayName), StringComparison.OrdinalIgnoreCase) ? "You" : First(by)) : null;
+            var who = c.Last?.By is { Length: > 0 } by ? (string.Equals(First(by), First(MyName), StringComparison.OrdinalIgnoreCase) ? "You" : First(by)) : null;
             return (c.Count, reading ? 0 : c.Unread, who, c.Last?.Text, c.Last?.At);
         }
         var notes = TaskChat(item);
@@ -641,6 +646,19 @@ public sealed partial class TrayModel
         History.MarkRead(e => e.Go == "chat:" + key);
         Raise();
         _ = RefreshChatAsync();
+    }
+
+    /// <summary>A teammate's row on a task: their direct chat (started on the first line when there is none yet).</summary>
+    public void OpenDirect(long memberId)
+    {
+        if (!TeamChatOn)
+        {
+            return;
+        }
+        var key = Conversations.FirstOrDefault(c => !c.IsGroup && c.WithMemberId == memberId)?.Key ?? ChatKeys.Direct(memberId);
+        CloseDetail();
+        Go(Tab.Chat);
+        OpenConv(key);
     }
 
     /// <summary>Back from a thread to the list.</summary>
@@ -975,6 +993,18 @@ public sealed partial class TrayModel
         {
             return [];
         }
+    }
+
+    /// <summary>Tests and previews: the service's answers without a service (status, tasks, chat).</summary>
+    internal void UseForPreview(AgentStatus? status, TasksReply? tasks, ChatReply? chat, TodosReply? todos = null)
+    {
+        Status = status;
+        StatusKnown = true;
+        _remote = tasks;
+        _remoteVersion = tasks?.Version;
+        _chat = chat;
+        _todos = todos;
+        _todosVersion = todos?.Version;
     }
 
     // ---- Break limit (work_rules) ----------------------------------------------------------------------------

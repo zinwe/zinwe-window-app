@@ -165,7 +165,7 @@ internal static class TaskCardV2
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var face = chat.LastWho == m.OwnerFirstStart ? Tv.Face(TeamTaskEngine.Initials(m.Status?.OwnerName ?? chat.LastWho), 22, "Z.Inv", "Z.OnInv")
-                : Tv.Face(TeamTaskEngine.Initials(chat.LastWho == "You" ? m.Profile.DisplayName : chat.LastWho), 22);
+                : Tv.Face(TeamTaskEngine.Initials(chat.LastWho == "You" ? m.MyName : chat.LastWho), 22);
             face.Margin = new Thickness(0, 0, 8, 0);
             row.Children.Add(face);
             var text = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center };

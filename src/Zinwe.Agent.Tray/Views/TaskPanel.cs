@@ -431,7 +431,7 @@ internal static class TaskPanel
             {
                 ring.Children.Add(Arc(pct, p.Tone == TaskTone.Ok || p.Word == "Approved" ? "Z.Ok" : "Z.Orange"));
             }
-            var initials = p.IsMe ? TeamTaskEngine.Initials(m.Profile.DisplayName) : p.Initials;
+            var initials = p.Initials.Length > 0 ? p.Initials : TeamTaskEngine.Initials(m.MyName);
             var face = Tv.Face(initials.Length > 0 ? initials : "•", 28, p.IsMe ? "Z.TvMineBg" : "Z.Fill", "Z.Ink");
             face.HorizontalAlignment = HorizontalAlignment.Center;
             face.VerticalAlignment = VerticalAlignment.Center;
@@ -453,6 +453,13 @@ internal static class TaskPanel
             Grid.SetColumn(word, 2);
             row.Children.Add(word);
             AutomationProperties.SetName(row, $"{p.Name}: {p.Word}");
+            if (!p.IsMe && m.TeamChatOn && p.MemberId is { } id && id > 0)
+            {
+                // A teammate: their direct chat is a click away.
+                var open = Tv.Bare(row, () => m.OpenDirect(id), $"{p.Name}: {p.Word}. Open your chat with {p.Name.Split(' ')[0]}", "Message " + p.Name.Split(' ')[0]);
+                panel.Children.Add(open);
+                continue;
+            }
             panel.Children.Add(row);
         }
         return panel;
@@ -533,7 +540,7 @@ internal static class TaskPanel
             FrameworkElement owner = s.OwnerId is null
                 ? new Border { Width = 24, Height = 24, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1.5), Child = Ui.Text("•", 12, fg: "Z.Muted") }
                     .Res(Border.BorderBrushProperty, "Z.Faint")
-                : Tv.Face(s.OwnerIsMe ? TeamTaskEngine.Initials(m.Profile.DisplayName) is { Length: > 0 } mi ? mi : "Me" : s.OwnerInitials, 24, s.OwnerIsMe ? "Z.TvMineBg" : "Z.Fill");
+                : Tv.Face(s.OwnerInitials.Length > 0 ? s.OwnerInitials : TeamTaskEngine.Initials(m.MyName) is { Length: > 0 } mi ? mi : "Me", 24, s.OwnerIsMe ? "Z.TvMineBg" : "Z.Fill");
             if (owner is Border { Child: TextBlock tb } && s.OwnerId is null)
             {
                 tb.HorizontalAlignment = HorizontalAlignment.Center;
@@ -572,7 +579,7 @@ internal static class TaskPanel
         var people = TeamTaskEngine.People(t, c);
         var me = TeamTaskEngine.Me(t, c);
         var others = people.Where(p => p.MemberId != me && !(t.People is null)).Select(p => p.Name).ToList();
-        var faces = Tv.Faces([.. people.Select(p => p.MemberId == me || t.People is null ? TeamTaskEngine.Initials(m.Profile.DisplayName) : TeamTaskEngine.Initials(p.Name)),
+        var faces = Tv.Faces([.. people.Select(p => p.MemberId == me || t.People is null ? TeamTaskEngine.Initials(m.MyName) : TeamTaskEngine.Initials(p.Name)),
             TeamTaskEngine.Initials(m.Status?.OwnerName ?? m.OwnerFirstStart)]);
         faces.Margin = new Thickness(0, 0, 8, 0);
         who.Children.Add(faces);
