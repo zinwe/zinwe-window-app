@@ -23,7 +23,7 @@ namespace Zinwe.Agent.Core.Messages;
 public sealed record OutboxReply(
     string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null,
     long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null, bool Refused = false,
-    string? TodoId = null)
+    string? TodoId = null, string? ChatKey = null, long? MessageId = null, long? MemberId = null)
 {
     public const string ReplyKind = "reply";
     public const string FeedbackKind = "feedback";
@@ -31,6 +31,19 @@ public sealed record OutboxReply(
     public const string PictureKind = "picture";
     public const string TodoKind = "todo";
     public const string IssueKind = "issue";
+    /// <summary>
+    /// v1.4 team chat: <see cref="Action"/> "send" (<see cref="Body"/> to the thread <see cref="ChatKey"/>, quoting
+    /// <see cref="MessageId"/>), "report" (<see cref="MessageId"/> or the person in <see cref="ChatKey"/>, the note in
+    /// <see cref="Body"/>) or "direct" (start the chat with <see cref="MemberId"/>). Written only while a service that knows
+    /// them runs (<c>AgentStatus.ChatVersion</c>).
+    /// </summary>
+    public const string ChatKind = "chat";
+    public const string ChatSend = "send";
+    public const string ChatReport = "report";
+    public const string ChatDirect = "direct";
+
+    [JsonIgnore]
+    public bool IsChat => string.Equals(Kind, ChatKind, StringComparison.Ordinal);
 
     public bool IsFeedback => string.Equals(Kind, FeedbackKind, StringComparison.Ordinal);
 
@@ -136,6 +149,18 @@ public sealed class MessageOutbox
         Add(item);
         return item;
     }
+
+    /// <summary>v1.4 · queue a team chat line, report or new direct chat (see <see cref="OutboxReply.ChatKind"/>).</summary>
+    public OutboxReply AppendChat(string action, string chatKey, string? body = null, long? messageId = null, long? memberId = null)
+    {
+        var item = new OutboxReply(Guid.NewGuid().ToString("N"), (body ?? "").Trim(), DateTimeOffset.UtcNow, OutboxReply.ChatKind,
+            Action: action, ChatKey: chatKey, MessageId: messageId, MemberId: memberId);
+        Add(item);
+        return item;
+    }
+
+    /// <summary>v1.4 · team chat items still waiting, oldest first.</summary>
+    public IReadOnlyList<OutboxReply> PendingChat() => [.. All().Where(i => i.IsChat)];
 
     /// <summary>
     /// Queue the member's new picture (FR-44), replacing any earlier one still waiting (the newest choice wins).
