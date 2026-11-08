@@ -81,7 +81,22 @@ public sealed record HeartbeatResponse(
     JsonElement Picture = default,
     WorkDayMoved? DayMoved = null,
     WorkDayCarry? DayCarry = null,
-    string? WebListVersion = null);
+    string? WebListVersion = null,
+    WorkRules? WorkRules = null);
+
+/// <summary>
+/// v1.4 · the work rules in force for this PC (company ← department ← device), carried on the heartbeat. Null = an older
+/// backend: no break-limit note. <paramref name="Days"/> is "1111110" (Monday first); times are "HH:mm".
+/// </summary>
+/// <param name="BreakAllowedMin">The break time allowed per day, in minutes (0 = no limit).</param>
+/// <param name="TellMemberOver">Show the member how much of their break time they used, near and over the limit.</param>
+public sealed record WorkRules(
+    string? Days = null,
+    string? Start = null,
+    string? End = null,
+    int BreakAllowedMin = 0,
+    bool TellMemberOver = true,
+    int LateGraceMin = 0);
 
 /// <summary>Where the member's day went, and when (<see cref="HeartbeatResponse.DayMoved"/>).</summary>
 public sealed record WorkDayMoved(string ToHostname, DateTimeOffset At);
@@ -136,8 +151,11 @@ public sealed record AgentMessage(
 
 /// <summary>
 /// A task the owner gave this PC's member (FR-20 v2, GET /api/devices/tasks/). Status: sent → seen → accepted →
-/// progress → review → approved, side states help and cancelled. Unknown extra fields are ignored, and every field
-/// but the id has a default, so a backend that adds or drops one doesn't break the agent.
+/// progress → review → approved, side states help, cantdo (v1.4) and cancelled. Unknown extra fields are ignored, and
+/// every field but the id has a default, so a backend that adds or drops one doesn't break the agent.
+/// v1.4 (team tasks) adds the trailing fields: several people (<paramref name="People"/>), "any one of them" tasks
+/// (<paramref name="Mode"/>), steps in order, step owners, the task chat summary and the device's own <paramref name="Me"/>
+/// block. A 1.3 backend leaves them out: the task is then one person's (this member's), steps are anyone's.
 /// </summary>
 public sealed record DeviceTask(
     long Id,
@@ -154,13 +172,58 @@ public sealed record DeviceTask(
     string? StatusChangedBy = null,
     long? MessageId = null,
     IReadOnlyList<DeviceTaskActivity>? Activity = null,
-    string? MemberName = null);
+    string? MemberName = null,
+    string? Mode = null,
+    bool? InOrder = null,
+    string? Repeat = null,
+    string? NextOn = null,
+    long? GroupId = null,
+    IReadOnlyList<DeviceTaskPerson>? People = null,
+    string? CantdoNote = null,
+    string? ReopenNote = null,
+    DateTimeOffset? NudgedAt = null,
+    DeviceTaskChat? Chat = null,
+    long? Member = null,
+    DeviceTaskMe? Me = null);
 
-/// <summary>One step of a <see cref="DeviceTask"/>.</summary>
-public sealed record DeviceTaskStep(long Id, string Title = "", bool Done = false);
+/// <summary>v1.4 · one person on a task: <paramref name="State"/> is sent | seen | progress | done | help | cantdo;
+/// <paramref name="Note"/> their help / can't-do reason while it stands.</summary>
+public sealed record DeviceTaskPerson(
+    long MemberId,
+    string Name = "",
+    string? State = null,
+    int StepsTotal = 0,
+    int StepsDone = 0,
+    DateTimeOffset? SeenAt = null,
+    DateTimeOffset? DoneAt = null,
+    string? Role = null,
+    DateTimeOffset? StartedAt = null,
+    string? Note = null);
 
-/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member".</summary>
-public sealed record DeviceTaskActivity(DateTimeOffset At, string By = "", string Action = "", string? Note = null);
+/// <summary>v1.4 · the task chat in a line: how many messages, how many this member hasn't read, and the last one.</summary>
+public sealed record DeviceTaskChat(int Count = 0, int Unread = 0, DeviceTaskChatLast? Last = null);
+
+/// <summary>The last line of a task chat: <paramref name="By"/> is the writer's first name as the backend sends it.</summary>
+public sealed record DeviceTaskChatLast(string? Text = null, string? By = null, DateTimeOffset? At = null);
+
+/// <summary>
+/// v1.4 · the device's own view of a task: whose turn it is (<paramref name="Turn"/>), which steps this member may tick
+/// (<paramref name="CanTick"/>), their own state, and - when the backend sends it - their member id.
+/// </summary>
+/// <remarks><c>restart</c> = the owner reopened it and this member hasn't pressed Start again yet.</remarks>
+public sealed record DeviceTaskMe(bool Turn = false, IReadOnlyList<long>? CanTick = null, string? State = null, long? MemberId = null,
+    bool? Restart = null);
+
+/// <summary>
+/// One step of a <see cref="DeviceTask"/>. v1.4: <paramref name="OwnerId"/> = who does it (null = anyone on the task),
+/// <paramref name="DoneById"/> / <paramref name="DoneAt"/> = who ticked it, and when.
+/// </summary>
+public sealed record DeviceTaskStep(long Id, string Title = "", bool Done = false, long? OwnerId = null, long? DoneById = null,
+    DateTimeOffset? DoneAt = null);
+
+/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member"; v1.4 may say which member (<paramref name="MemberId"/>, <paramref name="MemberName"/>).</summary>
+public sealed record DeviceTaskActivity(DateTimeOffset At, string By = "", string Action = "", string? Note = null,
+    long? MemberId = null, string? MemberName = null);
 
 /// <summary>
 /// POST /api/devices/tasks/&lt;id&gt;/action/ — what the member did: "seen" | "accept" | "start" | "help" | "done" |
@@ -172,7 +235,12 @@ public sealed record TaskActionRequest(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? StepId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? StepDone = null);
 
-/// <summary>The member's task actions (the contract's names).</summary>
+/// <summary>
+/// The member's task actions (the contract's names). 1.3: seen · accept · start · help · done · note (a step tick is
+/// "note" + step id). v1.4 (team tasks) adds tick / untick (a step), cantdo and finish (a task without steps), and
+/// "start" takes an "any one of them" task. <see cref="ForBackend"/> turns a v1.4 action into its 1.3 form for a task
+/// from a backend without team tasks.
+/// </summary>
 public static class TaskActions
 {
     public const string Seen = "seen";
@@ -181,8 +249,34 @@ public static class TaskActions
     public const string Help = "help";
     public const string Done = "done";
     public const string Note = "note";
+    public const string Tick = "tick";
+    public const string Untick = "untick";
+    public const string Cantdo = "cantdo";
+    public const string Finish = "finish";
 
-    public static bool IsKnown(string? action) => action is Seen or Accept or Start or Help or Done or Note;
+    public static bool IsKnown(string? action) => action is Seen or Accept or Start or Help or Done or Note
+        or Tick or Untick or Cantdo or Finish;
+
+    /// <summary>
+    /// What to post for <paramref name="action"/>: as is to a v1.4 backend (<paramref name="teamTasks"/>), else the 1.3
+    /// words: tick / untick = "note" with the step, finish = "done", cantdo = "help" with "Can’t do it: …".
+    /// </summary>
+    public static (string Action, string? Note, long? StepId, bool? StepDone) ForBackend(string action, string? note, long? stepId,
+        bool teamTasks)
+    {
+        if (teamTasks)
+        {
+            return (action, note, stepId, null);
+        }
+        return action switch
+        {
+            Tick => (Note, null, stepId, true),
+            Untick => (Note, null, stepId, false),
+            Finish => (Done, note, null, null),
+            Cantdo => (Help, "Can’t do it: " + (string.IsNullOrWhiteSpace(note) ? "no reason given" : note.Trim()), null, null),
+            _ => (action, note, stepId, stepId is null ? null : true),
+        };
+    }
 }
 
 /// <summary>What happened to a task action the agent posted.</summary>
@@ -321,6 +415,36 @@ public sealed record AvatarPictureRequest(string Kind, string Key);
 /// <summary>POST /api/devices/messages/ — the member replies in the thread.</summary>
 public sealed record MemberReplyRequest(string Body);
 
+/// <summary>v1.4 · POST a line to a group / direct chat (<c>chat/&lt;id&gt;/messages/</c>) or a task chat (<c>tasks/&lt;id&gt;/chat/</c>).</summary>
+public sealed record ChatMessageRequest(
+    string Body,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ReplyTo = null);
+
+/// <summary>v1.4 · POST chat/&lt;id&gt;/report/: a message (or, without one, the person) goes to the admin with the note.</summary>
+public sealed record ChatReportRequest(
+    string Note,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? MessageId = null);
+
+/// <summary>v1.4 · PATCH chat/&lt;id&gt;/: the member's own pin / mute / "mark as unread" for a conversation. Unset parts are left out.</summary>
+public sealed record ChatPrefsRequest(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Pinned = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Muted = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Unread = null);
+
+/// <summary>v1.4 · POST chat/direct/: open (or find) the direct chat with a teammate.</summary>
+public sealed record DirectChatRequest(long MemberId);
+
+/// <summary>What became of a chat line, report or direct chat the agent sent (v1.4).</summary>
+public enum ChatWriteOutcome
+{
+    /// <summary>Stored.</summary>
+    Done,
+    /// <summary>Refused for good (a 4xx other than 403/404/405/429): sending it again won't help.</summary>
+    Refused,
+    /// <summary>403/404/405: a backend (or plan) without it.</summary>
+    Off,
+}
+
 /// <summary>POST /api/devices/feedback/ — the member's feedback on Zinwe from the Zinwe window (FR-14).</summary>
 public sealed record MemberFeedbackRequest(int Rating, string Message);
 
@@ -372,4 +496,8 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(MetricUploadRequest))]
 [JsonSerializable(typeof(MetricUploadResponse))]
 [JsonSerializable(typeof(Dictionary<string, string[]>))]
+[JsonSerializable(typeof(ChatMessageRequest))]
+[JsonSerializable(typeof(ChatReportRequest))]
+[JsonSerializable(typeof(DirectChatRequest))]
+[JsonSerializable(typeof(ChatPrefsRequest))]
 internal sealed partial class BackendJsonContext : JsonSerializerContext;

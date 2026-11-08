@@ -96,6 +96,20 @@
     <SolidColorBrush x:Key="Z.Dim" Color="#59141210" />
     <SolidColorBrush x:Key="Z.SnackAction" Color="#FF8A3D" />
     <!-- Tasks v2 details card (Apple style): the card, the soft icon squares, the round close, the dimmed window. -->
+    <!-- v1.4 team tasks + chat (the prototype's panel.css): the What's happening card per tone, the journey bar, pills. -->
+    <SolidColorBrush x:Key="Z.TvWorkBg" Color="#FFF8F2" />
+    <SolidColorBrush x:Key="Z.TvWorkLine" Color="#F8D9BF" />
+    <SolidColorBrush x:Key="Z.TvRedBg" Color="#FDF3F1" />
+    <SolidColorBrush x:Key="Z.TvRedLine" Color="#F2C6BC" />
+    <SolidColorBrush x:Key="Z.TvNeedsBg" Color="#FAFAFA" />
+    <SolidColorBrush x:Key="Z.TvOkBg" Color="#F2FAF5" />
+    <SolidColorBrush x:Key="Z.TvOkLine" Color="#C5E6D2" />
+    <SolidColorBrush x:Key="Z.TvPast" Color="#F8B585" />
+    <SolidColorBrush x:Key="Z.TvTrack" Color="#EEEEEE" />
+    <SolidColorBrush x:Key="Z.TvWorkInk" Color="#8A3A04" />
+    <SolidColorBrush x:Key="Z.TvTodayBg" Color="#FFF1E4" />
+    <SolidColorBrush x:Key="Z.TvMineBg" Color="#FDEBDC" />
+    <SolidColorBrush x:Key="Z.TvTheirsBg" Color="#F5F5F5" />
     <SolidColorBrush x:Key="Z.DetailBg" Color="#F2F2F2" />
     <SolidColorBrush x:Key="Z.IconSoft" Color="#E9E9E9" />
     <SolidColorBrush x:Key="Z.CloseFill" Color="#E3E3E3" />

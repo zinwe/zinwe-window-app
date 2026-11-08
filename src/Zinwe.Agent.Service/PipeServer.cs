@@ -27,7 +27,8 @@ namespace Zinwe.Agent.Service;
 internal sealed partial class PipeServer(
     AgentStateHolder state, MemberCredentialSource credentials, Update.AgentUpdater updater, ILogger<PipeServer> logger,
     Zinwe.Agent.Core.Tasks.TaskSync tasks, Zinwe.Agent.Core.Tasks.TodoSync todos, Zinwe.Agent.Core.Pictures.PictureSync pictures,
-    Zinwe.Agent.Core.Zingles.ZingleSync zingles, Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
+    Zinwe.Agent.Core.Zingles.ZingleSync zingles, Zinwe.Agent.Core.Chat.TeamChatSync teamChat,
+    Zinwe.Agent.Core.Features.Web.ForegroundInbox? inbox = null)
     : BackgroundService
 {
     private const int MaxInstances = 8;
@@ -102,13 +103,18 @@ internal sealed partial class PipeServer(
                     var status = state.Current with
                     {
                         TasksVersion = tasks.Version, Picture = pictures.Status, TodosVersion = todos.Version, Issues = true,
-                        Zingle = zingles.Status,
+                        Zingle = zingles.Status, ChatVersion = teamChat.Version,
                     };
                     await writer.WriteLineAsync(PipeProtocol.Serialize(status).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Tasks)
                 {
                     await writer.WriteLineAsync(PipeProtocol.Serialize(tasks.Snapshot).AsMemory(), cts.Token);
+                }
+                else if (request.Type == PipeProtocol.RequestTypes.Chat)
+                {
+                    // v1.4: the team chat; the thread the tray has open is pulled every 3 s from now on.
+                    await writer.WriteLineAsync(PipeProtocol.Serialize(teamChat.Focus(request.Focus)).AsMemory(), cts.Token);
                 }
                 else if (request.Type == PipeProtocol.RequestTypes.Todos)
                 {

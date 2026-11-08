@@ -95,6 +95,10 @@ builder.Services.AddSingleton<MessageSync>();
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TaskSync(
     sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),
     sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Tasks.TaskSync>>(), DataDirectory(sp)));
+// v1.4 team chat: what the tray queued (outbox kind chat) out, the list (15 s) and the open thread (3 s) in, on the pipe.
+builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Chat.TeamChatSync(
+    sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),
+    sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Chat.TeamChatSync>>()));
 // The member's own to-dos - what the tray queued (outbox kind todo) out, GET todos/ in, served on the pipe.
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TodoSync(
     sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(),

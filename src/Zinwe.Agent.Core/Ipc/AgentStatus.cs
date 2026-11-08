@@ -81,7 +81,12 @@ public sealed record AgentStatus(
     bool Issues = false,
     /// <summary>The special-day logo live today, for the window's title bar. Null = none, or an older service: the
     /// normal wordmark.</summary>
-    ZingleStatus? Zingle = null);
+    ZingleStatus? Zingle = null,
+    /// <summary>v1.4: goes up whenever the team chat the service holds changes (ask with the "chat" request). Null = an
+    /// older service without team chat: the widget shows the admin chat only and writes no <c>chat</c> outbox items.</summary>
+    int? ChatVersion = null,
+    /// <summary>v1.4: the work rules in force for this PC (from the last heartbeat); null = none sent (an older backend).</summary>
+    Backend.WorkRules? WorkRules = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

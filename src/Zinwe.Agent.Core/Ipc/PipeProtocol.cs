@@ -24,7 +24,7 @@ public static class PipeProtocol
     /// </summary>
     public sealed record Request(
         string Type, string? Email = null, string? MemberId = null, IReadOnlyList<ForegroundReport>? Usage = null,
-        PictureChoice? Picture = null);
+        PictureChoice? Picture = null, string? Focus = null);
 
     /// <summary>
     /// The longest request line the service reads. A "picture" request carries a ≤ 150 KB JPEG as base64 (≈ 200 KB);
@@ -69,6 +69,12 @@ public static class PipeProtocol
         /// without <see cref="AgentStatus.Picture"/> is an older service: the tray never sends this request to it.
         /// </summary>
         public const string Picture = "picture";
+        /// <summary>
+        /// v1.4: the member's team chat (<see cref="Chat.ChatReply"/>). <see cref="Request.Focus"/> names the thread the tray
+        /// shows ("conv:12", "task:6"), which the service then pulls every 3 s. Asked only of a service whose status has
+        /// <see cref="AgentStatus.ChatVersion"/>.
+        /// </summary>
+        public const string Chat = "chat";
     }
 
     /// <summary>
@@ -102,6 +108,11 @@ public static class PipeProtocol
 
     /// <summary>A "todos" reply. Like <see cref="DeserializeTasks"/>, a <see cref="NotSupported"/> ack reads as <c>Supported = false</c>.</summary>
     public static TodosReply? DeserializeTodos(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.TodosReply);
+
+    public static string Serialize(Chat.ChatReply reply) => JsonSerializer.Serialize(reply, PipeJsonContext.Default.ChatReply);
+
+    /// <summary>A "chat" reply. A <see cref="NotSupported"/> ack reads as <c>Supported = false</c>.</summary>
+    public static Chat.ChatReply? DeserializeChat(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.ChatReply);
 
     /// <summary>Server side: read one request line. Returns null on a malformed or empty request.</summary>
     public static async Task<Request?> ReadRequestAsync(StreamReader reader, CancellationToken ct)
@@ -189,6 +200,26 @@ public static class AgentPipeClient
     }
 
     /// <summary>
+    /// v1.4: the team chat the service holds, with <paramref name="focus"/> (the open thread) pulled every 3 s from now
+    /// on. Null when the service isn't reachable or doesn't know team chat.
+    /// </summary>
+    public static async Task<Chat.ChatReply?> GetChatAsync(string? focus, TimeSpan timeout, CancellationToken ct = default) =>
+        ParseChat(await ExchangeAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Chat, Focus: focus), timeout, ct));
+
+    /// <summary>A reply line → chat; null for nothing, garbage or a "not supported" answer.</summary>
+    internal static Chat.ChatReply? ParseChat(string? line)
+    {
+        try
+        {
+            return line is null ? null : PipeProtocol.DeserializeChat(line) is { Supported: true } reply ? reply : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// FR-44: set or remove the member's picture. Null when the service isn't reachable; an older service answers
     /// "not supported" (or closes the pipe: null too). Accepted = queued, it shows on the next status.
     /// </summary>
@@ -258,4 +289,5 @@ public static class AgentPipeClient
 [JsonSerializable(typeof(PictureStatus))]
 [JsonSerializable(typeof(PictureChoice))]
 [JsonSerializable(typeof(ZingleStatus))]
+[JsonSerializable(typeof(Chat.ChatReply))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;

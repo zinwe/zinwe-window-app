@@ -13,6 +13,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Theme/Tokens.xaml" />
                 <ResourceDictionary Source="Theme/Controls.xaml" />
+                <ResourceDictionary Source="Theme/V14.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

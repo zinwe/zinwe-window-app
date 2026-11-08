@@ -23,7 +23,7 @@ public sealed record UnreadCounts(int Chat, int Tasks, int Other)
     public static UnreadCounts Of(IEnumerable<NoticeEntry> entries)
     {
         var unread = entries.Where(e => !e.Read).ToList();
-        var chat = unread.Count(e => e.Go == "chat");
+        var chat = unread.Count(e => e.Go == "chat" || e.Go.StartsWith("chat:", StringComparison.Ordinal)); // v1.4: team threads too
         var tasks = unread.Count(e => e.Go.StartsWith("task:", StringComparison.Ordinal));
         return new UnreadCounts(chat, tasks, unread.Count - chat - tasks);
     }

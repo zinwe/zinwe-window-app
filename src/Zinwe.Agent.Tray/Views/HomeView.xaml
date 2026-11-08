@@ -18,6 +18,22 @@
                 </WrapPanel>
             </Border>
 
+            <!-- v1.4: how much of the day's break time is used, near and over the limit (work_rules). -->
+            <Border x:Name="BreakNoteCard" CornerRadius="12" Padding="12,9,12,9" Margin="0,0,0,12" BorderThickness="1" Visibility="Collapsed"
+                    Background="{DynamicResource Z.AccentSoft}" BorderBrush="{DynamicResource Z.AccentLine}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Path Data="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 7.5V12l3 2" Stroke="{DynamicResource Z.OrangeInk}" StrokeThickness="2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="16" Height="16" Stretch="Uniform" Margin="0,1,10,0"
+                          VerticalAlignment="Top" />
+                    <TextBlock x:Name="BreakNoteText" Grid.Column="1" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource Z.Ink}"
+                               AutomationProperties.LiveSetting="Polite" />
+                </Grid>
+            </Border>
+
             <Border Style="{StaticResource Z.Card}" Margin="0,0,0,12" ClipToBounds="True">
                 <StackPanel>
                     <Grid Margin="14,12,14,6">

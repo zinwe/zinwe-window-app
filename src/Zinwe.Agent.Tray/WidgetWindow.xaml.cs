@@ -39,6 +39,9 @@ public partial class WidgetWindow : Window
     private readonly Views.HomeView Home = new();
     private readonly Views.ChatView ChatView = new() { Visibility = Visibility.Collapsed };
     private readonly Views.TasksView TasksView = new() { Visibility = Visibility.Collapsed };
+    // v1.4 team chat: the list (admin chat pinned, groups, teammates) and a group / direct thread.
+    private readonly Views.ChatListView ChatList = new() { Visibility = Visibility.Collapsed };
+    private readonly Views.TeamThreadView TeamThread = new() { Visibility = Visibility.Collapsed };
     private readonly Views.MeView MeView = new() { Visibility = Visibility.Collapsed };
     private readonly Views.PushView PushView = new() { Visibility = Visibility.Collapsed };
     private readonly Views.SheetView SheetHost = new() { Visibility = Visibility.Collapsed };
@@ -52,7 +55,7 @@ public partial class WidgetWindow : Window
         InitializeComponent();
         _zingle = new Views.ZinglePlayer(TitleLogo);
         OnboardHost.Content = Onboard;
-        foreach (var view in new UIElement[] { Home, ChatView, TasksView, MeView, PushView })
+        foreach (var view in new UIElement[] { Home, ChatView, ChatList, TeamThread, TasksView, MeView, PushView })
         {
             ScreensHost.Children.Add(view);
         }
@@ -65,6 +68,8 @@ public partial class WidgetWindow : Window
         Onboard.Model = model;
         Home.Model = model;
         ChatView.Model = model;
+        ChatList.Model = model;
+        TeamThread.Model = model;
         TasksView.Model = model;
         MeView.Model = model;
         PushView.Model = model;
@@ -88,6 +93,10 @@ public partial class WidgetWindow : Window
             {
                 ChatView.FocusComposer();
             }
+            else if (what == "team-composer")
+            {
+                TeamThread.FocusComposer();
+            }
         };
         HighContrastTheme.Changed += Render;
         _model.CaptureWindow = Capture;
@@ -105,18 +114,35 @@ public partial class WidgetWindow : Window
             {
                 PlaceAboveTaskbar();
             }
+            OnVisibility();
             _zingle.SetOnScreen(IsVisible && WindowState != WindowState.Minimized);
         };
         // The Zingle plays only while the window can be seen; Windows' "Animation effects" switch picks GIF or still.
-        StateChanged += (_, _) => _zingle.SetOnScreen(IsVisible && WindowState != WindowState.Minimized);
+        StateChanged += (_, _) =>
+        {
+            _zingle.SetOnScreen(IsVisible && WindowState != WindowState.Minimized);
+            OnVisibility();
+        };
         SystemParameters.StaticPropertyChanged += OnSystemParameterChanged;
         Closing += OnClosing;
         Closed += (_, _) => SystemParameters.StaticPropertyChanged -= OnSystemParameterChanged;
     }
 
-    /// <summary>The member is looking at the open chat (the tray skips message toasts while this is true).</summary>
+    /// <summary>The member is looking at the admin chat (the tray skips message toasts while this is true).</summary>
     public bool IsReading => IsVisible && IsActive && WindowState != WindowState.Minimized
-        && _model.Stage == Stage.App && _model.Tab == Tab.Chat && _model.Push == Push.None;
+        && _model.Stage == Stage.App && _model.Tab == Tab.Chat && _model.Push == Push.None
+        && (!_model.TeamChatOn || _model.ChatOpen == "admin");
+
+    /// <summary>v1.4: the open chat thread is pulled every 3 s only while the window can be seen.</summary>
+    private void OnVisibility()
+    {
+        var visible = IsVisible && WindowState != WindowState.Minimized;
+        if (visible != _model.WindowVisible)
+        {
+            _model.WindowVisible = visible;
+            _ = _model.RefreshChatAsync();
+        }
+    }
 
     /// <summary>Set by the tray once Ctrl+Alt+Z is registered (null when another app holds it).</summary>
     public string? Shortcut
@@ -173,7 +199,12 @@ public partial class WidgetWindow : Window
 
         var onHome = m.Tab == Tab.Home && m.Push == Push.None;
         Home.Visibility = Show(onHome);
-        ChatView.Visibility = Show(m.Tab == Tab.Chat && m.Push == Push.None);
+        // v1.4: with team chat, Chat is a list; the admin chat and the team threads open from it.
+        var onChat = m.Tab == Tab.Chat && m.Push == Push.None;
+        var team = m.TeamChatOn;
+        ChatView.Visibility = Show(onChat && (!team || m.ChatOpen == "admin"));
+        ChatList.Visibility = Show(onChat && team && m.ChatOpen is null);
+        TeamThread.Visibility = Show(onChat && team && m.ChatOpen is { } open && open != "admin");
         TasksView.Visibility = Show(m.Tab == Tab.Tasks && m.Push == Push.None);
         MeView.Visibility = Show(m.Tab == Tab.Me && m.Push == Push.None);
         PushView.Visibility = Show(m.Push != Push.None);
@@ -181,9 +212,17 @@ public partial class WidgetWindow : Window
         {
             Home.Render();
         }
-        if (ChatView.IsVisible || m.Tab == Tab.Chat)
+        if (ChatView.Visibility == Visibility.Visible)
         {
             ChatView.Render();
+        }
+        if (ChatList.Visibility == Visibility.Visible)
+        {
+            ChatList.Render();
+        }
+        if (TeamThread.Visibility == Visibility.Visible)
+        {
+            TeamThread.Render();
         }
         if (m.Tab == Tab.Tasks)
         {
@@ -264,11 +303,13 @@ public partial class WidgetWindow : Window
     {
         var inApp = stage == Stage.App;
         var pushed = inApp && m.Push != Push.None;
-        BackButton.Visibility = Show(pushed);
+        // v1.4: a chat opened from the list has a Back to the list, and its name as the title.
+        var thread = inApp && !pushed && m.Tab == Tab.Chat && m.TeamChatOn && m.ChatOpen is not null;
+        BackButton.Visibility = Show(pushed || thread);
         // FR-44: the member's picture in place of the mark (no picture, or not set up: the official mark, as before).
         var picture = inApp ? m.MyPicture : PictureView.None;
-        HeaderMark.Visibility = Show(!pushed && !picture.HasPicture);
-        HeaderPicture.Visibility = Show(!pushed && picture.HasPicture);
+        HeaderMark.Visibility = Show(!pushed && !thread && !picture.HasPicture);
+        HeaderPicture.Visibility = Show(!pushed && !thread && picture.HasPicture);
         if (picture.HasPicture && picture.Stamp != _headerPicture)
         {
             _headerPicture = picture.Stamp;
@@ -282,7 +323,7 @@ public partial class WidgetWindow : Window
             Push.Settings => "Settings",
             Push.Notifications => "Notifications",
             _ => "Help",
-        } : m.Tab.ToString();
+        } : thread ? (m.ChatOpen == "admin" ? m.OwnerNameStart : m.ThreadHeader.Title) : m.Tab.ToString();
         // The wordmark says "Zinwe" (or today's Zingle); a dev copy adds its instance name next to it.
         _zingle.Apply(m.Status?.Zingle);
         TitleText.Text = Zinwe.Agent.Core.AgentInstance.IsDefault ? "" : $"({Zinwe.Agent.Core.AgentInstance.Name})";
@@ -298,6 +339,9 @@ public partial class WidgetWindow : Window
             _ when m.NotRunning => (Strings.StatusNotRunning, "Z.RedText"),
             _ when m.Offline => ("Offline · saved on this PC", "Z.Warn"),
             _ when m.Tab == Tab.Home && !pushed => (m.Now.ToLocalTime().ToString("dddd, d MMMM"), null),
+            _ when thread && m.ChatOpen == "admin" => ("Your admin", null),
+            _ when thread => (m.ThreadHeader.Line, null),
+            _ when m.Tab == Tab.Chat && !pushed && m.TeamChatOn => ("", null),
             _ when m.Tab == Tab.Chat && !pushed => (m.Status?.OwnerName is { Length: > 0 } ? $"{m.OwnerNameStart} · your admin" : "Messages with your admin", null),
             _ when m.Consent == ConsentState.Declined => ("Monitoring is off on this PC", "Z.Warn"),
             _ when m.Status?.State == AgentState.UpdateRequired => (Strings.StatusUpdate, "Z.Warn"),
@@ -546,36 +590,39 @@ public partial class WidgetWindow : Window
             + " are saved on this PC and sent when you’re back.";
     }
 
-    private MemberTask? _focus;
-    private bool _focusNow;
+    private TaskItem? _focus;
 
+    /// <summary>v1.4 · Home's focus card: your turn first (Tick step N), then a sent-back task, then one in progress, else the next new one.</summary>
     private void RenderFocus(TrayModel m, bool onHome)
     {
-        (_focus, _focusNow) = TaskBoard.Focus(m.TaskList, m.FocusId, m.Now);
+        _focus = m.FocusItem;
         FocusCard.Visibility = Show(onHome && _focus is not null);
-        if (_focus is not { } t)
+        if (_focus is not { } it)
         {
             return;
         }
-        FocusKicker.Text = _focusNow ? "Now" : "Up next";
+        var t = it.Task;
+        var h = it.Happen;
+        FocusKicker.Text = Zinwe.Agent.Core.Tasks.TeamTaskEngine.StatusOf(t) == "progress" ? "Now" : "Up next";
         FocusKicker.SetResourceReference(TextBlock.ForegroundProperty, "Z.Muted");
-        var tone = TaskBoard.DueToneOf(t, m.Now);
-        FocusDue.Text = TaskBoard.DueLabel(t, m.Now);
-        FocusDue.FontWeight = tone == DueTone.Late ? FontWeights.Bold : tone == DueTone.Soon ? FontWeights.SemiBold : FontWeights.Normal;
-        FocusDue.SetResourceReference(TextBlock.ForegroundProperty, tone == DueTone.Late ? "Z.RedText" : tone == DueTone.Soon ? "Z.StDoing" : "Z.Muted");
+        var due = Zinwe.Agent.Core.Tasks.TeamTaskEngine.Due(t, it.Ctx);
+        FocusDue.Text = due.Short;
+        FocusDue.FontWeight = due.Late ? FontWeights.Bold : due.Kind == "today" ? FontWeights.SemiBold : FontWeights.Normal;
+        FocusDue.SetResourceReference(TextBlock.ForegroundProperty, due.Late ? "Z.RedText" : due.Kind == "today" ? "Z.StDoing" : "Z.Muted");
         FocusTitle.Content = t.Title;
         AutomationProperties.SetName(FocusTitle, "Open " + t.Title);
-        FocusCta.Content = _focusNow ? "Mark done" : TaskBoard.NeedsConfirm(t) ? "Confirm & start" : "Start";
+        var cta = h.Buttons.FirstOrDefault()?.Label ?? "Open";
+        FocusCta.Content = cta;
         FocusCta.Style = (Style)FindResource("Z.BtnSm.Pri");
-        AutomationProperties.SetName(FocusCta, FocusCta.Content + ": " + t.Title);
+        AutomationProperties.SetName(FocusCta, cta + ": " + t.Title);
         FocusCard.SetResourceReference(Border.BackgroundProperty, "Z.Surface");
         FocusCard.SetResourceReference(Border.BorderBrushProperty, "Z.Line");
-        FocusSteps.Visibility = Show(t.Steps.Count > 0);
-        if (t.Steps.Count > 0)
+        var (n, done, _) = Zinwe.Agent.Core.Tasks.TeamTaskEngine.Steps(t);
+        FocusSteps.Visibility = Show(n > 0);
+        if (n > 0)
         {
-            var done = t.Steps.Count(s => s.Done);
-            FocusStepsText.Text = $"{done}/{t.Steps.Count} steps";
-            FocusBar.Width = Math.Max(0, (FocusCard.ActualWidth > 0 ? FocusCard.ActualWidth - 110 : 220) * done / t.Steps.Count);
+            FocusStepsText.Text = $"{done}/{n} steps";
+            FocusBar.Width = Math.Max(0, (FocusCard.ActualWidth > 0 ? FocusCard.ActualWidth - 110 : 220) * done / n);
         }
     }
 
@@ -586,7 +633,7 @@ public partial class WidgetWindow : Window
         TabTasks.IsChecked = m.Tab == Tab.Tasks;
         TabMe.IsChecked = m.Tab == Tab.Me;
         var u = m.Unread;
-        Badge(BadgeChat, TabChat, "Chat", u.Chat);
+        Badge(BadgeChat, TabChat, "Chat", m.ChatBadge); // v1.4: unread chats (with team chat), else unread messages
         Badge(BadgeTasks, TabTasks, "Tasks", u.Tasks);
         Badge(BadgeMe, TabMe, "Me", u.Other);
         AutomationProperties.SetName(TabHome, "Home");
@@ -603,11 +650,14 @@ public partial class WidgetWindow : Window
     // seconds keeps the card, its scroll and its focus; the card arrives with a short scale-in only when it opens.
     private (int Id, string Seen)? _detailShown;
 
-    /// <summary>A task's details card over the window (press and hold a task, or ⋯); gone when it closes or the task does.</summary>
+    /// <summary>
+    /// v1.4 · the member task panel over the window (a card, Home, a notice, a chat card); gone when it closes or the task
+    /// does. Rebuilt only when what it shows changed, so the 3 s chat poll keeps its scroll, its focus and what's typed.
+    /// </summary>
     private void RenderDetail(TrayModel m)
     {
-        var task = m.Tab == Tab.Tasks || m.DetailId is not null ? m.Detail : null;
-        if (task is null)
+        var item = m.Tab is Tab.Tasks or Tab.Chat || m.DetailId is not null ? m.PanelItem : null;
+        if (item is null)
         {
             if (m.DetailId is not null)
             {
@@ -618,14 +668,16 @@ public partial class WidgetWindow : Window
             _detailShown = null;
             return;
         }
-        var seen = System.Text.Json.JsonSerializer.Serialize(task) + $"|{m.Now:yyyyMMddHHmm}|{m.OwnerFirst}|{m.OwnerNameStart}|{m.TodoSharingOn}|{m.Offline}";
-        if (_detailShown is { } shown && shown.Id == task.Id && shown.Seen == seen && DetailLayer.Content is not null)
+        var chat = m.PanelTab == "chat" ? string.Join("|", m.TaskChat(item).Select(l => l.Text + l.Sending + l.At.Ticks)) : "";
+        var seen = System.Text.Json.JsonSerializer.Serialize(item.Task) + $"|{m.Now:yyyyMMddHHmm}|{m.OwnerFirst}|{m.PanelTab}|{m.PanelCard}|{m.PanelMenu}"
+            + $"|{m.TodoSharingOn}|{m.Offline}|{chat}|{m.TaskChatSummary(item)}|{item.Ctx.GroupName}|{m.MyName}";
+        if (_detailShown is { } shown && shown.Id == item.Key && shown.Seen == seen && DetailLayer.Content is not null)
         {
             return;
         }
-        var arriving = _detailShown?.Id != task.Id;
-        _detailShown = (task.Id, seen);
-        DetailLayer.Content = Views.TaskDetailCard.Build(task, m, arriving);
+        var arriving = _detailShown?.Id != item.Key;
+        _detailShown = (item.Key, seen);
+        DetailLayer.Content = Views.TaskPanel.Build(item, m, arriving);
         DetailLayer.Visibility = Visibility.Visible;
     }
 
@@ -804,25 +856,25 @@ public partial class WidgetWindow : Window
 
     private void OnFocusOpen(object sender, RoutedEventArgs e)
     {
-        if (_focus is { } t)
+        if (_focus is { } it)
         {
-            _model.OpenTask(t.Id);
+            _model.OpenTaskPanel(it.Key);
         }
     }
 
     private void OnFocusRun(object sender, RoutedEventArgs e)
     {
-        if (_focus is not { } t)
+        if (_focus is not { } it)
         {
             return;
         }
-        if (_focusNow)
+        if (it.Happen.Buttons.FirstOrDefault() is { } b)
         {
-            _model.DoneTask(t);
+            _model.RunTaskAct(it, b.Act);
         }
         else
         {
-            _model.StartTask(t);
+            _model.OpenTaskPanel(it.Key);
         }
     }
 

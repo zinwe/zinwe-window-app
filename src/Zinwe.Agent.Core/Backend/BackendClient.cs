@@ -25,7 +25,7 @@ public sealed class EventsRejectedException(string message) : Exception(message)
 /// Typed HTTP client for the Django device API. Transport failures surface as
 /// <see cref="HttpRequestException"/> / <see cref="TaskCanceledException"/> so callers can retry.
 /// </summary>
-public sealed class BackendClient
+public sealed partial class BackendClient
 {
     private readonly HttpClient _http;
 

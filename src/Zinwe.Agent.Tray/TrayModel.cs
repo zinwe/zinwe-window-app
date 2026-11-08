@@ -7,6 +7,7 @@ using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Messages;
 using Zinwe.Agent.Core.Policy;
+using Zinwe.Agent.Core.Tasks;
 using Zinwe.Agent.Core.Work;
 using Zinwe.Agent.Tray.Resources;
 using Zinwe.Agent.Tray.Widget;
@@ -43,7 +44,7 @@ public sealed record NewTaskForm(string Title = "", string Due = "today", DateOn
 /// so reminders and the unread dot keep working while Zinwe is minimized. Views render from it on
 /// <see cref="Changed"/> and call its methods; it never touches WPF elements.
 /// </summary>
-public sealed class TrayModel : IDisposable
+public sealed partial class TrayModel : IDisposable
 {
     private readonly NotificationStore _noteStore;
     private readonly NotificationWatcher _watcher;
@@ -378,6 +379,10 @@ public sealed class TrayModel : IDisposable
         ApplyWorkDay();
         await RefreshTasksAsync();
         await RefreshTodosAsync();
+        if (!_chatTimerOn || (Status?.ChatVersion is { } cv && cv != _chat?.Version))
+        {
+            await RefreshChatAsync(); // v1.4: the team chat moved (or first look)
+        }
         Raise();
     }
 
@@ -631,7 +636,14 @@ public sealed class TrayModel : IDisposable
         CloseMenus();
         if (tab == Tab.Chat)
         {
-            ReadChat();
+            // v1.4: Chat opens on the list (the admin chat is its first row); without team chat, on the admin chat.
+            ChatOpen = null;
+            TeamReplyTo = null;
+            Report = null;
+            if (!TeamChatOn)
+            {
+                ReadChat();
+            }
         }
         Raise();
     }
@@ -652,6 +664,11 @@ public sealed class TrayModel : IDisposable
 
     public void Back()
     {
+        if (Push == Push.None && Tab == Tab.Chat && ChatOpen is not null && TeamChatOn)
+        {
+            BackToChatList();
+            return;
+        }
         Push = Push.None;
         Sheet = Sheet.None;
         Raise();
@@ -682,6 +699,23 @@ public sealed class TrayModel : IDisposable
             CloseSheet();
             return true;
         }
+        if (Report is not null)
+        {
+            CloseReport();
+            return true;
+        }
+        if (ConvMenu is not null)
+        {
+            ToggleConvMenu(null);
+            return true;
+        }
+        if (DetailId is not null && (PanelMenu || PanelCard is not null))
+        {
+            PanelMenu = false;
+            PanelCard = null;
+            Raise();
+            return true;
+        }
         if (DetailId is not null)
         {
             CloseDetail();
@@ -695,6 +729,16 @@ public sealed class TrayModel : IDisposable
         if (ReplyTo is not null && Tab == Tab.Chat && Push == Push.None)
         {
             CancelReply(); // the composer says "Esc cancels"
+            return true;
+        }
+        if (TeamReplyTo is not null && Tab == Tab.Chat && Push == Push.None)
+        {
+            CancelTeamReply();
+            return true;
+        }
+        if (Push == Push.None && Tab == Tab.Chat && ChatOpen is not null && TeamChatOn)
+        {
+            BackToChatList();
             return true;
         }
         if (Push != Push.None)
@@ -860,7 +904,12 @@ public sealed class TrayModel : IDisposable
             default:
                 if (go.StartsWith("task:", StringComparison.Ordinal) && int.TryParse(go[5..], out var id))
                 {
-                    OpenTask(id);
+                    OpenTaskPanel(id); // v1.4: a notice about a task opens its panel
+                }
+                else if (go.StartsWith("chat:", StringComparison.Ordinal))
+                {
+                    Go(Tab.Chat);
+                    OpenConv(go[5..]);
                 }
                 else if (go != "open")
                 {
@@ -914,7 +963,7 @@ public sealed class TrayModel : IDisposable
     /// <summary>The window came to the front.</summary>
     public void OnShown()
     {
-        if (Tab == Tab.Chat && Push == Push.None)
+        if (Tab == Tab.Chat && Push == Push.None && (!TeamChatOn || ChatOpen == "admin"))
         {
             ReadChat();
         }
@@ -1839,27 +1888,41 @@ public sealed class TrayModel : IDisposable
     {
         get
         {
+            // v1.4: the task rows come from the same tasks as the Tasks tab's Needs you (the focus card's one left out).
             var list = new List<(string, string, string, Action)>();
-            var tasks = TaskList;
-            var (focus, _) = TaskBoard.Focus(tasks, FocusId, Now);
-            foreach (var t in tasks.Where(t => t.IsNew && t.Id != focus?.Id))
+            var focus = FocusItem;
+            foreach (var i in NeedsYouTasks.Where(i => i.Key != focus?.Key))
             {
-                var id = t.Id;
-                var due = TaskBoard.DueLabel(t, Now);
-                list.Add(("task", "New task: " + t.Title, $"From {OwnerFirst}" + (due.Length > 0 ? " · " + due : ""), () => OpenTask(id)));
+                var key = i.Key;
+                var line = TeamTaskEngine.CardLine(i.Task, i.Ctx);
+                var due = TeamTaskEngine.Due(i.Task, i.Ctx).Short;
+                list.Add(("task", i.Task.Title, line + (due.Length > 0 && !line.Contains(due, StringComparison.Ordinal) ? " · " + due : ""),
+                    () => OpenTaskPanel(key)));
             }
             var unreadChat = ChatFeed.UnreadCount(Notes.Items);
             if (unreadChat > 0)
             {
                 var last = Notes.Items.Where(i => i.IsChat && i.IsFromAdmin && i.TaskId is null).MaxBy(i => i.CreatedAtUtc);
                 list.Add(("chat", $"{unreadChat} new message{(unreadChat == 1 ? "" : "s")} from {OwnerFirst}",
-                    last is null ? "" : ChatFeed.Preview(last, OwnerFirst), () => Go(Tab.Chat)));
+                    last is null ? "" : ChatFeed.Preview(last, OwnerFirst), () =>
+                    {
+                        Go(Tab.Chat);
+                        if (TeamChatOn)
+                        {
+                            OpenConv("admin");
+                        }
+                    }));
             }
-            foreach (var t in tasks.Where(t => t.Id != focus?.Id && !t.IsNew && !TaskBoard.Finished(t)
-                && t.Status != MemberTaskStatus.Review && TaskBoard.KeyOf(t, Now) is DueKey.Today or DueKey.Overdue))
+            if (TeamChatOn)
             {
-                var id = t.Id;
-                list.Add(("due", t.Title, $"{TaskBoard.DueLabel(t, Now)} · {TaskBoard.LaneLabel(t, OwnerFirst)}", () => OpenTask(id)));
+                foreach (var c in Conversations.Where(c => c.Unread > 0).OrderByDescending(c => c.LastAt))
+                {
+                    var key = c.Key;
+                    var who = c.Last is { } l ? (l.ByOwner ? OwnerFirstStart : l.ByName.Split(' ')[0]) : "";
+                    list.Add(("chat", $"{c.Unread} new message{(c.Unread == 1 ? "" : "s")} " + (c.IsGroup ? "in " : "from ") + c.Name,
+                        c.Last is { } last ? (c.IsGroup && who.Length > 0 ? who + ": " : "") + (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : last.Body) : "",
+                        () => OpenConv(key)));
+                }
             }
             return list.Take(5).ToList();
         }

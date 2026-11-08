@@ -28,6 +28,7 @@ public static class OwnerTasks
         "accepted" => (MemberTaskStatus.Confirmed, false),
         "progress" => (MemberTaskStatus.Progress, false),
         "help" => (MemberTaskStatus.Help, false),
+        "cantdo" => (MemberTaskStatus.Cant, false),
         "review" => (MemberTaskStatus.Review, false),
         "approved" => (MemberTaskStatus.Approved, false),
         "cancelled" or "canceled" => (MemberTaskStatus.Cancelled, false),
@@ -124,10 +125,19 @@ public static class OwnerTasks
             "created" or "create" or "sent" => $"{ownerFirst} sent it",
             "seen" => "You opened it",
             "accept" or "accepted" => "You confirmed it",
-            "start" or "started" or "progress" => member ? "You started it" : $"{ownerFirst} moved it to in progress",
-            "help" => "You asked for help",
+            "start" or "started" or "progress" => member ? WhoMember(a, "started it") : $"{ownerFirst} moved it to in progress",
+            "help" => member ? WhoMember(a, "asked for help") : $"{ownerFirst} asked for help",
+            "cantdo" => WhoMember(a, "said they can’t do it").Replace("You said they", "You said you", StringComparison.Ordinal),
+            "tick" or "ticked" => $"{WhoMember(a, "")}ticked {step}".Replace("  ", " ", StringComparison.Ordinal),
+            "untick" or "unticked" => $"{WhoMember(a, "")}unticked {step}".Replace("  ", " ", StringComparison.Ordinal),
+            "finish" or "finished" => WhoMember(a, "finished their part").Replace("You finished their", "You finished your", StringComparison.Ordinal),
+            "took" or "take" => WhoMember(a, "took it"),
+            "reply" or "replied" => $"{ownerFirst} replied",
+            "reassign" or "reassigned" or "moved" => $"{ownerFirst} moved it",
+            "due_moved" => $"{ownerFirst} moved the due date",
+            "restored" or "restore" => $"{ownerFirst} restored it",
             "done" or "review" => "You marked it done",
-            "step_done" => $"{who} ticked {step}",
+            "step_done" => member ? $"{WhoMember(a, "")}ticked {step}" : $"{who} ticked {step}",
             "step_undone" => $"{who} unticked {step}",
             "note" => $"{who} added a note",
             "approve" or "approved" => $"{ownerFirst} approved it",
@@ -140,11 +150,26 @@ public static class OwnerTasks
         };
     }
 
+    /// <summary>"You started it" / "Karan started it" for a member's line (v1.4 names which member when the backend says).</summary>
+    private static string WhoMember(DeviceTaskActivity a, string what)
+    {
+        var who = a.MemberName is { Length: > 0 } n && a.MemberId is not null && !IsMeLine(a) ? n.Split(' ')[0] : "You";
+        return what.Length == 0 ? who + " " : who + " " + what;
+    }
+
+    /// <summary>The tray sets this to the member's id so v1.4 lines by teammates read with their name.</summary>
+    public static long? MeId { get; set; }
+
+    private static bool IsMeLine(DeviceTaskActivity a) => MeId is { } me && a.MemberId == me;
+
     /// <summary>The activity name the backend records for a member action (so a queued line and the server's match).</summary>
     public static string ActivityName(OutboxReply a) => a.Action switch
     {
         TaskActions.Accept => "accepted",
         TaskActions.Start => "started",
+        TaskActions.Tick => "step_done",
+        TaskActions.Untick => "step_undone",
+        TaskActions.Finish => "finished",
         TaskActions.Note when a.StepId is not null => a.StepDone == false ? "step_undone" : "step_done",
         _ => a.Action ?? "",
     };
@@ -195,6 +220,45 @@ public static class OwnerTasks
             case TaskActions.Note when a.StepId is { } stepId:
                 steps = [.. (steps ?? []).Select(s => s.Id == stepId ? s with { Done = a.StepDone ?? !s.Done } : s)];
                 break;
+            // v1.4 team tasks
+            case TaskActions.Tick when a.StepId is { } tick:
+                steps = [.. (steps ?? []).Select(s => s.Id == tick ? s with { Done = true, DoneById = MeId ?? s.DoneById, DoneAt = a.CreatedAtUtc } : s)];
+                status = status is "sent" or "seen" or "accepted" ? "progress" : status;
+                if ((steps ?? []).Count > 0 && steps!.All(s => s.Done) && status is not ("approved" or "cancelled"))
+                {
+                    status = "review";
+                }
+                break;
+            case TaskActions.Untick when a.StepId is { } untick:
+                steps = [.. (steps ?? []).Select(s => s.Id == untick ? s with { Done = false, DoneById = null, DoneAt = null } : s)];
+                status = status == "review" ? "progress" : status;
+                break;
+            case TaskActions.Cantdo:
+                status = status is "approved" or "cancelled" ? status : "cantdo";
+                t = t with { CantdoNote = note ?? t.CantdoNote, People = Mark(t.People, "cantdo") };
+                break;
+            case TaskActions.Finish:
+                var people = Mark(t.People, "done");
+                t = t with { People = people };
+                if (status is not ("approved" or "cancelled") && (people is null || people.All(p => p.State == "done")))
+                {
+                    status = "review";
+                }
+                break;
+        }
+        if (a.Action == TaskActions.Start && t.People is { Count: > 1 } everyone && string.Equals(t.Mode, "any", StringComparison.OrdinalIgnoreCase)
+            && MeId is { } meId && everyone.Any(p => p.MemberId == meId))
+        {
+            // "Any one of them": the first to start takes it, the others no longer see it.
+            t = t with { People = [.. everyone.Where(p => p.MemberId == meId)], Mode = "all" };
+        }
+        if (a.Action == TaskActions.Start && t.Me is { Restart: true } me14)
+        {
+            t = t with { Me = me14 with { Restart = false } }; // "Start again" pressed
+        }
+        if (a.Action is TaskActions.Start or TaskActions.Help && t.People is not null)
+        {
+            t = t with { People = Mark(t.People, a.Action == TaskActions.Help ? "help" : "progress") };
         }
         var activity = t.Activity ?? [];
         // Once the server has the line (same action and note, made around then), don't show it twice.
@@ -204,6 +268,10 @@ public static class OwnerTasks
         }
         return t with { Status = status, Steps = steps, HelpNote = helpNote, Activity = activity };
     }
+
+    /// <summary>This member's line on a v1.4 task set to <paramref name="state"/> (the others as they are).</summary>
+    private static IReadOnlyList<DeviceTaskPerson>? Mark(IReadOnlyList<DeviceTaskPerson>? people, string state) =>
+        people is null || MeId is not { } me ? people : [.. people.Select(p => p.MemberId == me ? p with { State = state } : p)];
 
     /// <summary>How far the server's clock and this PC's may differ when matching a queued action to its history line.</summary>
     private static readonly TimeSpan Skew = TimeSpan.FromMinutes(2);
@@ -247,6 +315,14 @@ public static class OwnerTasks
             TaskActions.Seen => t.Status != "sent",
             TaskActions.Accept => t.Status is not ("sent" or "seen"),
             TaskActions.Done => t.Status is "review" or "approved" or "cancelled",
+            TaskActions.Start => t.Status is not ("sent" or "seen" or "accepted") && !Zinwe.Agent.Core.Tasks.TeamTaskEngine.Reopened(t,
+                new Zinwe.Agent.Core.Tasks.TaskContext(MeId, "", "", a.CreatedAtUtc)),
+            TaskActions.Help => t.Status is "help" or "approved" or "cancelled",
+            TaskActions.Cantdo => t.Status is "cantdo" or "approved" or "cancelled",
+            TaskActions.Finish => t.Status is "review" or "approved" or "cancelled"
+                || (MeId is { } me && t.People?.FirstOrDefault(p => p.MemberId == me) is { } mine && (mine.State == "done" || mine.DoneAt is not null)),
+            TaskActions.Tick or TaskActions.Untick when a.StepId is { } sid => (t.Steps ?? []).FirstOrDefault(s => s.Id == sid) is not { } st
+                || st.Done == (a.Action == TaskActions.Tick),
             TaskActions.Note when a.StepId is { } stepId => (t.Steps ?? []).FirstOrDefault(s => s.Id == stepId) is not { } step
                 || a.StepDone is { } done && step.Done == done,
             _ => false,
