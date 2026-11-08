@@ -27,7 +27,10 @@ public sealed record NotificationItem(
     // here, and the task's own notice stands for it (no second "new message"). Null on every other line.
     long? TaskId = null,
     // The owner has read this line of the employee's ("Seen").
-    bool ReadByOwner = false)
+    bool ReadByOwner = false,
+    // v1.5: the file on this line; the chat shows the file card and its caption instead of Body (the server's fallback
+    // text "📎 name (size)"). Null on every other line, and in files a 1.4 service wrote.
+    Zinwe.Agent.Core.Chat.ChatFile? File = null)
 {
     public const string ChatKind = "chat";
 

@@ -183,6 +183,10 @@ public static partial class ChatFeed
     /// <summary>One line for a toast or the widget's chat card: heading and text joined, whitespace collapsed.</summary>
     public static string Preview(NotificationItem item, string? owner = null)
     {
+        if (item.File is { Name.Length: > 0 } file)
+        {
+            return Zinwe.Agent.Core.Chat.ChatFiles.Preview(file.Name); // v1.5: "📎 Quote-Lumen.pdf"
+        }
         var (title, text) = Content(item, owner);
         var line = title.Length > 0 ? $"{title} — {text}" : text;
         return string.Join(' ', line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));

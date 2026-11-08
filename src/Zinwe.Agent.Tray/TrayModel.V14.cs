@@ -43,8 +43,9 @@ public sealed record ChatRowView(string Key, string Name, string Initials, bool 
 /// A line of a group / direct thread as the view draws it. v1.4.1: <paramref name="MentionsMe"/> = someone named the member in
 /// it (highlighted); <paramref name="CanChange"/> = the member's own line, still within 15 minutes (Edit · Delete).
 /// </summary>
+/// v1.5: <paramref name="Upload"/> = a file the member is sending (still in the outbox): its name, "Sending…" or Failed.
 public sealed record TeamLine(TeamMessage Message, bool Mine, bool Sending, string Who, string Initials, bool MentionsMe = false,
-    bool CanChange = false);
+    bool CanChange = false, OutboxReply? Upload = null);
 
 public sealed partial class TrayModel
 {
@@ -712,7 +713,7 @@ public sealed partial class TrayModel
                 continue;
             }
             var who = c.Last is { } l ? (l.ByOwner ? OwnerFirstStart : First(l.ByName)) : "";
-            var text = c.Last is { } last ? (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : last.Body) : "";
+            var text = c.Last is { } last ? (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : ChatFiles.PreviewLine(last)) : "";
             Notify(mention ? (who.Length > 0 ? who : "Someone") + " mentioned you in " + c.Name
                 : c.IsGroup ? "New message in " + c.Name : "New message from " + c.Name,
                 (c.IsGroup && who.Length > 0 && !mention ? who + ": " : "") + text, "chat:" + c.Key, "Open", "chat:" + c.Key + ":" + c.Last?.Id);
@@ -845,7 +846,7 @@ public sealed partial class TrayModel
                 {
                     var mine = last.Mine ?? ((me is not null && last.ByMemberId == me && !last.ByOwner)
                         || (last.Id == 0 && last.ByName.Length > 0 && string.Equals(last.ByName, First(MyName), StringComparison.OrdinalIgnoreCase)));
-                    line = (mine ? "You: " : c.IsGroup ? (last.ByOwner ? OwnerFirstStart : First(last.ByName)) + ": " : "") + last.Body;
+                    line = (mine ? "You: " : c.IsGroup ? (last.ByOwner ? OwnerFirstStart : First(last.ByName)) + ": " : "") + ChatFiles.PreviewLine(last);
                 }
                 var at = c.LastAt ?? (last?.At is { } la && la != default ? la : (DateTimeOffset?)null);
                 var person = c.WithMemberId is { } wid ? _chat?.People?.FirstOrDefault(p => p.MemberId == wid) : null;
@@ -1000,7 +1001,7 @@ public sealed partial class TrayModel
                     var mine = m.Mine ?? (me is not null && m.ByMemberId == me && !m.ByOwner);
                     var who = mine ? "You" : m.ByOwner ? OwnerFirstStart : First(m.ByName);
                     lines.Add(new TeamLine(m, mine, false, who, TeamTaskEngine.Initials(m.ByOwner ? Status?.OwnerName ?? m.ByName : m.ByName),
-                        group && !mine && !m.Deleted && !m.System && Mentions.MentionsMe(m.Body, myName),
+                        group && !mine && !m.Deleted && !m.System && Mentions.MentionsMe(m.File is { } f ? f.Caption ?? "" : m.Body, myName),
                         ChatEditsOn && ChatEdits.CanChange(m, mine, now)));
                 }
             }
@@ -1013,6 +1014,11 @@ public sealed partial class TrayModel
                         continue;
                     }
                     lines.Add(new TeamLine(new TeamMessage(0, Body: p.Body, At: p.CreatedAtUtc, ReplyToId: p.MessageId, Mine: true), true, true, "You", ""));
+                }
+                // v1.5: files on their way, "Sending…" (or Failed with Retry) with the name, after the lines.
+                foreach (var f in PendingFileItems(key))
+                {
+                    lines.Add(new TeamLine(new TeamMessage(0, Body: f.Body, At: f.CreatedAtUtc, Mine: true), true, !f.Refused, "You", "", Upload: f));
                 }
             }
             return lines;

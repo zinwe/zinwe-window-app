@@ -35,6 +35,11 @@ public sealed partial class TrayModel
         {
             return;
         }
+        if (m.File is not null)
+        {
+            ShowSnack("A file can’t be edited. Delete it and send it again.", [("OK", CloseSnack)]);
+            return;
+        }
         if (!ChatEdits.CanChange(m, mine: true, Now))
         {
             ShowSnack(ChatEdits.TooLate, [("OK", CloseSnack)]);
@@ -188,7 +193,7 @@ public sealed partial class TrayModel
             return false;
         }
         var mine = l.Mine ?? (MeId is { } me && l.ByMemberId == me && !l.ByOwner);
-        return !mine && Mentions.MentionsMe(l.Body, MyMentionName);
+        return !mine && Mentions.MentionsMe(l.File is { } f ? f.Caption ?? "" : l.Body, MyMentionName);
     }
 
     // ---- Deleted groups and refusals ------------------------------------------------------------------

@@ -32,6 +32,10 @@ public sealed record ThreadRow
     /// <summary>An "Important" / "Urgent" admin message.</summary>
     public string? Importance { get; init; }
     public DateTimeOffset At { get; init; }
+    /// <summary>v1.5: the file on this line (the card shows; <see cref="Text"/> is then its caption).</summary>
+    public Zinwe.Agent.Core.Chat.ChatFile? File { get; init; }
+    /// <summary>v1.5: a file the member is sending (still in the outbox): "Sending…", or Failed with Retry.</summary>
+    public OutboxReply? Upload { get; init; }
 
     /// <summary>The one-line snippet a reply to this row quotes.</summary>
     public string Snippet
@@ -41,6 +45,14 @@ public sealed record ThreadRow
             if (Kind == ThreadKind.Task && Task is { } t)
             {
                 return "Task: " + t.Title;
+            }
+            if (File is { } f)
+            {
+                return Zinwe.Agent.Core.Chat.ChatFiles.Preview(f.Name);
+            }
+            if (Upload is { } u)
+            {
+                return Zinwe.Agent.Core.Chat.ChatFiles.Preview(u.FileName ?? "file");
             }
             var line = Text.Split('\n').FirstOrDefault() ?? "";
             return line.Length > 140 ? line[..140] : line;
@@ -58,7 +70,8 @@ public static class ChatThread
 {
     public static IReadOnlyList<ThreadRow> Build(
         IEnumerable<NotificationItem> items, IEnumerable<OutboxReply> pending, IEnumerable<MemberTask> tasks,
-        IReadOnlyList<ReplyQuotes.Entry> quotes, string ownerFirst, DateTimeOffset now, bool offline = false)
+        IReadOnlyList<ReplyQuotes.Entry> quotes, string ownerFirst, DateTimeOffset now, bool offline = false,
+        IEnumerable<OutboxReply>? files = null)
     {
         var rows = new List<ThreadRow>();
         var owners = tasks.Where(t => !t.Mine).ToList();
@@ -80,6 +93,11 @@ public static class ChatThread
             }
             var (head, body) = ChatFeed.Content(i, ownerFirst);
             var mine = !i.IsFromAdmin;
+            if (i.File is { } file)
+            {
+                // v1.5: a file line shows its card and the caption, not the fallback text (nor the title the server gave it).
+                (head, body) = ("", (file.Caption ?? "").Trim());
+            }
             var severity = (i.Severity ?? "info").ToLowerInvariant();
             rows.Add(new ThreadRow
             {
@@ -88,6 +106,7 @@ public static class ChatThread
                 Meta = i.CreatedAtUtc.ToLocalTime().ToString("h:mm tt"), Seen = mine && i.ReadByOwner,
                 Quote = mine ? ReplyQuotes.Find(quotes, body, i.CreatedAtUtc) : null,
                 Importance = !mine && severity is "warning" or "critical" ? (severity == "critical" ? "Urgent" : "Important") : null,
+                File = i.File,
             });
         }
         foreach (var t in owners.Where(t => !carded.Contains(t.Id)))
@@ -102,6 +121,18 @@ public static class ChatThread
                 Key = "pending:" + p.Id, Kind = ThreadKind.Text, Mine = true, Pending = !p.Refused, Failed = p.Refused, At = p.CreatedAtUtc, Text = p.Body,
                 Meta = p.Refused ? "Not sent" : offline ? p.CreatedAtUtc.ToLocalTime().ToString("h:mm tt") + " · sends when online" : "Sending…",
                 Quote = ReplyQuotes.Find(quotes, p.Body, p.CreatedAtUtc),
+            });
+        }
+
+        // v1.5: files on their way: "Sending…" with the name, or "Couldn't send. Try again." with Retry.
+        foreach (var f in (files ?? []).OrderBy(p => p.CreatedAtUtc))
+        {
+            rows.Add(new ThreadRow
+            {
+                Key = "pending:" + f.Id, Kind = ThreadKind.Text, Mine = true, Pending = !f.Refused, Failed = f.Refused, At = f.CreatedAtUtc, Text = f.Body,
+                Meta = f.Refused ? f.Error ?? Zinwe.Agent.Core.Chat.ChatFiles.FailedText
+                    : offline ? f.CreatedAtUtc.ToLocalTime().ToString("h:mm tt") + " · sends when online" : "Sending…",
+                Upload = f,
             });
         }
 

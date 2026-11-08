@@ -51,7 +51,7 @@ public sealed partial class TrayModel : IDisposable
     private readonly Func<Task<string?>> _startUpdate;
     private readonly WorkTimerStore _timerStore = new();
     private readonly ConsentStore _consent = new();
-    private readonly MessageOutbox _outbox = new();
+    private MessageOutbox _outbox = new();
     private readonly TraySettingsStore _settingsStore = new();
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(5) };
@@ -374,7 +374,7 @@ public sealed partial class TrayModel : IDisposable
         {
             _consent.Clear(); // removed from this company: a new one asks afresh
         }
-        _statusTimer.Interval = TimeSpan.FromSeconds(Update.Busy ? 1 : 5);
+        _statusTimer.Interval = TimeSpan.FromSeconds(Update.Busy || FilesBusy ? 1 : 5);
         if (Update.Show is false)
         {
             UpdateRefused = null;
@@ -387,6 +387,7 @@ public sealed partial class TrayModel : IDisposable
         {
             await RefreshChatAsync(); // v1.4: the team chat moved (or first look)
         }
+        await RefreshFilesIfMovedAsync(); // v1.5: file sharing moved (on/off, a download done)
         Raise();
     }
 
@@ -1939,7 +1940,7 @@ public sealed partial class TrayModel : IDisposable
                     var who = c.Last is { } l ? (l.ByOwner ? OwnerFirstStart : l.ByName.Split(' ')[0]) : "";
                     list.Add(("chat", LastMentionsMe(c) && who.Length > 0 ? $"{who} mentioned you in {c.Name}" // v1.4.1
                         : $"{c.Unread} new message{(c.Unread == 1 ? "" : "s")} " + (c.IsGroup ? "in " : "from ") + c.Name,
-                        c.Last is { } last ? (c.IsGroup && who.Length > 0 ? who + ": " : "") + (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : last.Body) : "",
+                        c.Last is { } last ? (c.IsGroup && who.Length > 0 ? who + ": " : "") + (last.TaskId is not null ? "Task: " + TaskTitle(last.TaskId) : Zinwe.Agent.Core.Chat.ChatFiles.PreviewLine(last)) : "",
                         () => OpenConv(key)));
                 }
             }
@@ -1950,7 +1951,7 @@ public sealed partial class TrayModel : IDisposable
     // ---- Chat -------------------------------------------------------------------------------
 
     public IReadOnlyList<ThreadRow> Thread =>
-        ChatThread.Build(Notes.Items, PendingReplies, TaskList, Quotes.Items, OwnerFirstStart, Now, Offline);
+        ChatThread.Build(Notes.Items, PendingReplies, TaskList, Quotes.Items, OwnerFirstStart, Now, Offline, PendingFileItems(OutboxReply.AdminKey));
 
     public void StartReply(ThreadRow row)
     {
@@ -1972,9 +1973,14 @@ public sealed partial class TrayModel : IDisposable
         Raise();
     }
 
-    /// <summary>A reply the backend refused: the member gives up on it.</summary>
+    /// <summary>A reply the backend refused: the member gives up on it (a file: its copy goes too).</summary>
     public void DeleteReply(ThreadRow row)
     {
+        if (row.Upload is { } upload)
+        {
+            RemoveFile(upload);
+            return;
+        }
         _outbox.TryRemove(OutboxId(row));
         Raise();
     }

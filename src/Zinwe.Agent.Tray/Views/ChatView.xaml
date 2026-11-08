@@ -76,6 +76,8 @@
                                 AutomationProperties.Name="Cancel reply" Click="OnCancelReply" />
                     </Grid>
                 </Border>
+                <!-- v1.5: the picked file, as a chip (name, size, ✕); the text typed becomes its caption. -->
+                <ContentControl x:Name="AttachHost" Focusable="False" Visibility="Collapsed" />
                 <!-- Composer -->
                 <Border x:Name="Composer" CornerRadius="12" BorderThickness="1" BorderBrush="{DynamicResource Z.Line2}" Background="{DynamicResource Z.Surface}"
                         Padding="6" Margin="0,8,0,0">
@@ -83,6 +85,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -125,7 +128,14 @@
                                   StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="18" Height="18"
                                   Stretch="Uniform" Stroke="{DynamicResource Z.Muted}" />
                         </Button>
-                        <Button x:Name="SendButton" Grid.Column="3" Style="{StaticResource Z.SendBtn}" VerticalAlignment="Bottom" Margin="6,0,0,0" Click="OnSend"
+                        <!-- v1.5: attach a file (hidden while file sharing is off, or on an older backend). -->
+                        <Button x:Name="AttachButton" Grid.Column="3" Style="{StaticResource Z.ComposerBtn}" VerticalAlignment="Bottom"
+                                AutomationProperties.Name="Attach a file" ToolTip="Attach a file" Click="OnAttach" Visibility="Collapsed">
+                            <Path x:Name="AttachGlyph" Data="m21 11-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L15 7.6"
+                                  StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="18" Height="18"
+                                  Stretch="Uniform" Stroke="{DynamicResource Z.Muted}" />
+                        </Button>
+                        <Button x:Name="SendButton" Grid.Column="4" Style="{StaticResource Z.SendBtn}" VerticalAlignment="Bottom" Margin="6,0,0,0" Click="OnSend"
                                 AutomationProperties.Name="Send" IsEnabled="False">
                             <Path x:Name="SendGlyph" Data="M12 19V5M6 11l6-6 6 6" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                   StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16"

@@ -298,6 +298,15 @@ public sealed class TeamThreadView : UserControl
         _input.PreviewKeyDown += OnMentionKey;
         _input.TextChanged += (_, _) => UpdateMentions();
         _input.SelectionChanged += (_, _) => UpdateMentions();
+        // v1.5: Enter with a picked file sends it (the text, even none, is its caption); Enter-sends ignores an empty box.
+        _input.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0 && Model is { } fm && TrySendFile(fm, _input.Text))
+            {
+                e.Handled = true;
+                _input.Text = "";
+            }
+        };
         Tv.EnterSends(_input, text =>
         {
             if (Model?.SendTeam(text) == false)
@@ -343,7 +352,7 @@ public sealed class TeamThreadView : UserControl
             }
             _editingId = m.TeamEditing?.Id;
         }
-        var sig = m.ChatOpen + "|" + string.Join("#", lines)
+        var sig = m.ChatOpen + "|" + m.FilesSignature + "|" + string.Join("#", lines)
             + $"|{m.TeamReplyTo?.Id}|{m.TeamEditing?.Id}|{m.DeleteAsk?.Id}|{canPost}|{m.Report}|{m.Now:yyyyMMddHHmm}|{m.ChatPattern}|"
             + string.Join(",", m.MentionNames) + "|"
             + string.Join(",", lines.Where(l => l.Message.TaskId is not null).Select(l => l.Message.TaskId is { } id && m.ItemByRemote(id) is { } i
@@ -492,18 +501,34 @@ public sealed class TeamThreadView : UserControl
                 .Res(Border.BorderBrushProperty, "Z.Orange").Res(Border.BackgroundProperty, "Z.Fill");
             inner.Children.Add(quote);
         }
-        TextBlock body;
+        TextBlock? body;
         if (msg.Deleted)
         {
             body = Ui.Text(ChatEdits.DeletedText, 13.5, fg: "Z.Muted", wrap: true);
             body.FontStyle = FontStyles.Italic;
         }
+        else if (msg.File is { } file)
+        {
+            // v1.5: the file card, then its caption (the line's body is only the fallback text for older apps).
+            var card = FileCard.Line(m, file, l.Mine ? null : l.Who, l.Mine);
+            card.Margin = new Thickness(0, showName ? 4 : 0, 0, 0);
+            inner.Children.Add(card);
+            body = file.Caption is { Length: > 0 } caption ? BodyText(caption, names, 13.5) : null;
+        }
+        else if (l.Upload is { } upload)
+        {
+            inner.Children.Add(FileCard.Pending(m, upload));
+            body = upload.Body.Length > 0 ? BodyText(upload.Body, names, 13.5) : null;
+        }
         else
         {
             body = BodyText(msg.Body, names, 13.5);
         }
-        body.Margin = new Thickness(0, showName ? 2 : 0, 0, 0);
-        inner.Children.Add(body);
+        if (body is not null)
+        {
+            body.Margin = new Thickness(0, msg.File is not null || l.Upload is not null ? 8 : showName ? 2 : 0, 0, 0);
+            inner.Children.Add(body);
+        }
         var editing = m.TeamEditing?.Id == msg.Id && msg.Id > 0;
         // v1.4.1: a line that names the member stands out (orange tint and edge), as on the phone.
         var bubble = new Border { CornerRadius = l.Mine ? new CornerRadius(12, 12, 4, 12) : new CornerRadius(12, 12, 12, 4), Padding = new Thickness(12, 8, 12, 8), Child = inner,
@@ -541,8 +566,12 @@ public sealed class TeamThreadView : UserControl
             {
                 // v1.4.1: the member's own line, for 15 minutes: Edit · Delete (on hover / focus, like the prototype).
                 var hover = new StackPanel { Orientation = Orientation.Horizontal, Opacity = 0 };
-                hover.Children.Add(Ui.Text(" · ", 11.5, fg: "Z.Muted"));
-                hover.Children.Add(Tv.Bare(Ui.Text("Edit", 11.5, FontWeights.SemiBold, "Z.Ink2"), () => m.StartEdit(msg), "Edit your message"));
+                if (msg.File is null)
+                {
+                    // v1.5: a line with a file can't be edited (delete it and send it again).
+                    hover.Children.Add(Ui.Text(" · ", 11.5, fg: "Z.Muted"));
+                    hover.Children.Add(Tv.Bare(Ui.Text("Edit", 11.5, FontWeights.SemiBold, "Z.Ink2"), () => m.StartEdit(msg), "Edit your message"));
+                }
                 hover.Children.Add(Ui.Text(" · ", 11.5, fg: "Z.Muted"));
                 hover.Children.Add(Tv.Bare(Ui.Text("Delete", 11.5, FontWeights.SemiBold, "Z.RedText"), () => m.AskDelete(msg), "Delete for everyone"));
                 meta.Children.Add(hover);
@@ -578,7 +607,11 @@ public sealed class TeamThreadView : UserControl
         }
         Grid.SetColumn(column, 1);
         row.Children.Add(column);
-        AutomationProperties.SetName(row, $"{l.Who}: {(msg.Deleted ? ChatEdits.DeletedText : msg.Body)}. {when}{(l.MentionsMe ? ". Mentions you" : "")}");
+        var said = msg.Deleted ? ChatEdits.DeletedText
+            : msg.File is { } f ? $"{ChatFiles.Preview(f.Name)}{(f.Caption is { Length: > 0 } c ? ". " + c : "")}"
+            : l.Upload is { } u ? $"{ChatFiles.Preview(u.FileName ?? "file")}{(u.Body.Length > 0 ? ". " + u.Body : "")}"
+            : msg.Body;
+        AutomationProperties.SetName(row, $"{l.Who}: {said}. {when}{(l.MentionsMe ? ". Mentions you" : "")}");
         return row;
     }
 
@@ -596,7 +629,10 @@ public sealed class TeamThreadView : UserControl
         Add("Reply", () => m.StartTeamReply(msg));
         if (l.CanChange)
         {
-            Add("Edit", () => m.StartEdit(msg));
+            if (msg.File is null)
+            {
+                Add("Edit", () => m.StartEdit(msg));
+            }
             Add("Delete for everyone", () => m.AskDelete(msg));
         }
         if (!l.Mine && !msg.ByOwner)
@@ -654,25 +690,43 @@ public sealed class TeamThreadView : UserControl
             : m.OpenConversation?.IsGroup == true ? "Message · @ to mention someone" : "Message · Shift+Enter for a new line";
         Inputs.Detach(_mentionBox);
         stack.Children.Add(_mentionBox);
+        // v1.5: the picked file waits here as a chip; the text typed becomes its caption.
+        var key = m.ChatOpen;
+        if (m.TeamEditing is null && m.AttachFor(key) is { } draft)
+        {
+            stack.Children.Add(FileCard.Chip(draft, () => m.RemoveAttach(key)));
+        }
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Inputs.Detach(_input);
         row.Children.Add(_input);
+        if (m.TeamEditing is null && (m.FilesOn || m.AttachFor(key) is not null))
+        {
+            var attach = FileCard.AttachButton(() => FileCard.PickFor(this, m, key));
+            attach.Margin = new Thickness(4, 0, 0, 2);
+            Grid.SetColumn(attach, 1);
+            row.Children.Add(attach);
+        }
         var send = Tv.Send(() =>
         {
             var text = _input.Text;
-            if (!string.IsNullOrWhiteSpace(text) && m.SendTeam(text))
+            if (TrySendFile(m, text) || !string.IsNullOrWhiteSpace(text) && m.SendTeam(text))
             {
                 _input.Text = "";
             }
         }, m.TeamEditing is not null ? "Save changes" : "Send message", 40);
         send.Margin = new Thickness(8, 0, 0, 2);
-        Grid.SetColumn(send, 1);
+        Grid.SetColumn(send, 2);
         row.Children.Add(send);
         stack.Children.Add(row);
         _composer.Child = stack;
     }
+
+    /// <summary>v1.5 · Send with a chip in the open thread: the file goes, the typed text as its caption.</summary>
+    private static bool TrySendFile(TrayModel m, string text) =>
+        m.TeamEditing is null && m.ChatOpen is { } key && m.AttachFor(key) is not null && m.ThreadPosting.CanPost && m.SendFile(key, text);
 
     private void BuildReport(TrayModel m)
     {
