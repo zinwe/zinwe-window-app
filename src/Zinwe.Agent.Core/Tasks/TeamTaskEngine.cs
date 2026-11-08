@@ -141,7 +141,15 @@ public static class TeamTaskEngine
     /// </summary>
     public static bool Reopened(DeviceTask t, TaskContext c)
     {
-        if (c.Own || string.IsNullOrWhiteSpace(t.ReopenNote) || StatusOf(t) != "progress")
+        if (c.Own || StatusOf(t) != "progress")
+        {
+            return false;
+        }
+        if (t.Me?.Restart is { } restart)
+        {
+            return restart; // the backend says (api-v14 me.restart)
+        }
+        if (string.IsNullOrWhiteSpace(t.ReopenNote))
         {
             return false;
         }
@@ -406,7 +414,8 @@ public static class TeamTaskEngine
         if (status == "help")
         {
             var who = Who(t, c, "help");
-            var note = string.IsNullOrWhiteSpace(t.HelpNote) ? "" : ": " + Quote(t.HelpNote);
+            var said = t.People?.FirstOrDefault(p => p.MemberId == who)?.Note is { Length: > 0 } pn ? pn : t.HelpNote;
+            var note = string.IsNullOrWhiteSpace(said) ? "" : ": " + Quote(said);
             return who is { } w && w != me && me is not null
                 ? H(TaskTone.Red, FirstOf(t, w, c) + " asked " + c.Boss + " for help" + note, FirstOf(t, w, c) + " asked for help")
                 : H(TaskTone.Red, "You asked " + c.Boss + " for help" + note, "Waiting for help");
@@ -414,7 +423,8 @@ public static class TeamTaskEngine
         if (status == "cantdo")
         {
             var who = Who(t, c, "cantdo");
-            var note = string.IsNullOrWhiteSpace(t.CantdoNote) ? "." : ": " + Quote(t.CantdoNote);
+            var said = t.People?.FirstOrDefault(p => p.MemberId == who)?.Note is { Length: > 0 } pn ? pn : t.CantdoNote;
+            var note = string.IsNullOrWhiteSpace(said) ? "." : ": " + Quote(said);
             return who is { } w && w != me && me is not null
                 ? H(TaskTone.Red, FirstOf(t, w, c) + " can’t do it" + note, FirstOf(t, w, c) + " can’t do it")
                 : H(TaskTone.Red, "You told " + c.Boss + " you can’t do it" + note, "You can’t do it");

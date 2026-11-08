@@ -186,7 +186,8 @@ public sealed record DeviceTask(
     long? Member = null,
     DeviceTaskMe? Me = null);
 
-/// <summary>v1.4 · one person on a task: <paramref name="State"/> is sent | seen | progress | done | help | cantdo.</summary>
+/// <summary>v1.4 · one person on a task: <paramref name="State"/> is sent | seen | progress | done | help | cantdo;
+/// <paramref name="Note"/> their help / can't-do reason while it stands.</summary>
 public sealed record DeviceTaskPerson(
     long MemberId,
     string Name = "",
@@ -194,7 +195,10 @@ public sealed record DeviceTaskPerson(
     int StepsTotal = 0,
     int StepsDone = 0,
     DateTimeOffset? SeenAt = null,
-    DateTimeOffset? DoneAt = null);
+    DateTimeOffset? DoneAt = null,
+    string? Role = null,
+    DateTimeOffset? StartedAt = null,
+    string? Note = null);
 
 /// <summary>v1.4 · the task chat in a line: how many messages, how many this member hasn't read, and the last one.</summary>
 public sealed record DeviceTaskChat(int Count = 0, int Unread = 0, DeviceTaskChatLast? Last = null);
@@ -206,7 +210,9 @@ public sealed record DeviceTaskChatLast(string? Text = null, string? By = null, 
 /// v1.4 · the device's own view of a task: whose turn it is (<paramref name="Turn"/>), which steps this member may tick
 /// (<paramref name="CanTick"/>), their own state, and - when the backend sends it - their member id.
 /// </summary>
-public sealed record DeviceTaskMe(bool Turn = false, IReadOnlyList<long>? CanTick = null, string? State = null, long? MemberId = null);
+/// <remarks><c>restart</c> = the owner reopened it and this member hasn't pressed Start again yet.</remarks>
+public sealed record DeviceTaskMe(bool Turn = false, IReadOnlyList<long>? CanTick = null, string? State = null, long? MemberId = null,
+    bool? Restart = null);
 
 /// <summary>
 /// One step of a <see cref="DeviceTask"/>. v1.4: <paramref name="OwnerId"/> = who does it (null = anyone on the task),
@@ -215,9 +221,9 @@ public sealed record DeviceTaskMe(bool Turn = false, IReadOnlyList<long>? CanTic
 public sealed record DeviceTaskStep(long Id, string Title = "", bool Done = false, long? OwnerId = null, long? DoneById = null,
     DateTimeOffset? DoneAt = null);
 
-/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member"; v1.4 may say which member (<paramref name="MemberId"/>, <paramref name="Name"/>).</summary>
+/// <summary>One line of a task's history: <paramref name="By"/> is "owner" or "member"; v1.4 may say which member (<paramref name="MemberId"/>, <paramref name="MemberName"/>).</summary>
 public sealed record DeviceTaskActivity(DateTimeOffset At, string By = "", string Action = "", string? Note = null,
-    long? MemberId = null, string? Name = null);
+    long? MemberId = null, string? MemberName = null);
 
 /// <summary>
 /// POST /api/devices/tasks/&lt;id&gt;/action/ — what the member did: "seen" | "accept" | "start" | "help" | "done" |
@@ -419,6 +425,12 @@ public sealed record ChatReportRequest(
     string Note,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? MessageId = null);
 
+/// <summary>v1.4 · PATCH chat/&lt;id&gt;/: the member's own pin / mute / "mark as unread" for a conversation. Unset parts are left out.</summary>
+public sealed record ChatPrefsRequest(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Pinned = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Muted = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Unread = null);
+
 /// <summary>v1.4 · POST chat/direct/: open (or find) the direct chat with a teammate.</summary>
 public sealed record DirectChatRequest(long MemberId);
 
@@ -487,4 +499,5 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(ChatMessageRequest))]
 [JsonSerializable(typeof(ChatReportRequest))]
 [JsonSerializable(typeof(DirectChatRequest))]
+[JsonSerializable(typeof(ChatPrefsRequest))]
 internal sealed partial class BackendJsonContext : JsonSerializerContext;

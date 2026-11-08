@@ -41,6 +41,13 @@ public sealed record OutboxReply(
     public const string ChatSend = "send";
     public const string ChatReport = "report";
     public const string ChatDirect = "direct";
+    /// <summary>The member's own list choices for a conversation (PATCH chat/&lt;id&gt;/): pin, unpin, mute, unmute, unread, read.</summary>
+    public const string ChatPin = "pin";
+    public const string ChatUnpin = "unpin";
+    public const string ChatMute = "mute";
+    public const string ChatUnmute = "unmute";
+    public const string ChatUnread = "unread";
+    public const string ChatRead = "read";
 
     [JsonIgnore]
     public bool IsChat => string.Equals(Kind, ChatKind, StringComparison.Ordinal);

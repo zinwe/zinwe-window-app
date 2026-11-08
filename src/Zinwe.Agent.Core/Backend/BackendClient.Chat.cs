@@ -71,6 +71,14 @@ public sealed partial class BackendClient
         }
     }
 
+    /// <summary>PATCH chat/&lt;id&gt;/ {pinned?, muted?, unread?}: the member's pin, mute or "mark as unread" (api-v14 §2).</summary>
+    public async Task<ChatWriteOutcome> SetConversationPrefsAsync(string deviceToken, long conversationId, ChatPrefsRequest prefs, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(HttpMethod.Patch, $"{ChatRoot}{Id(conversationId)}/", deviceToken,
+            JsonBody(prefs, BackendJsonContext.Default.ChatPrefsRequest), ct);
+        return Outcome(response);
+    }
+
     /// <summary>POST chat/direct/ {member_id}: the direct chat with a teammate (made on first use).</summary>
     public async Task<(ChatWriteOutcome Outcome, TeamConversation? Conversation)> StartDirectAsync(string deviceToken, long memberId,
         CancellationToken ct)

@@ -134,6 +134,8 @@ public static class OwnerTasks
             "took" or "take" => WhoMember(a, "took it"),
             "reply" or "replied" => $"{ownerFirst} replied",
             "reassign" or "reassigned" or "moved" => $"{ownerFirst} moved it",
+            "due_moved" => $"{ownerFirst} moved the due date",
+            "restored" or "restore" => $"{ownerFirst} restored it",
             "done" or "review" => "You marked it done",
             "step_done" => member ? $"{WhoMember(a, "")}ticked {step}" : $"{who} ticked {step}",
             "step_undone" => $"{who} unticked {step}",
@@ -151,7 +153,7 @@ public static class OwnerTasks
     /// <summary>"You started it" / "Karan started it" for a member's line (v1.4 names which member when the backend says).</summary>
     private static string WhoMember(DeviceTaskActivity a, string what)
     {
-        var who = a.Name is { Length: > 0 } n && (a.MemberId is null || !IsMeLine(a)) ? n.Split(' ')[0] : "You";
+        var who = a.MemberName is { Length: > 0 } n && a.MemberId is not null && !IsMeLine(a) ? n.Split(' ')[0] : "You";
         return what.Length == 0 ? who + " " : who + " " + what;
     }
 
@@ -165,8 +167,8 @@ public static class OwnerTasks
     {
         TaskActions.Accept => "accepted",
         TaskActions.Start => "started",
-        TaskActions.Tick => "ticked",
-        TaskActions.Untick => "unticked",
+        TaskActions.Tick => "step_done",
+        TaskActions.Untick => "step_undone",
         TaskActions.Finish => "finished",
         TaskActions.Note when a.StepId is not null => a.StepDone == false ? "step_undone" : "step_done",
         _ => a.Action ?? "",
@@ -249,6 +251,10 @@ public static class OwnerTasks
         {
             // "Any one of them": the first to start takes it, the others no longer see it.
             t = t with { People = [.. everyone.Where(p => p.MemberId == meId)], Mode = "all" };
+        }
+        if (a.Action == TaskActions.Start && t.Me is { Restart: true } me14)
+        {
+            t = t with { Me = me14 with { Restart = false } }; // "Start again" pressed
         }
         if (a.Action is TaskActions.Start or TaskActions.Help && t.People is not null)
         {

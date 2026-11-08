@@ -51,7 +51,33 @@ public sealed partial class TrayModel
     /// This member's id on the server: from the to-do list, else a task's <c>me</c>. Null on a 1.3 backend that never
     /// said (the engine then works it out per task).
     /// </summary>
-    public long? MeId => _todos?.MemberId ?? _remote?.Tasks?.Select(t => t.Me?.MemberId).FirstOrDefault(x => x is not null);
+    public long? MeId => _todos?.MemberId ?? _remote?.Tasks?.Select(t => t.Me?.MemberId).FirstOrDefault(x => x is not null) ?? MeFromTasks();
+
+    /// <summary>
+    /// The device lists only the tasks this member is on: the one person on every team task is them (api-v14 sends no
+    /// member id of its own on a task).
+    /// </summary>
+    private long? MeFromTasks()
+    {
+        HashSet<long>? common = null;
+        foreach (var t in _remote?.Tasks ?? [])
+        {
+            if (t.People is not { Count: > 0 } people)
+            {
+                continue;
+            }
+            var ids = people.Select(p => p.MemberId).ToHashSet();
+            if (common is null)
+            {
+                common = ids;
+            }
+            else
+            {
+                common.IntersectWith(ids);
+            }
+        }
+        return common is { Count: 1 } ? common.First() : null;
+    }
 
     /// <summary>The member's name as the backend has it on a task (for their initials), else the profile's.</summary>
     public string MyName =>
@@ -447,8 +473,8 @@ public sealed partial class TrayModel
                 {
                     continue; // an own to-do's history line, not words
                 }
-                var who = mine ? "You" : string.Equals(a.By, "owner", StringComparison.OrdinalIgnoreCase) ? OwnerFirstStart : First(a.Name) is { Length: > 0 } f ? f : "A teammate";
-                lines.Add(new TaskChatLine(who, mine ? Initials(MyName) : TeamTaskEngine.Initials(who == OwnerFirstStart ? Status?.OwnerName : a.Name),
+                var who = mine ? "You" : string.Equals(a.By, "owner", StringComparison.OrdinalIgnoreCase) ? OwnerFirstStart : First(a.MemberName) is { Length: > 0 } f ? f : "A teammate";
+                lines.Add(new TaskChatLine(who, mine ? Initials(MyName) : TeamTaskEngine.Initials(who == OwnerFirstStart ? Status?.OwnerName : a.MemberName),
                     mine, !mine && who == OwnerFirstStart, a.Note!.Trim(), a.At, false));
             }
         }
@@ -519,7 +545,8 @@ public sealed partial class TrayModel
     public bool WindowVisible { get; set; }
 
     /// <summary>True when the service and the backend both have team chat: the Chat tab is a list, as on the phone.</summary>
-    public bool TeamChatOn => Status?.ChatVersion is not null && _chat is { Backend: TaskBackend.On };
+    public bool TeamChatOn => Status?.ChatVersion is not null && _chat is { Backend: TaskBackend.On }
+        && ((_chat.Conversations?.Count ?? 0) > 0 || (_chat.People?.Count ?? 0) > 0); // a plan without team chat sends []
 
     /// <summary>The open thread on Chat: null = the list, "admin" = the admin chat, "conv:N" / "direct:M" = a team thread.</summary>
     public string? ChatOpen { get; private set; }
@@ -577,11 +604,41 @@ public sealed partial class TrayModel
         }
         var changed = reply.Version != _chat?.Version || _chat is null;
         _chat = reply;
+        SeedPrefs(reply.Conversations ?? []);
         ResolveDirect();
         AnnounceChat(reply);
         if (changed)
         {
             Raise();
+        }
+    }
+
+    /// <summary>A conversation seen for the first time takes the pin and mute the backend has for it (set on another PC or the web).</summary>
+    private void SeedPrefs(IReadOnlyList<TeamConversation> conversations)
+    {
+        var changed = false;
+        foreach (var c in conversations.Where(c => !_prefs.Known.Contains(c.Key)))
+        {
+            _prefs = _prefs with
+            {
+                Known = [.. _prefs.Known, c.Key],
+                Pins = c.Pinned && !_prefs.Pins.Contains(c.Key) && _prefs.Pins.Count < 3 ? [.. _prefs.Pins, c.Key] : _prefs.Pins,
+                Muted = c.Muted && !_prefs.Muted.Contains(c.Key) ? [.. _prefs.Muted, c.Key] : _prefs.Muted,
+            };
+            changed = true;
+        }
+        if (changed)
+        {
+            _prefs.Save();
+        }
+    }
+
+    /// <summary>The member's pin / mute / unread choice also goes to the backend (api-v14 PATCH chat/&lt;id&gt;/), so it follows them.</summary>
+    private void SyncPref(string key, string action)
+    {
+        if (ChatKeys.Parse(key) is ("conv", _) && Status?.ChatVersion is not null)
+        {
+            QueueChat(action, key, "");
         }
     }
 
@@ -728,7 +785,8 @@ public sealed partial class TrayModel
                 }
                 else
                 {
-                    var mine = last.Mine ?? (me is not null && last.ByMemberId == me && !last.ByOwner);
+                    var mine = last.Mine ?? ((me is not null && last.ByMemberId == me && !last.ByOwner)
+                        || (last.Id == 0 && last.ByName.Length > 0 && string.Equals(last.ByName, First(MyName), StringComparison.OrdinalIgnoreCase)));
                     line = (mine ? "You: " : c.IsGroup ? (last.ByOwner ? OwnerFirstStart : First(last.ByName)) + ": " : "") + last.Body;
                 }
                 var at = c.LastAt ?? (last?.At is { } la && la != default ? la : (DateTimeOffset?)null);
@@ -786,6 +844,7 @@ public sealed partial class TrayModel
         if (_prefs.Pins.Contains(key))
         {
             _prefs = _prefs with { Pins = [.. _prefs.Pins.Where(p => p != key)] };
+            SyncPref(key, OutboxReply.ChatUnpin);
         }
         else if (_prefs.Pins.Count >= 3)
         {
@@ -795,6 +854,7 @@ public sealed partial class TrayModel
         else
         {
             _prefs = _prefs with { Pins = [.. _prefs.Pins, key] };
+            SyncPref(key, OutboxReply.ChatPin);
         }
         _prefs.Save();
         Raise();
@@ -803,8 +863,10 @@ public sealed partial class TrayModel
     public void ToggleMute(string key)
     {
         ConvMenu = null;
-        _prefs = _prefs with { Muted = _prefs.Muted.Contains(key) ? [.. _prefs.Muted.Where(p => p != key)] : [.. _prefs.Muted, key] };
+        var mute = !_prefs.Muted.Contains(key);
+        _prefs = _prefs with { Muted = mute ? [.. _prefs.Muted, key] : [.. _prefs.Muted.Where(p => p != key)] };
         _prefs.Save();
+        SyncPref(key, mute ? OutboxReply.ChatMute : OutboxReply.ChatUnmute);
         Raise();
     }
 
@@ -819,10 +881,12 @@ public sealed partial class TrayModel
             {
                 ReadChat();
             }
+            SyncPref(row.Key, OutboxReply.ChatRead);
         }
         else
         {
             _prefs = _prefs with { Marked = [.. _prefs.Marked, row.Key] };
+            SyncPref(row.Key, OutboxReply.ChatUnread);
         }
         _prefs.Save();
         Raise();
@@ -1017,8 +1081,16 @@ public sealed partial class TrayModel
 /// The member's own chat list choices, kept on this PC (chat-prefs.json): up to 3 pins, muted chats, chats marked
 /// unread. The device API has no endpoint for them, so they never leave the PC.
 /// </summary>
-public sealed record ChatPrefs(List<string> Pins, List<string> Muted, List<string> Marked)
+public sealed record ChatPrefs(List<string> Pins, List<string> Muted, List<string> Marked, List<string>? KnownKeys = null)
 {
+    /// <summary>Conversations already seen (their backend pin / mute was taken once).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<string> Known
+    {
+        get => KnownKeys ?? [];
+        init => KnownKeys = value;
+    }
+
     private static string PathOf() => System.IO.Path.Combine(WidgetPaths.Directory, "chat-prefs.json");
 
     public ChatPrefs Unmark(string key) => Marked.Contains(key) ? Save(this with { Marked = [.. Marked.Where(m => m != key)] }) : this;
@@ -1030,14 +1102,14 @@ public sealed record ChatPrefs(List<string> Pins, List<string> Muted, List<strin
             var path = PathOf();
             if (File.Exists(path) && JsonSerializer.Deserialize<ChatPrefs>(File.ReadAllText(path)) is { } p)
             {
-                return new ChatPrefs(p.Pins ?? [], p.Muted ?? [], p.Marked ?? []);
+                return new ChatPrefs(p.Pins ?? [], p.Muted ?? [], p.Marked ?? [], p.KnownKeys ?? []);
             }
         }
         catch
         {
             // unreadable: start clean
         }
-        return new ChatPrefs([], [], []);
+        return new ChatPrefs([], [], [], []);
     }
 
     public void Save() => Save(this);

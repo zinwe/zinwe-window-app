@@ -85,6 +85,46 @@ public sealed class TeamChatTests : IDisposable
         Assert.Null(ChatKeys.Parse("nope"));
     }
 
+    [Fact]
+    public void The_api_v14_shapes_read_last_lines_directs_and_seen_by_objects()
+    {
+        var list = ChatJson.Conversations("""
+            [{"id": 3, "kind": "group", "name": "Design", "announce": false, "member_id": null, "members": [{"member_id": 9, "name": "Emily Carter", "role": "designer"}],
+              "unread": 1, "last": {"text": "Hero options are in Figma", "by": "Emily", "at": "2026-11-07T05:32:00Z", "task_id": null},
+              "last_message_at": "2026-11-07T05:32:00Z", "pinned": true, "muted": false, "read_only": false, "can_post": true},
+             {"id": 14, "kind": "direct", "name": "Karan Malhotra", "member_id": 7, "members": [], "unread": 0,
+              "last": {"text": "", "by": "", "at": "2026-11-07T05:00:00Z", "task_id": 6}, "can_post": true},
+             {"id": 2, "kind": "group", "name": "Everyone", "announce": true, "can_post": false}]
+            """);
+        Assert.Equal(("Hero options are in Figma", "Emily"), (list[0].Last!.Body, list[0].Last!.ByName));
+        Assert.True(list[0].Pinned);
+        Assert.Equal((false, 7L), (list[1].IsGroup, list[1].WithMemberId!.Value));
+        Assert.Equal(6, list[1].Last!.TaskId);
+        Assert.True(list[2].Announce);
+        Assert.False(list[2].ReadOnly); // announce: read-only for members comes from Announce, not from left the group
+        var line = ChatJson.Messages("""
+            [{"id": 88, "by": {"kind": "member", "member_id": 7, "name": "Karan Malhotra"}, "body": "Starting after lunch.",
+              "reply_to": {"id": 85, "by": {"kind": "owner", "member_id": null, "name": "Ananya Rao"}, "body": "Over to you."},
+              "task_id": null, "system": false, "edited": false, "deleted": false, "at": "2026-11-07T06:40:00Z",
+              "seen_by": [{"member_id": null, "name": "Ananya Rao"}, {"member_id": 4, "name": "Priya Nair"}]}]
+            """).Single();
+        Assert.Equal((2, "Ananya Rao", "Ananya Rao"), (line.SeenBy, line.SeenNames![0], line.ReplyToBy));
+    }
+
+    [Fact]
+    public async Task Pin_mute_and_unread_go_to_the_backend()
+    {
+        var outbox = new MessageOutbox(_dir.Path);
+        outbox.AppendChat(OutboxReply.ChatPin, "conv:3");
+        outbox.AppendChat(OutboxReply.ChatMute, "conv:3");
+        outbox.AppendChat(OutboxReply.ChatUnread, "conv:3");
+        _backend.Respond = r => r.Path == "/api/devices/chat/" ? FakeBackend.Json(HttpStatusCode.OK, Convs) : FakeBackend.Json(HttpStatusCode.OK, "{}");
+        await Sync(outbox).SyncAsync("tok", CancellationToken.None);
+        var patches = _backend.Requests.Where(r => r.Method == HttpMethod.Patch).Select(r => (r.Path, r.Body)).ToList();
+        Assert.Equal([("/api/devices/chat/3/", "{\"pinned\":true}"), ("/api/devices/chat/3/", "{\"muted\":true}"), ("/api/devices/chat/3/", "{\"unread\":true}")], patches);
+        Assert.Empty(outbox.PendingChat());
+    }
+
     // ---- The client ----------------------------------------------------------------------------------
 
     [Theory]

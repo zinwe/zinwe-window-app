@@ -108,6 +108,23 @@ public sealed class TeamTaskEngineTests
     }
 
     [Fact]
+    public void The_backends_restart_flag_decides_Start_again()
+    {
+        var t = new DeviceTask(21, "X", Status: "progress", ReopenNote: "Fix the colour", People: [P(Priya, "Priya Nair")],
+            Me: new DeviceTaskMe(Restart: true));
+        Assert.Equal("Start again", TeamTaskEngine.Happen(t, Ctx).Buttons[0].Label);
+        Assert.False(TeamTaskEngine.Reopened(t with { Me = new DeviceTaskMe(Restart: false) }, Ctx));
+    }
+
+    [Fact]
+    public void A_teammates_help_reason_comes_from_their_line()
+    {
+        var t = new DeviceTask(1, "X", Status: "help", HelpNote: "",
+            People: [P(Priya, "Priya Nair"), new DeviceTaskPerson(Karan, "Karan Malhotra", "help", Note: "Which API key?")]);
+        Assert.Equal("Karan asked Ananya for help: “Which API key?”", TeamTaskEngine.Happen(t, Ctx).Text);
+    }
+
+    [Fact]
     public void Help_and_cant_do_are_told_in_the_first_person()
     {
         var help = new DeviceTask(1, "X", Status: "help", HelpNote: "Which logo?", People: [P(Priya, "Priya Nair", "help")]);

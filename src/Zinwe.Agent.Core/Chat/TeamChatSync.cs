@@ -330,6 +330,19 @@ public sealed class TeamChatSync
                     string.IsNullOrWhiteSpace(item.Body) ? "Reported from the Zinwe app" : item.Body, ct);
             case OutboxReply.ChatDirect:
                 return (await StartDirectAsync(token, kind == "direct" ? id : item.MemberId ?? id, ct)).Outcome;
+            case OutboxReply.ChatPin or OutboxReply.ChatUnpin or OutboxReply.ChatMute or OutboxReply.ChatUnmute or OutboxReply.ChatUnread
+                when kind == "conv":
+                return await _backend.SetConversationPrefsAsync(token, id, item.Action switch
+                {
+                    OutboxReply.ChatPin => new ChatPrefsRequest(Pinned: true),
+                    OutboxReply.ChatUnpin => new ChatPrefsRequest(Pinned: false),
+                    OutboxReply.ChatMute => new ChatPrefsRequest(Muted: true),
+                    OutboxReply.ChatUnmute => new ChatPrefsRequest(Muted: false),
+                    _ => new ChatPrefsRequest(Unread: true),
+                }, ct);
+            case OutboxReply.ChatRead when kind == "conv":
+                await _backend.MarkConversationReadAsync(token, id, ct);
+                return ChatWriteOutcome.Done;
             default:
                 return ChatWriteOutcome.Refused;
         }
