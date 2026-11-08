@@ -48,6 +48,15 @@ public sealed record OutboxReply(
     public const string ChatUnmute = "unmute";
     public const string ChatUnread = "unread";
     public const string ChatRead = "read";
+    /// <summary>
+    /// v1.4.1 · "edit" (<see cref="MessageId"/> in <see cref="ChatKey"/> gets <see cref="Body"/>), "delete" (that line goes
+    /// for everyone), "leave" (<see cref="ChatKey"/> = <see cref="LeaveKey"/>, <see cref="Body"/> = the
+    /// <see cref="LeaveRequest"/> as JSON). Written only while a 1.4.1 service runs (a 1.4.0 one drops what it doesn't know).
+    /// </summary>
+    public const string ChatEdit = "edit";
+    public const string ChatDelete = "delete";
+    public const string ChatLeave = "leave";
+    public const string LeaveKey = "leave";
 
     [JsonIgnore]
     public bool IsChat => string.Equals(Kind, ChatKind, StringComparison.Ordinal);
@@ -168,6 +177,26 @@ public sealed class MessageOutbox
 
     /// <summary>v1.4 · team chat items still waiting, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingChat() => [.. All().Where(i => i.IsChat)];
+
+    /// <summary>v1.4.1 · queue an ask for a day off (posted by the service with the chat items).</summary>
+    public OutboxReply AppendLeave(LeaveRequest request) =>
+        AppendChat(OutboxReply.ChatLeave, OutboxReply.LeaveKey, JsonSerializer.Serialize(request, BackendJsonContext.Default.LeaveRequest));
+
+    /// <summary>The day-off ask in a queued item; null when it can't be read.</summary>
+    public static LeaveRequest? ReadLeave(OutboxReply item)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(item.Body, BackendJsonContext.Default.LeaveRequest) is { Date.Length: > 0 } request ? request : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>v1.4.1 · drop every waiting chat item for one thread (that group was deleted).</summary>
+    public void RemoveChat(string chatKey) => Remove([.. All().Where(i => i.IsChat && i.ChatKey == chatKey).Select(i => i.Id)]);
 
     /// <summary>
     /// Queue the member's new picture (FR-44), replacing any earlier one still waiting (the newest choice wins).

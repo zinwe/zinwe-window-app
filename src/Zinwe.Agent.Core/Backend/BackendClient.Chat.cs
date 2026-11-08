@@ -41,15 +41,57 @@ public sealed partial class BackendClient
     }
 
     /// <summary>GET chat/&lt;id&gt;/messages/: the lines of one conversation, oldest first. Null = it's gone (or no chat).</summary>
-    public async Task<IReadOnlyList<TeamMessage>?> GetConversationMessagesAsync(string deviceToken, long conversationId, CancellationToken ct)
+    public async Task<IReadOnlyList<TeamMessage>?> GetConversationMessagesAsync(string deviceToken, long conversationId, CancellationToken ct) =>
+        (await FetchConversationAsync(deviceToken, conversationId, ct)).Messages;
+
+    /// <summary>
+    /// v1.4.1 · GET chat/&lt;id&gt;/messages/ telling a deleted conversation (404: <c>Gone</c>) from a backend without team
+    /// chat for this PC (403/405: no messages, not gone). Only the list endpoint decides that the chat itself is off.
+    /// </summary>
+    public async Task<(IReadOnlyList<TeamMessage>? Messages, bool Gone)> FetchConversationAsync(string deviceToken, long conversationId,
+        CancellationToken ct)
     {
         using var response = await SendAsDeviceAsync(HttpMethod.Get, $"{ChatRoot}{Id(conversationId)}/messages/", deviceToken, null, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return (null, true);
+        }
         if (IsOff(response))
         {
-            return null;
+            return (null, false);
         }
         response.EnsureSuccessStatusCode();
-        return ChatJson.Messages(await response.Content.ReadAsStringAsync(ct));
+        return (ChatJson.Messages(await response.Content.ReadAsStringAsync(ct)), false);
+    }
+
+    /// <summary>v1.4.1 · PATCH chat/&lt;id&gt;/messages/&lt;mid&gt;/ {body}: the member's own line, within 15 minutes.</summary>
+    public Task<ChatWriteResult> EditConversationMessageAsync(string deviceToken, long conversationId, long messageId, string body,
+        CancellationToken ct) =>
+        WriteLineAsync(HttpMethod.Patch, deviceToken, conversationId, messageId,
+            JsonBody(new ChatMessageRequest(body.Trim()), BackendJsonContext.Default.ChatMessageRequest), ct);
+
+    /// <summary>v1.4.1 · DELETE chat/&lt;id&gt;/messages/&lt;mid&gt;/: everyone then sees "This message was deleted".</summary>
+    public Task<ChatWriteResult> DeleteConversationMessageAsync(string deviceToken, long conversationId, long messageId, CancellationToken ct) =>
+        WriteLineAsync(HttpMethod.Delete, deviceToken, conversationId, messageId, null, ct);
+
+    private async Task<ChatWriteResult> WriteLineAsync(HttpMethod method, string deviceToken, long conversationId, long messageId,
+        HttpContent? body, CancellationToken ct)
+    {
+        using var response = await SendAsDeviceAsync(method, $"{ChatRoot}{Id(conversationId)}/messages/{Id(messageId)}/", deviceToken, body, ct);
+        var outcome = ConversationOutcome(response);
+        if (outcome == ChatWriteOutcome.Done)
+        {
+            var text = await response.Content.ReadAsStringAsync(ct);
+            return new ChatWriteResult(outcome, Line: text.TrimStart().StartsWith('{') ? ChatJson.Messages("[" + text + "]").FirstOrDefault() : null);
+        }
+        return new ChatWriteResult(outcome, outcome == ChatWriteOutcome.Refused ? await RefusalTextAsync(response, ct) : null);
+    }
+
+    /// <summary>The backend's own sentence for a refusal, or null when it sent none we can show.</summary>
+    private static async Task<string?> RefusalTextAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var (_, message) = await ReadFirstErrorAsync(response, ct);
+        return message.StartsWith("The backend refused", StringComparison.Ordinal) ? null : message;
     }
 
     /// <summary>POST chat/&lt;id&gt;/messages/ (a reply quotes <paramref name="replyTo"/>).</summary>
@@ -58,25 +100,35 @@ public sealed partial class BackendClient
     {
         using var response = await SendAsDeviceAsync(HttpMethod.Post, $"{ChatRoot}{Id(conversationId)}/messages/", deviceToken,
             JsonBody(new ChatMessageRequest(body.Trim(), replyTo), BackendJsonContext.Default.ChatMessageRequest), ct);
-        return Outcome(response);
+        return ConversationOutcome(response);
     }
 
-    /// <summary>POST chat/&lt;id&gt;/read/: the member read this conversation. Best effort.</summary>
-    public async Task MarkConversationReadAsync(string deviceToken, long conversationId, CancellationToken ct)
+    /// <summary>POST chat/&lt;id&gt;/read/: the member read this conversation. Best effort; <c>Gone</c> when it was deleted.</summary>
+    public async Task<ChatWriteOutcome> MarkConversationReadAsync(string deviceToken, long conversationId, CancellationToken ct)
     {
         using var response = await SendAsDeviceAsync(HttpMethod.Post, $"{ChatRoot}{Id(conversationId)}/read/", deviceToken, null, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return ChatWriteOutcome.Gone;
+        }
         if (!IsOff(response) && (int)response.StatusCode is not (>= 400 and < 500))
         {
             response.EnsureSuccessStatusCode();
         }
+        return ChatWriteOutcome.Done;
     }
 
     /// <summary>PATCH chat/&lt;id&gt;/ {pinned?, muted?, unread?}: the member's pin, mute or "mark as unread" (api-v14 §2).</summary>
-    public async Task<ChatWriteOutcome> SetConversationPrefsAsync(string deviceToken, long conversationId, ChatPrefsRequest prefs, CancellationToken ct)
+    public async Task<ChatWriteOutcome> SetConversationPrefsAsync(string deviceToken, long conversationId, ChatPrefsRequest prefs, CancellationToken ct) =>
+        (await UpdateConversationPrefsAsync(deviceToken, conversationId, prefs, ct)).Outcome;
+
+    /// <summary>As <see cref="SetConversationPrefsAsync"/>, with the backend's sentence when it refused ("You can pin up to 3 chats.").</summary>
+    public async Task<ChatWriteResult> UpdateConversationPrefsAsync(string deviceToken, long conversationId, ChatPrefsRequest prefs, CancellationToken ct)
     {
         using var response = await SendAsDeviceAsync(HttpMethod.Patch, $"{ChatRoot}{Id(conversationId)}/", deviceToken,
             JsonBody(prefs, BackendJsonContext.Default.ChatPrefsRequest), ct);
-        return Outcome(response);
+        var outcome = ConversationOutcome(response);
+        return new ChatWriteResult(outcome, outcome == ChatWriteOutcome.Refused ? await RefusalTextAsync(response, ct) : null);
     }
 
     /// <summary>POST chat/direct/ {member_id}: the direct chat with a teammate (made on first use).</summary>
@@ -97,7 +149,7 @@ public sealed partial class BackendClient
     {
         using var response = await SendAsDeviceAsync(HttpMethod.Post, $"{ChatRoot}{Id(conversationId)}/report/", deviceToken,
             JsonBody(new ChatReportRequest(note.Trim(), messageId), BackendJsonContext.Default.ChatReportRequest), ct);
-        return Outcome(response);
+        return ConversationOutcome(response);
     }
 
     /// <summary>GET tasks/&lt;id&gt;/chat/: everyone's lines on a task. Null = a 1.3 backend (its notes stand in).</summary>
@@ -129,6 +181,10 @@ public sealed partial class BackendClient
             response.EnsureSuccessStatusCode();
         }
     }
+
+    /// <summary>A write on one conversation's own route: a 404 there means that conversation was deleted (v1.4.1).</summary>
+    private static ChatWriteOutcome ConversationOutcome(HttpResponseMessage response) =>
+        response.StatusCode == HttpStatusCode.NotFound ? ChatWriteOutcome.Gone : Outcome(response);
 
     private static ChatWriteOutcome Outcome(HttpResponseMessage response)
     {

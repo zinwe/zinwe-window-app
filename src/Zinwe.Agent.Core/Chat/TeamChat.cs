@@ -85,6 +85,12 @@ public sealed record ChatThread(string Key, IReadOnlyList<TeamMessage>? Messages
 /// </summary>
 /// <param name="Backend">See <see cref="TaskBackend"/>: Off = a backend (or plan) without team chat: the admin chat only.</param>
 /// <param name="Version">Goes up whenever anything here changes; also on the status (<see cref="AgentStatus.ChatVersion"/>).</param>
+/// <param name="Gone">v1.4.1 · conversations that were deleted (a group the owner deleted): the tray closes them and forgets
+/// their local choices. Null from a 1.4.0 service.</param>
+/// <param name="Leave">v1.4.1 · the member's recent asks for a day off. Null = a 1.4.0 service or a backend without leave
+/// (the tray then shows no "Ask for a day off").</param>
+/// <param name="Notices">v1.4.1 · what the backend refused from the outbox (an edit after 15 minutes, a day-off ask), each
+/// shown once by its <see cref="ChatNotice.Id"/>.</param>
 public sealed record ChatReply(
     bool Supported = false,
     string Backend = TaskBackend.Unknown,
@@ -92,7 +98,13 @@ public sealed record ChatReply(
     IReadOnlyList<TeamMember>? People = null,
     ChatThread? Thread = null,
     DateTimeOffset? SyncedAt = null,
-    int Version = 0);
+    int Version = 0,
+    IReadOnlyList<long>? Gone = null,
+    IReadOnlyList<Work.LeaveAsk>? Leave = null,
+    IReadOnlyList<ChatNotice>? Notices = null);
+
+/// <summary>v1.4.1 · one outbox item the backend refused: its id, the thread, the action, and the words to show.</summary>
+public sealed record ChatNotice(string Id, string Key = "", string Action = "", string Text = "", DateTimeOffset At = default);
 
 /// <summary>The keys a thread goes by: "conv:12" (a group or direct chat), "task:6" (a task chat), "direct:4" (a direct
 /// chat with member 4 that doesn't exist yet: the service starts it before the first message).</summary>

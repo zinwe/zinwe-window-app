@@ -96,7 +96,10 @@ public sealed record WorkRules(
     string? End = null,
     int BreakAllowedMin = 0,
     bool TellMemberOver = true,
-    int LateGraceMin = 0);
+    int LateGraceMin = 0,
+    bool? WorkingToday = null,
+    string? HolidayToday = null,
+    string? LeaveToday = null);
 
 /// <summary>Where the member's day went, and when (<see cref="HeartbeatResponse.DayMoved"/>).</summary>
 public sealed record WorkDayMoved(string ToHostname, DateTimeOffset At);
@@ -443,7 +446,18 @@ public enum ChatWriteOutcome
     Refused,
     /// <summary>403/404/405: a backend (or plan) without it.</summary>
     Off,
+    /// <summary>v1.4.1 · 404 on one conversation's own route: that group (or chat) was deleted. Only it goes, not the chat.</summary>
+    Gone,
 }
+
+/// <summary>
+/// v1.4.1 · what became of an edit, a delete or a day-off ask: the outcome, the backend's own sentence when it refused
+/// ("You can change a message for 15 minutes after sending it."), and the line it sent back (edit / delete).
+/// </summary>
+public sealed record ChatWriteResult(ChatWriteOutcome Outcome, string? Error = null, Chat.TeamMessage? Line = null);
+
+/// <summary>v1.4.1 · POST /api/devices/leave/: ask for a day (or half a day) off. <paramref name="Date"/> is "yyyy-MM-dd".</summary>
+public sealed record LeaveRequest(string Date, bool Half, string Note);
 
 /// <summary>POST /api/devices/feedback/ — the member's feedback on Zinwe from the Zinwe window (FR-14).</summary>
 public sealed record MemberFeedbackRequest(int Rating, string Message);
@@ -500,4 +514,5 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(ChatReportRequest))]
 [JsonSerializable(typeof(DirectChatRequest))]
 [JsonSerializable(typeof(ChatPrefsRequest))]
+[JsonSerializable(typeof(LeaveRequest))]
 internal sealed partial class BackendJsonContext : JsonSerializerContext;
