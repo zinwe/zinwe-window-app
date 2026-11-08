@@ -28,6 +28,8 @@ public partial class HomeView : UserControl
         Update.Render();
         DeclinedNote.Visibility = m.Consent == ConsentState.Declined ? Visibility.Visible : Visibility.Collapsed;
 
+        BreakNoteText.Text = m.BreakNote ?? "";
+        BreakNoteCard.Visibility = m.BreakNote is null ? Visibility.Collapsed : Visibility.Visible;
         NeedsList.Children.Clear();
         var needs = m.NeedsYou;
         foreach (var (kind, title, sub, run) in needs)
