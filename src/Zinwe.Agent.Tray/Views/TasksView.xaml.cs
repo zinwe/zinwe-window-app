@@ -57,19 +57,22 @@ public partial class TasksView : UserControl
         Rows.Children.Clear();
         foreach (var (name, sub, items) in sections)
         {
-            var head = new WrapPanel { Margin = new Thickness(4, 14, 4, 8) };
-            var title = Ui.Text(name, 14, FontWeights.Bold);
-            title.Margin = new Thickness(0, 0, 8, 0);
+            // The section line (prototype): "Needs you" 13 px, its hint and count 12 px, 12 px above, 4 below.
+            var head = new WrapPanel { Margin = new Thickness(4, 12, 4, 4), MinHeight = 18 };
+            var title = Ui.Text(name, 13, FontWeights.SemiBold);
+            title.Margin = new Thickness(0, 0, 6, 0);
             head.Children.Add(title);
-            var s = Ui.Text(sub, 12.5, fg: "Z.Muted");
-            s.Margin = new Thickness(0, 1, 8, 0);
+            var s = Ui.Text(sub, 12, fg: "Z.Muted");
+            s.Margin = new Thickness(0, 1, 6, 0);
             head.Children.Add(s);
-            head.Children.Add(Ui.Text(items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), 12.5, fg: "Z.Muted"));
+            var count = Ui.Text(items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), 12, fg: "Z.Faint");
+            count.Margin = new Thickness(0, 1, 0, 0);
+            head.Children.Add(count);
             Rows.Children.Add(head);
             foreach (var it in items)
             {
                 var card = TaskCardV2.Build(it, m);
-                card.Margin = new Thickness(0, 0, 0, 10);
+                card.Margin = new Thickness(0, 4, 0, 4); // 8 px between cards
                 Rows.Children.Add(card);
             }
         }
@@ -84,4 +87,14 @@ public partial class TasksView : UserControl
     private void OnSearch(object sender, TextChangedEventArgs e) => Model?.SetTaskQuery(Search.Text);
 
     private void OnAdd(object sender, RoutedEventArgs e) => Model?.OpenNewTask();
+
+    /// <summary>The wheel moves the chips sideways while they run wider than the window.</summary>
+    private void OnChipWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (ChipScroll.ScrollableWidth > 0)
+        {
+            ChipScroll.ScrollToHorizontalOffset(ChipScroll.HorizontalOffset - e.Delta / 3.0);
+            e.Handled = true;
+        }
+    }
 }

@@ -12,7 +12,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid Margin="12,12,12,0">
+        <Grid Margin="12,10,12,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -21,20 +21,28 @@
                      TextChanged="OnSearch" />
             <Button x:Name="AddButton" Grid.Column="1" Margin="8,0,0,0" Click="OnAdd" AutomationProperties.Name="Add a to-do" ToolTip="Add a to-do"
                     Style="{StaticResource Z.TvBare}">
-                <Border CornerRadius="999" Background="{DynamicResource Z.Orange}" Height="44" Padding="16,0,18,0">
+                <!-- .zw-padd: 38 px, a true pill (half the height as the corner), with its soft orange glow. -->
+                <Border CornerRadius="19" Background="{DynamicResource Z.Orange}" Height="38" Padding="14,0,16,0">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="16" ShadowDepth="5" Direction="270" Opacity="0.45" Color="#F26A0A" />
+                    </Border.Effect>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Path Data="M12 5v14M5 12h14" Stroke="{DynamicResource Z.OnOrange}" StrokeThickness="2.4" StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round" Width="14" Height="14" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
-                        <TextBlock Text="Add" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource Z.OnOrange}" VerticalAlignment="Center" />
+                        <Path Data="M12 5v14M5 12h14" Stroke="{DynamicResource Z.OnOrange}" StrokeThickness="2.6" StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" Width="13" Height="13" Stretch="Uniform" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Add" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Z.OnOrange}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
             </Button>
         </Grid>
-        <WrapPanel x:Name="Chips" Grid.Row="1" Margin="12,8,12,4" AutomationProperties.Name="Show" />
+        <!-- One line of chips that never wraps or clips: with bigger text it scrolls sideways (the wheel too). -->
+        <ScrollViewer x:Name="ChipScroll" Grid.Row="1" Margin="12,8,12,8" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                      Focusable="False" PanningMode="HorizontalOnly" PreviewMouseWheel="OnChipWheel">
+            <StackPanel x:Name="Chips" Orientation="Horizontal" AutomationProperties.Name="Show" />
+        </ScrollViewer>
 
         <Grid Grid.Row="2" Background="{DynamicResource Z.Fill}">
             <ScrollViewer x:Name="ListScroller" Style="{StaticResource Z.Scroll}">
-                <StackPanel Margin="12,4,12,20">
+                <StackPanel Margin="12,0,12,20">
                     <StackPanel x:Name="Empty" Margin="16,40,16,16" Visibility="Collapsed">
                         <TextBlock x:Name="EmptyTitle" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource Z.Ink}" TextAlignment="Center"
                                    TextWrapping="Wrap" Margin="0,0,0,2" />

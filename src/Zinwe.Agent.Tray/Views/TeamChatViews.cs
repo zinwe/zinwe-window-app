@@ -19,7 +19,7 @@ namespace Zinwe.Agent.Tray.Views;
 public sealed class ChatListView : UserControl
 {
     private readonly TextBox _search;
-    private readonly WrapPanel _chips = new() { Margin = new Thickness(12, 8, 12, 4) };
+    private readonly StackPanel _chips = new() { Orientation = Orientation.Horizontal };
     private readonly StackPanel _rows = new();
     private readonly TextBlock _empty;
     private readonly TextBlock _alone;
@@ -27,7 +27,7 @@ public sealed class ChatListView : UserControl
 
     public ChatListView()
     {
-        _search = new TextBox { Style = (Style)Application.Current.FindResource("Z.TvSearch"), Tag = "Search chats and people", Margin = new Thickness(12, 12, 12, 0) };
+        _search = new TextBox { Style = (Style)Application.Current.FindResource("Z.TvSearch"), Tag = "Search chats and people", Margin = new Thickness(12, 10, 12, 0) };
         AutomationProperties.SetName(_search, "Search chats and people");
         _search.TextChanged += (_, _) => Model?.SetChatQuery(_search.Text);
         _empty = Ui.Text("", 13, fg: "Z.Muted", wrap: true);
@@ -43,8 +43,11 @@ public sealed class ChatListView : UserControl
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition());
         grid.Children.Add(_search);
-        Grid.SetRow(_chips, 1);
-        grid.Children.Add(_chips);
+        var chipRow = Tv.ChipRow(_chips);
+        chipRow.Margin = new Thickness(12, 8, 12, 4);
+        AutomationProperties.SetName(_chips, "Show");
+        Grid.SetRow(chipRow, 1);
+        grid.Children.Add(chipRow);
         var list = new StackPanel { Margin = new Thickness(0, 4, 0, 16) };
         list.Children.Add(_rows);
         list.Children.Add(_empty);

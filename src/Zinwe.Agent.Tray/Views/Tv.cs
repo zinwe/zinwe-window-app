@@ -333,21 +333,29 @@ internal static class Tv
         return b;
     }
 
-    /// <summary>A pill chip with a count (All 7 · Today 5 · Upcoming 2 · Done 1): black when on, outlined when off.</summary>
+    /// <summary>
+    /// A pill chip with a count (All 7 · Today 5 · Upcoming 2 · Done 1): black when on, outlined when off. Sized like the
+    /// prototype's .zw-pchips (32 px, 12.5 px label, 11 px count, 14 px sides), so four chips with two-digit counts fit
+    /// the window; the row they sit in (<see cref="ChipRow"/>) scrolls sideways when bigger text makes them wider.
+    /// </summary>
     public static Button Chip(string label, int count, bool on, Action pick, bool showZero = false)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        row.Children.Add(Ui.Text(label, 13.5, on ? FontWeights.SemiBold : FontWeights.Normal, on ? "Z.OnInv" : "Z.Ink2"));
+        var name = Ui.Text(label, 12.5, on ? FontWeights.SemiBold : FontWeights.Normal, on ? "Z.OnInv" : "Z.Ink2");
+        name.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(name);
         if (count > 0 || showZero)
         {
-            var n = Ui.Text(count.ToString(System.Globalization.CultureInfo.InvariantCulture), 12.5, FontWeights.Normal, on ? "Z.OnInv" : "Z.Muted");
-            n.Margin = new Thickness(5, 0, 0, 0);
+            var n = Ui.Text(count.ToString(System.Globalization.CultureInfo.InvariantCulture), 11, on ? FontWeights.SemiBold : FontWeights.Normal, on ? "Z.OnInv" : "Z.Muted");
+            n.Margin = new Thickness(4, 1, 0, 0);
             n.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(n);
         }
-        var pill = new Border { CornerRadius = new CornerRadius(999), BorderThickness = new Thickness(1), Padding = new Thickness(14, 0, 14, 0), Height = 34, Child = row }
+        // A fixed height and half of it as the corner: a true pill (999 made WPF draw an ellipse).
+        var pill = new Border { CornerRadius = new CornerRadius(ChipHeight / 2), BorderThickness = new Thickness(1), Padding = new Thickness(14, 0, 14, 0), Height = ChipHeight, MinWidth = 44, Child = row }
             .Res(Border.BackgroundProperty, on ? "Z.Inv" : "Z.Surface").Res(Border.BorderBrushProperty, on ? "Z.Inv" : "Z.Line2");
-        var b = Bare(new Grid { Background = Brushes.Transparent, MinHeight = 40, Children = { pill } }, pick, label + (count > 0 ? ", " + count : ""));
+        row.HorizontalAlignment = HorizontalAlignment.Center;
+        var b = Bare(pill, pick, label + (count > 0 ? ", " + count : ""));
         b.MouseEnter += (_, _) =>
         {
             if (!on)
@@ -365,6 +373,30 @@ internal static class Tv
         b.Margin = new Thickness(0, 0, 6, 0);
         AutomationProperties.SetItemStatus(b, on ? "selected" : "");
         return b;
+    }
+
+    public const double ChipHeight = 32;
+
+    /// <summary>
+    /// The row the chips sit in: one line that never wraps or clips a chip; when they run wider than the window (bigger
+    /// text) it scrolls sideways (the mouse wheel too), without a bar, like the prototype's .zw-pchips.
+    /// </summary>
+    public static ScrollViewer ChipRow(Panel chips)
+    {
+        var scroll = new ScrollViewer
+        {
+            Content = chips, HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Focusable = false, PanningMode = PanningMode.HorizontalOnly,
+        };
+        scroll.PreviewMouseWheel += (_, e) =>
+        {
+            if (scroll.ScrollableWidth > 0)
+            {
+                scroll.ScrollToHorizontalOffset(scroll.HorizontalOffset - e.Delta / 3.0);
+                e.Handled = true;
+            }
+        };
+        return scroll;
     }
 
     /// <summary>A rounded white card with a 3 px tone edge on the left (.tv-card).</summary>
