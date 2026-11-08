@@ -1001,6 +1001,11 @@ public sealed partial class TrayModel
         var who = message is not null ? First(message.ByName)
             : Conversations.FirstOrDefault(c => c.Key == key) is { IsGroup: false } c ? First(c.Name) : "";
         Report = (key, message, who.Length > 0 ? who : "this person");
+        if (ChatOpen != key && ChatKeys.Parse(key) is ("conv", _))
+        {
+            ChatOpen = key; // from the list: the report card shows over that chat
+            TeamReplyTo = null;
+        }
         Raise();
     }
 
