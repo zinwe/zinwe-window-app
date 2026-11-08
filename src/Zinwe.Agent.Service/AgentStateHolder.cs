@@ -79,6 +79,15 @@ internal sealed class AgentStateHolder
         }
     }
 
+    /// <summary>v1.4: the work rules in force for this PC, as the last heartbeat said (null = none sent: an older backend).</summary>
+    public void SetWorkRules(WorkRules? rules)
+    {
+        lock (_lock)
+        {
+            Volatile.Write(ref _status, Current with { WorkRules = rules });
+        }
+    }
+
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>

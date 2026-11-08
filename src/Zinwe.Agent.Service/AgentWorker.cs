@@ -31,6 +31,7 @@ internal sealed partial class AgentWorker(
     Zinwe.Agent.Core.Tasks.TaskSync tasks,
     Zinwe.Agent.Core.Tasks.TodoSync todos,
     Zinwe.Agent.Core.Pictures.PictureSync pictures,
+    Zinwe.Agent.Core.Chat.TeamChatSync teamChat,
     MetricsUploadPump metrics,
     WorkStatusReader work,
     WorkTransitionLog workLog,
@@ -45,7 +46,8 @@ internal sealed partial class AgentWorker(
     private static readonly TimeSpan WaitForKeyInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(5);
     // How often the chat loop checks for a reply the member just typed (a small local file read).
-    private static readonly TimeSpan ChatReplyCheckInterval = TimeSpan.FromSeconds(2);
+    // v1.4: 1 s, so the open team chat thread (pulled every 3 s by TeamChatSync) keeps its pace.
+    private static readonly TimeSpan ChatReplyCheckInterval = TimeSpan.FromSeconds(1);
     // How often the heartbeat loop checks the widget's change log (a file-size check).
     private static readonly TimeSpan WorkChangeCheckInterval = TimeSpan.FromSeconds(2);
     // One enrol call never keeps the member waiting longer than this (no internet = a clear message, not a spinner).
@@ -201,6 +203,11 @@ internal sealed partial class AgentWorker(
                     await pictures.SyncAsync(identity.DeviceToken, ct);
                     next = DateTimeOffset.UtcNow + interval;
                 }
+                // v1.4 team chat paces itself: the open thread every 3 s, the list every 15 s, queued lines at once.
+                if (teamChat.Due)
+                {
+                    await teamChat.SyncAsync(identity.DeviceToken, ct);
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -261,6 +268,7 @@ internal sealed partial class AgentWorker(
                 workLog.Acknowledge(workEvents);
                 state.SetServerInfo(beat.CompanyName, beat.OwnerName, beat.ConsentState);
                 state.SetWorkDay(beat.DayMoved, beat.DayCarry); // one work day across PCs: the tray acts on it
+                state.SetWorkRules(beat.WorkRules); // v1.4: the break-limit note on Home (null = an older backend)
                 pictures.OnHeartbeat(beat.Picture); // FR-44: no field = a backend without pictures
 
                 failures = 0;
@@ -306,6 +314,7 @@ internal sealed partial class AgentWorker(
                 tasks.Clear();
                 todos.Clear();
                 pictures.Clear();
+                teamChat.Clear();
                 state.Set(AgentState.Rejected, message: RemovedMessage(company), removed: true);
                 LogDeviceRejected(identity.DeviceId, e.Message);
                 return; // back to the enrollment loop, which waits for a new Member ID
