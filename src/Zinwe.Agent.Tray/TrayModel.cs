@@ -154,7 +154,7 @@ public sealed partial class TrayModel : IDisposable
     public IReadOnlyList<DayLog.Entry> Log { get; private set; }
     public TraySettings Settings { get; private set; }
     public MemberProfile Profile { get; private set; }
-    public ITaskSource Tasks { get; }
+    public ITaskSource Tasks { get; private set; }
     public NoticeHistory History { get; } = new();
     public ReplyQuotes Quotes { get; } = new();
 
@@ -262,6 +262,10 @@ public sealed partial class TrayModel : IDisposable
     {
         get
         {
+            if (_previewApp)
+            {
+                return Stage.App; // a test's preview of the app screens, whatever this PC's own consent file says
+            }
             var layout = WidgetLayout.From(Status, Consent);
             return layout.Screen switch
             {
@@ -885,6 +889,10 @@ public sealed partial class TrayModel : IDisposable
         {
             case "chat":
                 Go(Tab.Chat);
+                if (TeamChatOn)
+                {
+                    OpenConv("admin"); // an admin message opens its thread, not the list (as on Home's Needs you)
+                }
                 break;
             case "startday":
                 Go(Tab.Home);

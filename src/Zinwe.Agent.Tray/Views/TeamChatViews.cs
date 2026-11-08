@@ -22,6 +22,7 @@ public sealed class ChatListView : UserControl
     private readonly WrapPanel _chips = new() { Margin = new Thickness(12, 8, 12, 4) };
     private readonly StackPanel _rows = new();
     private readonly TextBlock _empty;
+    private readonly TextBlock _alone;
     private string _shown = "";
 
     public ChatListView()
@@ -32,6 +33,11 @@ public sealed class ChatListView : UserControl
         _empty = Ui.Text("", 13, fg: "Z.Muted", wrap: true);
         _empty.Margin = new Thickness(24, 30, 24, 0);
         _empty.TextAlignment = TextAlignment.Center;
+        // v1.4.2: a member in no group and with no teammates yet still gets the list (their admin on top) and this note.
+        _alone = Ui.Text("No groups yet. Your admin can add you to one.", 13, fg: "Z.Muted", wrap: true);
+        _alone.Margin = new Thickness(24, 24, 24, 0);
+        _alone.TextAlignment = TextAlignment.Center;
+        _alone.Visibility = Visibility.Collapsed;
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -42,6 +48,7 @@ public sealed class ChatListView : UserControl
         var list = new StackPanel { Margin = new Thickness(0, 4, 0, 16) };
         list.Children.Add(_rows);
         list.Children.Add(_empty);
+        list.Children.Add(_alone);
         var scroll = new ScrollViewer { Content = list, Style = (Style)Application.Current.FindResource("Z.Scroll") };
         Grid.SetRow(scroll, 2);
         grid.Children.Add(scroll);
@@ -63,7 +70,8 @@ public sealed class ChatListView : UserControl
             _search.Text = m.ChatQuery;
         }
         var rows = m.ChatRows;
-        var sig = string.Join("#", rows) + $"|{m.ChatFilter}|{m.ConvMenu}|{m.ChatUnreadRows}|{m.ChatGroupCount}|{m.Now:yyyyMMddHHmm}";
+        var alone = m.ChatAlone && m.ChatFilter == ChatChip.All && m.ChatQuery.Trim().Length == 0;
+        var sig = string.Join("#", rows) + $"|{m.ChatFilter}|{m.ConvMenu}|{m.ChatUnreadRows}|{m.ChatGroupCount}|{alone}|{m.Now:yyyyMMddHHmm}";
         if (sig == _shown)
         {
             return;
@@ -79,6 +87,7 @@ public sealed class ChatListView : UserControl
             _rows.Children.Add(Row(m, r));
         }
         _empty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _alone.Visibility = alone ? Visibility.Visible : Visibility.Collapsed;
         _empty.Text = m.ChatFilter == ChatChip.Unread && m.ChatQuery.Trim().Length == 0 ? "No unread chats."
             : m.ChatFilter == ChatChip.Groups && m.ChatQuery.Trim().Length == 0 ? "You're not in a group yet."
             : $"No chats match “{m.ChatQuery.Trim()}”.";

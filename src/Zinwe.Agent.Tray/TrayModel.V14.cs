@@ -6,6 +6,7 @@ using Zinwe.Agent.Core.Backend;
 using Zinwe.Agent.Core.Chat;
 using Zinwe.Agent.Core.Ipc;
 using Zinwe.Agent.Core.Messages;
+using Zinwe.Agent.Core.Policy;
 using Zinwe.Agent.Core.Tasks;
 using Zinwe.Agent.Core.Work;
 using Zinwe.Agent.Tray.Widget;
@@ -548,9 +549,18 @@ public sealed partial class TrayModel
     /// <summary>The window can be seen (the open thread is pulled every 3 s only then).</summary>
     public bool WindowVisible { get; set; }
 
-    /// <summary>True when the service and the backend both have team chat: the Chat tab is a list, as on the phone.</summary>
+    /// <summary>
+    /// True when the service and the backend both have team chat: the Chat tab is a list, as on the phone, the admin row
+    /// first. v1.4.2: a plan that lists <c>team_chat</c> gets the list even while it is empty (a member in no group and
+    /// with no teammates yet: the admin row and a calm note); only a backend that sends no plan list falls back to the
+    /// lists themselves (a plan without team chat answers [] there), and a plan without team chat keeps the 1.3 admin chat.
+    /// </summary>
     public bool TeamChatOn => Status?.ChatVersion is not null && _chat is { Backend: TaskBackend.On }
-        && ((_chat.Conversations?.Count ?? 0) > 0 || (_chat.People?.Count ?? 0) > 0); // a plan without team chat sends []
+        && (Status.Entitlements is { } plan ? plan.Contains(PlanModules.TeamChat)
+            : (_chat.Conversations?.Count ?? 0) > 0 || (_chat.People?.Count ?? 0) > 0);
+
+    /// <summary>Team chat is on but the member has no group and no teammate to write to yet (the list shows a note).</summary>
+    public bool ChatAlone => TeamChatOn && Conversations.Count == 0 && (_chat?.People ?? []).All(p => p.MemberId == MeId);
 
     /// <summary>The open thread on Chat: null = the list, "admin" = the admin chat, "conv:N" / "direct:M" = a team thread.</summary>
     public string? ChatOpen { get; private set; }
@@ -1128,8 +1138,18 @@ public sealed partial class TrayModel
     }
 
     /// <summary>Tests and previews: the service's answers without a service (status, tasks, chat).</summary>
-    internal void UseForPreview(AgentStatus? status, TasksReply? tasks, ChatReply? chat, TodosReply? todos = null)
+    internal void UseForPreview(AgentStatus? status, TasksReply? tasks, ChatReply? chat, TodosReply? todos = null, TraySettings? settings = null,
+        bool inApp = false, ITaskSource? local = null)
     {
+        _previewApp = inApp;
+        if (local is not null)
+        {
+            Tasks = local; // the member's own to-dos from a test folder, not this PC's
+        }
+        if (settings is not null)
+        {
+            Settings = settings; // in memory only: a preview never writes the member's settings file
+        }
         Status = status;
         StatusKnown = true;
         _remote = tasks;
@@ -1138,6 +1158,8 @@ public sealed partial class TrayModel
         _todos = todos;
         _todosVersion = todos?.Version;
     }
+
+    private bool _previewApp;
 
     // ---- Break limit (work_rules) ----------------------------------------------------------------------------
 

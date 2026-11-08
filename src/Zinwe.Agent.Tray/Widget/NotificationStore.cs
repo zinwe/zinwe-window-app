@@ -63,8 +63,11 @@ public sealed record NotificationFile(List<NotificationItem> Items)
 /// The widget owns marking items read and never deletes the service's entries except on the
 /// employee's explicit "Clear" action. No pipe/PipeProtocol change is made for the base app.
 /// </summary>
-public sealed class NotificationStore
+public sealed class NotificationStore(string? path = null)
 {
+    // The member's file; a test passes its own so it never reads or marks the real one.
+    private readonly string _path = path ?? WidgetPaths.Notifications;
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -77,9 +80,9 @@ public sealed class NotificationStore
     {
         try
         {
-            if (File.Exists(WidgetPaths.Notifications))
+            if (File.Exists(_path))
             {
-                var text = File.ReadAllText(WidgetPaths.Notifications);
+                var text = File.ReadAllText(_path);
                 var file = JsonSerializer.Deserialize<NotificationFile>(text, Json);
                 if (file is not null)
                 {
@@ -101,10 +104,10 @@ public sealed class NotificationStore
     {
         try
         {
-            WidgetPaths.EnsureDirectory();
-            var tmp = WidgetPaths.Notifications + ".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            var tmp = _path + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(file, Json));
-            File.Move(tmp, WidgetPaths.Notifications, overwrite: true);
+            File.Move(tmp, _path, overwrite: true);
         }
         catch
         {
