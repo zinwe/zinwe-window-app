@@ -24,7 +24,7 @@ public static class PipeProtocol
     /// </summary>
     public sealed record Request(
         string Type, string? Email = null, string? MemberId = null, IReadOnlyList<ForegroundReport>? Usage = null,
-        PictureChoice? Picture = null, string? Focus = null);
+        PictureChoice? Picture = null, string? Focus = null, Chat.FileAsk? File = null);
 
     /// <summary>
     /// The longest request line the service reads. A "picture" request carries a ≤ 150 KB JPEG as base64 (≈ 200 KB);
@@ -75,6 +75,12 @@ public static class PipeProtocol
         /// <see cref="AgentStatus.ChatVersion"/>.
         /// </summary>
         public const string Chat = "chat";
+        /// <summary>
+        /// v1.5: file sharing in chat (<see cref="Chat.ChatFilesReply"/>): whether files are on, and the downloads and image
+        /// previews the service holds. <see cref="Request.File"/> asks for one more (download it into Downloads\Zinwe, or fetch
+        /// an image's preview). Asked only of a service whose status has <see cref="AgentStatus.FilesVersion"/>.
+        /// </summary>
+        public const string Files = "files";
     }
 
     /// <summary>
@@ -113,6 +119,11 @@ public static class PipeProtocol
 
     /// <summary>A "chat" reply. A <see cref="NotSupported"/> ack reads as <c>Supported = false</c>.</summary>
     public static Chat.ChatReply? DeserializeChat(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.ChatReply);
+
+    public static string Serialize(Chat.ChatFilesReply reply) => JsonSerializer.Serialize(reply, PipeJsonContext.Default.ChatFilesReply);
+
+    /// <summary>A "files" reply. A <see cref="NotSupported"/> ack reads as <c>Supported = false</c>.</summary>
+    public static Chat.ChatFilesReply? DeserializeFiles(string line) => JsonSerializer.Deserialize(line, PipeJsonContext.Default.ChatFilesReply);
 
     /// <summary>Server side: read one request line. Returns null on a malformed or empty request.</summary>
     public static async Task<Request?> ReadRequestAsync(StreamReader reader, CancellationToken ct)
@@ -220,6 +231,26 @@ public static class AgentPipeClient
     }
 
     /// <summary>
+    /// v1.5: file sharing (is it on; downloads and previews), asking for <paramref name="ask"/> when given. Null when the
+    /// service isn't reachable or doesn't know files.
+    /// </summary>
+    public static async Task<Chat.ChatFilesReply?> GetFilesAsync(Chat.FileAsk? ask, TimeSpan timeout, CancellationToken ct = default) =>
+        ParseFiles(await ExchangeAsync(new PipeProtocol.Request(PipeProtocol.RequestTypes.Files, File: ask), timeout, ct));
+
+    /// <summary>A reply line → files; null for nothing, garbage or a "not supported" answer.</summary>
+    internal static Chat.ChatFilesReply? ParseFiles(string? line)
+    {
+        try
+        {
+            return line is null ? null : PipeProtocol.DeserializeFiles(line) is { Supported: true } reply ? reply : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// FR-44: set or remove the member's picture. Null when the service isn't reachable; an older service answers
     /// "not supported" (or closes the pipe: null too). Accepted = queued, it shows on the next status.
     /// </summary>
@@ -290,4 +321,6 @@ public static class AgentPipeClient
 [JsonSerializable(typeof(PictureChoice))]
 [JsonSerializable(typeof(ZingleStatus))]
 [JsonSerializable(typeof(Chat.ChatReply))]
+[JsonSerializable(typeof(Chat.ChatFilesReply))]
+[JsonSerializable(typeof(Chat.FileAsk))]
 internal sealed partial class PipeJsonContext : JsonSerializerContext;

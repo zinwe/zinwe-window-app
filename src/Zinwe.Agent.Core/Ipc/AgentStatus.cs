@@ -86,7 +86,10 @@ public sealed record AgentStatus(
     /// older service without team chat: the widget shows the admin chat only and writes no <c>chat</c> outbox items.</summary>
     int? ChatVersion = null,
     /// <summary>v1.4: the work rules in force for this PC (from the last heartbeat); null = none sent (an older backend).</summary>
-    Backend.WorkRules? WorkRules = null);
+    Backend.WorkRules? WorkRules = null,
+    /// <summary>v1.5: goes up whenever file sharing as the service holds it changes (ask with the "files" request). Null = an
+    /// older service without files: no attach button, and the widget writes no <c>chat_file</c> outbox items.</summary>
+    int? FilesVersion = null);
 
 /// <summary>The one-click update's stages, in order ("failed" can follow any of them).</summary>
 public static class UpdateStages

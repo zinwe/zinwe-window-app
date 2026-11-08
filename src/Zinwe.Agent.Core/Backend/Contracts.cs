@@ -148,9 +148,11 @@ public sealed record EventUploadRequest(EventUpload[] Events);
 /// <param name="Kind">"task" on the line the owner's new task created (FR-20 v2); null/other on older backends.</param>
 /// <param name="Task">The task that line carries (FR-20 v2): the widget draws a task card instead of a bubble.</param>
 /// <param name="ReadByOwner">Server-side "the owner has read it" (only meaningful for the member's lines): "Seen" in the chat.</param>
+/// <param name="File">v1.5: the file on this line (FileJSON, read leniently), or null. The widget then shows the file card and
+/// <see cref="Chat.ChatFile.Caption"/> instead of <see cref="Body"/> (the server's fallback text).</param>
 public sealed record AgentMessage(
     long Id, string Title, string? Body, string Severity, DateTimeOffset CreatedAt, string Sender = "owner",
-    bool ReadByMember = false, string? Kind = null, DeviceTask? Task = null, bool ReadByOwner = false);
+    bool ReadByMember = false, string? Kind = null, DeviceTask? Task = null, bool ReadByOwner = false, Chat.ChatFile? File = null);
 
 /// <summary>
 /// A task the owner gave this PC's member (FR-20 v2, GET /api/devices/tasks/). Status: sent → seen → accepted →
@@ -416,12 +418,38 @@ public sealed record PictureResult(PictureOutcome Outcome, MemberPicture? Pictur
 public sealed record AvatarPictureRequest(string Kind, string Key);
 
 /// <summary>POST /api/devices/messages/ — the member replies in the thread.</summary>
-public sealed record MemberReplyRequest(string Body);
+/// <param name="FileId">v1.5: the uploaded file this line carries (the body is then its caption and may be blank).</param>
+public sealed record MemberReplyRequest(
+    string Body,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FileId = null);
 
 /// <summary>v1.4 · POST a line to a group / direct chat (<c>chat/&lt;id&gt;/messages/</c>) or a task chat (<c>tasks/&lt;id&gt;/chat/</c>).</summary>
+/// <param name="FileId">v1.5: the uploaded file this line carries (the body is then its caption and may be blank).</param>
 public sealed record ChatMessageRequest(
     string Body,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ReplyTo = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ReplyTo = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FileId = null);
+
+/// <summary>
+/// v1.5 · what became of a file line the agent posted: the outcome, the field the backend refused (<c>file_id</c> = the
+/// upload expired: upload it again) and its own sentence.
+/// </summary>
+public sealed record FilePostResult(ChatWriteOutcome Outcome, string? Field = null, string? Error = null);
+
+/// <summary>v1.5 · what became of an upload: the stored file (not attached yet), or why not.</summary>
+public sealed record FileUploadResult(ChatWriteOutcome Outcome, Chat.ChatFile? File = null, string? Error = null, int Status = 0);
+
+/// <summary>v1.5 · what became of a download: stored in the stream, gone (expired, not allowed), too big, or refused.</summary>
+public enum FileFetchOutcome
+{
+    Done,
+    Gone,
+    TooBig,
+    Refused,
+}
+
+/// <param name="Name">The name from the reply's Content-Disposition (null when it sent none).</param>
+public sealed record FileFetchResult(FileFetchOutcome Outcome, string? Name = null, string? ContentType = null);
 
 /// <summary>v1.4 · POST chat/&lt;id&gt;/report/: a message (or, without one, the person) goes to the admin with the note.</summary>
 public sealed record ChatReportRequest(

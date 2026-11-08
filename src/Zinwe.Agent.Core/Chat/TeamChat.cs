@@ -50,7 +50,9 @@ public sealed record TeamConversation(
 /// <summary>
 /// One line of a group, a direct chat or a task chat. <paramref name="ByKind"/> is "owner" (the admin) or "member";
 /// <paramref name="Mine"/> is the backend's own flag when it sends one (else the tray compares
-/// <paramref name="ByMemberId"/> with its member id). A <paramref name="TaskId"/> line is a task card.
+/// <paramref name="ByMemberId"/> with its member id). A <paramref name="TaskId"/> line is a task card. v1.5: a
+/// <paramref name="File"/> line shows the file card and the file's caption instead of <paramref name="Body"/> (the server's
+/// fallback text "📎 name (size)", which a backend or app without files shows as it is).
 /// </summary>
 public sealed record TeamMessage(
     long Id,
@@ -68,7 +70,8 @@ public sealed record TeamMessage(
     DateTimeOffset At = default,
     int SeenBy = 0,
     IReadOnlyList<string>? SeenNames = null,
-    bool? Mine = null)
+    bool? Mine = null,
+    ChatFile? File = null)
 {
     [System.Text.Json.Serialization.JsonIgnore]
     public bool ByOwner => string.Equals(ByKind, "owner", StringComparison.OrdinalIgnoreCase);
@@ -270,7 +273,7 @@ public static class ChatJson
         }
         var (kind, mid, name) = By(e);
         return new TeamMessage(0, kind, mid, name, body, TaskId: Long(e, "task_id"), At: Time(e, "at") ?? Time(e, "created_at") ?? default,
-            Mine: Bool(e, "mine"));
+            Mine: Bool(e, "mine"), File: e.TryGetProperty("file", out var file) ? ChatFiles.FromJson(file) : null);
     }
 
     public static TeamMessage? Message(JsonElement e)
@@ -319,7 +322,8 @@ public static class ChatJson
             id, kind, mid, name, Text(e, "body") ?? Text(e, "text") ?? "", replyId, replyBy, replyBody, taskId,
             Bool(e, "system") ?? false, Bool(e, "edited") ?? (Text(e, "edited_at") is { Length: > 0 }),
             Bool(e, "deleted") ?? (Text(e, "deleted_at") is { Length: > 0 }),
-            Time(e, "at") ?? Time(e, "created_at") ?? default, seen, names, Bool(e, "mine") ?? Bool(e, "is_mine"));
+            Time(e, "at") ?? Time(e, "created_at") ?? default, seen, names, Bool(e, "mine") ?? Bool(e, "is_mine"),
+            e.TryGetProperty("file", out var file) ? ChatFiles.FromJson(file) : null);
     }
 
     private static (string Kind, long? MemberId, string Name) By(JsonElement e)

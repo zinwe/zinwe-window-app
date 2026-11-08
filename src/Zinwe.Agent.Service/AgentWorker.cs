@@ -32,6 +32,7 @@ internal sealed partial class AgentWorker(
     Zinwe.Agent.Core.Tasks.TodoSync todos,
     Zinwe.Agent.Core.Pictures.PictureSync pictures,
     Zinwe.Agent.Core.Chat.TeamChatSync teamChat,
+    Zinwe.Agent.Core.Chat.ChatFileSync files,
     MetricsUploadPump metrics,
     WorkStatusReader work,
     WorkTransitionLog workLog,
@@ -124,6 +125,7 @@ internal sealed partial class AgentWorker(
             tasks.Clear(); // a (re)connect may be another member: never show the last one's tasks
             todos.Clear(); // ... nor send their to-dos as the new member's
             pictures.Clear(); // ... nor their picture
+            files.Clear(); // ... nor their files
             LogEnrolled(response.DeviceId, response.ReEnrolled);
             return identity;
         }
@@ -163,6 +165,9 @@ internal sealed partial class AgentWorker(
         // The chat runs on its own, shorter loop for as long as this identity is heartbeating.
         using var chatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var chatLoop = MessageLoopAsync(identity, chatCts.Token);
+        // v1.5: files on loops of their own, so an upload never holds up the chat, nor a download an upload.
+        var sendLoop = FileLoopAsync(() => files.SendDue, t => files.SyncSendAsync(identity.DeviceToken, t), chatCts.Token);
+        var fetchLoop = FileLoopAsync(() => files.FetchDue, t => files.SyncFetchAsync(identity.DeviceToken, t), chatCts.Token);
         try
         {
             await BeatAsync(identity, ct);
@@ -170,13 +175,16 @@ internal sealed partial class AgentWorker(
         finally
         {
             await chatCts.CancelAsync();
-            try
+            foreach (var loop in new[] { chatLoop, sendLoop, fetchLoop })
             {
-                await chatLoop;
-            }
-            catch (OperationCanceledException)
-            {
-                // expected on stop / device removal
+                try
+                {
+                    await loop;
+                }
+                catch (OperationCanceledException)
+                {
+                    // expected on stop / device removal
+                }
             }
         }
     }
@@ -195,7 +203,8 @@ internal sealed partial class AgentWorker(
         {
             try
             {
-                if (DateTimeOffset.UtcNow >= next || messages.HasPendingReplies || pictures.HasWork)
+                // v1.5: a file line just went to the admin chat: pull it now, so it shows as sent.
+                if (DateTimeOffset.UtcNow >= next || messages.HasPendingReplies || pictures.HasWork || files.TakeAdminPosted())
                 {
                     await messages.SyncAsync(identity.DeviceToken, ct);
                     await tasks.SyncAsync(identity.DeviceToken, ct);
@@ -214,6 +223,28 @@ internal sealed partial class AgentWorker(
                 // SyncAsync handles network/file faults itself; anything else must not take the agent down.
                 LogChatLoopFailed(e.Message);
                 next = DateTimeOffset.UtcNow + interval;
+            }
+            await Task.Delay(ChatReplyCheckInterval, ct);
+        }
+    }
+
+    /// <summary>v1.5 · one of the files loops: <paramref name="run"/> whenever <paramref name="due"/> says so (checked every second).</summary>
+    private async Task FileLoopAsync(Func<bool> due, Func<CancellationToken, Task> run, CancellationToken ct)
+    {
+        await Task.Yield();
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (due())
+                {
+                    await run(ct);
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // The sync handles network/file faults itself; anything else must not take the agent down.
+                LogChatLoopFailed(e.Message);
             }
             await Task.Delay(ChatReplyCheckInterval, ct);
         }
@@ -315,6 +346,7 @@ internal sealed partial class AgentWorker(
                 todos.Clear();
                 pictures.Clear();
                 teamChat.Clear();
+                files.Clear();
                 state.Set(AgentState.Rejected, message: RemovedMessage(company), removed: true);
                 LogDeviceRejected(identity.DeviceId, e.Message);
                 return; // back to the enrollment loop, which waits for a new Member ID

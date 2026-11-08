@@ -23,8 +23,26 @@ namespace Zinwe.Agent.Core.Messages;
 public sealed record OutboxReply(
     string Id, string Body, DateTimeOffset CreatedAtUtc, string Kind = OutboxReply.ReplyKind, int? Rating = null,
     long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null, bool Refused = false,
-    string? TodoId = null, string? ChatKey = null, long? MessageId = null, long? MemberId = null)
+    string? TodoId = null, string? ChatKey = null, long? MessageId = null, long? MemberId = null,
+    string? FilePath = null, string? FileName = null, long? FileSize = null, string? FileId = null, DateTimeOffset? UploadedAt = null,
+    string? Error = null)
 {
+    /// <summary>
+    /// v1.5 · a file to send in a chat: <see cref="ChatKey"/> ("conv:12", "direct:4", or <see cref="AdminKey"/> for the admin
+    /// chat), <see cref="FilePath"/> = the tray's copy in the widget folder's <c>outbox-files\&lt;guid&gt;\</c>,
+    /// <see cref="FileName"/> / <see cref="FileSize"/> for the "Sending…" bubble, <see cref="Body"/> = the caption. The
+    /// service uploads it, keeps the stored <see cref="FileId"/> (and <see cref="UploadedAt"/>) here so a network error never
+    /// uploads twice, posts the line with that file_id, then deletes the copy. Refused for good = <see cref="Refused"/> with
+    /// <see cref="Error"/> (the words to show): "Failed", with Retry. Older services leave this kind alone.
+    /// </summary>
+    public const string ChatFileKind = "chat_file";
+
+    /// <summary>The chat key of the admin chat (a file to the admin goes to <c>POST messages/</c>).</summary>
+    public const string AdminKey = "admin";
+
+    [JsonIgnore]
+    public bool IsChatFile => string.Equals(Kind, ChatFileKind, StringComparison.Ordinal);
+
     public const string ReplyKind = "reply";
     public const string FeedbackKind = "feedback";
     public const string TaskActionKind = "task_action";
@@ -224,8 +242,52 @@ public sealed class MessageOutbox
     /// <summary>Drop every waiting picture change (the PC was removed, or connected as someone else).</summary>
     public void RemovePictures() => Remove([.. All().Where(i => i.IsPicture).Select(i => i.Id)]);
 
-    /// <summary>True while anything but a picture change waits (pictures keep their own retry pace).</summary>
-    public bool HasPendingOtherThanPicture => All().Any(i => !i.IsPicture && !i.Refused);
+    /// <summary>True while anything but a picture change or a file waits (those keep their own retry pace).</summary>
+    public bool HasPendingOtherThanPicture => All().Any(i => !i.IsPicture && !i.IsChatFile && !i.Refused);
+
+    /// <summary>
+    /// v1.5 · queue a file for a chat (see <see cref="OutboxReply.ChatFileKind"/>). <paramref name="path"/> is the tray's copy
+    /// in the widget folder. Returns the item, or null when it couldn't be written. Only the tray calls this, and only while
+    /// a service that sends files is running.
+    /// </summary>
+    public OutboxReply? AppendChatFile(string chatKey, string path, string name, long size, string? caption)
+    {
+        var item = new OutboxReply(Guid.NewGuid().ToString("N"), (caption ?? "").Trim(), DateTimeOffset.UtcNow, OutboxReply.ChatFileKind,
+            ChatKey: chatKey, FilePath: path, FileName: name, FileSize: size);
+        lock (_lock)
+        {
+            return _folder.Use(dir =>
+            {
+                var file = Path.Combine(dir, FileName);
+                var all = Load(file);
+                all.Items.Add(item);
+                return Save(file, all) ? item : null;
+            }, null);
+        }
+    }
+
+    /// <summary>v1.5 · files still waiting (or failed), oldest first.</summary>
+    public IReadOnlyList<OutboxReply> PendingFiles() => [.. All().Where(i => i.IsChatFile)];
+
+    /// <summary>v1.5 · change one waiting item in place (the stored file id, a refusal). False when it is gone.</summary>
+    public bool Update(string id, Func<OutboxReply, OutboxReply> change)
+    {
+        lock (_lock)
+        {
+            return _folder.Use(dir =>
+            {
+                var path = Path.Combine(dir, FileName);
+                var file = Load(path);
+                var index = file.Items.FindIndex(i => i.Id == id);
+                if (index < 0)
+                {
+                    return false;
+                }
+                file.Items[index] = change(file.Items[index]);
+                return Save(path, file);
+            }, false);
+        }
+    }
 
     /// <summary>Task actions still waiting to be posted, oldest first.</summary>
     public IReadOnlyList<OutboxReply> PendingTaskActions() => [.. All().Where(i => i.IsTaskAction)];
