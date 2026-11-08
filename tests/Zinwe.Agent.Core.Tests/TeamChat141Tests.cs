@@ -226,6 +226,21 @@ public sealed class TeamChat141Tests : IDisposable
         Assert.Equal("That message couldn’t be deleted.", sync.Snapshot.Notices!.Single().Text);
     }
 
+    [Fact]
+    public void Own_lines_can_be_changed_for_15_minutes_only()
+    {
+        var sent = new TeamMessage(91, Body: "On it", At: _now);
+        Assert.True(ChatEdits.CanChange(sent, mine: true, _now.AddMinutes(14).AddSeconds(59)));
+        Assert.False(ChatEdits.CanChange(sent, mine: true, _now.AddMinutes(15)));
+        Assert.False(ChatEdits.CanChange(sent, mine: false, _now));
+        Assert.False(ChatEdits.CanChange(sent with { Deleted = true }, mine: true, _now));
+        Assert.False(ChatEdits.CanChange(sent with { TaskId = 6 }, mine: true, _now));
+        Assert.False(ChatEdits.CanChange(sent with { System = true }, mine: true, _now));
+        Assert.False(ChatEdits.CanChange(sent with { Id = 0 }, mine: true, _now)); // still sending
+        Assert.Equal(TimeSpan.FromMinutes(5), ChatEdits.Left(sent, _now.AddMinutes(10)));
+        Assert.Equal(TimeSpan.Zero, ChatEdits.Left(sent, _now.AddHours(1)));
+    }
+
     // ---- Pins and mutes -----------------------------------------------------------------------------
 
     [Fact]
