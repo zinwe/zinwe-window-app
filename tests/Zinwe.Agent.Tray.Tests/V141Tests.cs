@@ -245,7 +245,7 @@ public sealed class V141Tests : IDisposable
     }
 
     [Fact]
-    public void Days_off_list_waiting_approved_declined_and_a_past_day_is_refused()
+    public void Days_off_list_waiting_approved_declined_and_a_day_over_30_days_back_is_refused()
     {
         OnSta(model =>
         {
@@ -254,7 +254,7 @@ public sealed class V141Tests : IDisposable
             Assert.Equal(["Approved", "Waiting", "Declined"], rows.Select(r => r.Status));
             Assert.StartsWith("Tomorrow · Half day", rows[0].Label, StringComparison.Ordinal);
             var today = DateOnly.FromDateTime(Now.LocalDateTime);
-            Assert.Equal(LeaveDays.PastDay, model.AskLeave(today.AddDays(-1), false, ""));
+            Assert.Equal(LeaveDays.PastDay, model.AskLeave(today.AddDays(-31), false, ""));
             Assert.Equal("Pick a day.", model.AskLeave(null, false, ""));
             model.OpenLeave();
             Assert.Equal(Sheet.Leave, model.Sheet);

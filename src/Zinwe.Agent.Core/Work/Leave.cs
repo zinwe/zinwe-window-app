@@ -30,7 +30,10 @@ public sealed record LeaveAsk(
 public static class LeaveDays
 {
     public const string SentToast = "Sent. Your admin will answer here.";
-    public const string PastDay = "Pick today or a later day.";
+    public const string PastDay = "Pick a day in the last 30 days or later.";
+
+    /// <summary>How far back a day off can be asked for (a sick day told afterwards). The server takes the same 30 days.</summary>
+    public const int DaysBack = 30;
 
     /// <summary>Waiting · Approved · Declined.</summary>
     public static string StatusLabel(string? status) => (status ?? "").ToLowerInvariant() switch
@@ -41,7 +44,7 @@ public static class LeaveDays
     };
 
     /// <summary>Null when the day can be asked for; else what to tell the member.</summary>
-    public static string? Check(DateOnly? day, DateOnly today) => day is not { } d ? "Pick a day." : d < today ? PastDay : null;
+    public static string? Check(DateOnly? day, DateOnly today) => day is not { } d ? "Pick a day." : d < today.AddDays(-DaysBack) ? PastDay : null;
 
     /// <summary>The body of <c>POST leave/</c> for a day.</summary>
     public static LeaveRequest Request(DateOnly day, bool half, string? note) =>
@@ -51,7 +54,7 @@ public static class LeaveDays
     public static string Label(LeaveAsk ask, DateOnly today)
     {
         var when = ask.Day is { } d
-            ? d == today ? "Today" : d == today.AddDays(1) ? "Tomorrow" : d.ToString("ddd, d MMM", CultureInfo.InvariantCulture)
+            ? d == today ? "Today" : d == today.AddDays(1) ? "Tomorrow" : d == today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, d MMM", CultureInfo.InvariantCulture)
             : ask.Date;
         return when + " · " + (ask.Half ? "Half day" : "Full day");
     }

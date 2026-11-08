@@ -6,7 +6,7 @@ using Zinwe.Agent.Core.Work;
 namespace Zinwe.Agent.Tray.Views;
 
 /// <summary>
-/// v1.4.1 · "Ask for a day off" in the bottom sheet: a day (today or later), Full day / Half day, an optional note, and
+/// v1.4.1 · "Ask for a day off" in the bottom sheet: a day (up to 30 days back, for a sick day told afterwards, or later), Full day / Half day, an optional note, and
 /// "Send to Ananya". The ask goes through the outbox (offline: when back); the admin's answer shows on Home.
 /// </summary>
 public sealed class LeavePanel : UserControl
@@ -48,7 +48,7 @@ public sealed class LeavePanel : UserControl
     /// <summary>A fresh form each time the sheet opens: tomorrow, full day, no note.</summary>
     public void Reset()
     {
-        _date.DisplayDateStart = DateTime.Today;
+        _date.DisplayDateStart = DateTime.Today.AddDays(-LeaveDays.DaysBack);
         _date.SelectedDate = DateTime.Today.AddDays(1);
         _half = false;
         _note.Text = "";

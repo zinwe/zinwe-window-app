@@ -333,7 +333,10 @@ public sealed class TeamChat141Tests : IDisposable
     public void Leave_words_and_rules()
     {
         var today = new DateOnly(2026, 11, 8);
-        Assert.Equal("Pick today or a later day.", LeaveDays.Check(today.AddDays(-1), today));
+        Assert.Equal("Pick a day in the last 30 days or later.", LeaveDays.Check(today.AddDays(-31), today));
+        Assert.Null(LeaveDays.Check(today.AddDays(-30), today));
+        Assert.Null(LeaveDays.Check(today.AddDays(-1), today));
+        Assert.Equal("Yesterday · Full day", LeaveDays.Label(new LeaveAsk(1, today.AddDays(-1).ToString("yyyy-MM-dd")), today));
         Assert.Null(LeaveDays.Check(today, today));
         Assert.Equal("Pick a day.", LeaveDays.Check(null, today));
         Assert.Equal(("Waiting", "Approved", "Declined"), (LeaveDays.StatusLabel("requested"), LeaveDays.StatusLabel("APPROVED"), LeaveDays.StatusLabel("declined")));
