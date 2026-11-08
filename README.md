@@ -106,9 +106,12 @@ Uninstall also deletes the USB policy key (`HKLM\SOFTWARE\Policies\Microsoft\Win
 | Call | Auth | Result |
 |---|---|---|
 | `POST /api/devices/enroll/` `{email, member_id, machine_id, hostname, os_version, agent_version}` | none (throttled) | 201 new / 200 re-enrolled → `{device_id, device_token, re_enrolled}`; 400 on `email` / `member_id` = refused |
-| `POST /api/devices/heartbeat/` (+ `consent: {state: given\|declined, version}` once the member answered) | `Authorization: Device <token>` | `{device_id, server_time, next_heartbeat_seconds, policy_version}` + optional `consent_state`, `usb_restore` (restore USB to the policy, send `usb.restored`), `company_name`, `owner_name`; 401 = removed (rules cleared) |
+| `POST /api/devices/heartbeat/` (+ `consent: {state: given\|declined, version}` once the member answered) | `Authorization: Device <token>` | `{device_id, server_time, next_heartbeat_seconds, policy_version}` + optional `consent_state`, `usb_restore` (restore USB to the policy, send `usb.restored`), `company_name`, `owner_name`, v1.4 `work_rules` (the break-limit note on Home); 401 = removed (rules cleared) |
 | `GET /api/devices/policy/current/` | `Device` | `{version, usb: {mode: allow\|read_only\|block}}`; fetched when `policy_version` changes |
 | `POST /api/devices/events/upload/` `{events: [{id, type, occurred_at, severity, data}]}` | `Device` | 1..100 per call, idempotent on `id` → `{accepted, duplicates}`; 400 = content refused |
+| `GET /api/devices/tasks/`, `POST …/tasks/<id>/action/` (v1.4: `start` · `tick`/`untick {step_id}` · `help`/`cantdo {note}` · `finish`; 1.3 words for an older backend) | `Device` | the member's team tasks with `people`, step owners, `chat` and `me`; a 1.3 task reads as the member's own |
+| `GET|POST /api/devices/tasks/<id>/chat/`, `POST …/chat/read/` | `Device` | the task chat (404 = a 1.3 backend: lines go as task notes) |
+| `GET /api/devices/chat/`, `GET|POST …/chat/<id>/messages/`, `POST …/<id>/read/`, `PATCH …/<id>/`, `POST …/direct/`, `POST …/<id>/report/`, `GET …/chat/people/` | `Device` | v1.4 team chat (groups, direct chats); 403/404/405 or empty lists = the 1.3.11 admin chat only |
 | `GET /api/devices/`, `GET /api/devices/enrollment-key/`, `POST …/rotate/` | owner `Token` | dashboard |
 
 ## Code signing (launch blocker)
