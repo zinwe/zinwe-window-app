@@ -156,6 +156,10 @@ public sealed record TraySettings
     public string? ChatPattern { get; init; }
     /// <summary>The quick replies starred for the row over the composer (at most 3); null = never changed, the default three.</summary>
     public IReadOnlyList<string>? QuickFavourites { get; init; }
+    /// <summary>v1.5 · Settings › Files › Save files to: a folder the member chose; null = Downloads\Zinwe.</summary>
+    public string? SaveFolder { get; init; }
+    /// <summary>v1.5 · Settings › Files › Ask where to save each file (off: Download saves into <see cref="SaveFolder"/>).</summary>
+    public bool AskWhere { get; init; }
 
     public bool Paused(DateTimeOffset now) => PausedUntil is { } until && now < until;
 }

@@ -20,6 +20,7 @@ public static class IssueReport
             Push.None => name,
             Push.Time => name + " › My time",
             Push.Privacy => name + " › Policies & terms",
+            Push.SharedFiles => name + " › My shared files",
             _ => name + " › " + push,
         };
     }

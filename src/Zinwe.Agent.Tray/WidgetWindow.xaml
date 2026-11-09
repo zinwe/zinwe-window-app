@@ -168,6 +168,7 @@
                             <DropShadowEffect BlurRadius="24" ShadowDepth="8" Opacity="0.18" Direction="270" Color="#141210" />
                         </Border.Effect>
                         <StackPanel KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle">
+                            <StackPanel x:Name="ChatMenuFiles" Visibility="Collapsed" />
                             <TextBlock Text="Chat background" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource Z.Muted}" Margin="8,4,8,6" />
                             <StackPanel x:Name="ChatMenuItems" AutomationProperties.Name="Chat background" />
                         </StackPanel>

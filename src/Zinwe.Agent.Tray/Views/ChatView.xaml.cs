@@ -100,7 +100,7 @@ public partial class ChatView : UserControl
         var rows = m.Thread;
         UpdateQuick(m, rows);
         RenderLists(m);
-        var signature = m.FilesSignature + "|" + string.Join("|", rows.Select(r => r.Key + "@" + r.Meta + "@" + r.File + r.Upload?.Refused + "@" + r.Task?.Status + r.Task?.IsNew
+        var signature = m.FilesSignature + "|" + string.Join("|", rows.Select(r => r.Key + "@" + r.Meta + "@" + r.File + r.Batch?.Count + r.Upload?.Refused + "@" + r.Task?.Status + r.Task?.IsNew
             + string.Concat(r.Task?.Steps.Select(s => s.Done ? "1" : "0") ?? []) + r.Task?.Notes.Count + "@" + r.Task?.Activity.Count + r.Task?.Queued))
             + "#" + m.OpenCard + "#" + m.OpenLog + "#" + m.Now.ToLocalTime().Date.ToString("yyyyMMdd") + "#" + m.OwnerName;
         if (signature == _signature)
@@ -121,26 +121,36 @@ public partial class ChatView : UserControl
 
     private string _attachShown = "";
 
-    /// <summary>v1.5 · 📎 shows while files are on; a picked file waits as a chip over the composer, and Send takes it.</summary>
+    /// <summary>
+    /// v1.5 · 📎 shows while files are on (it opens the attach menu); picked files wait in the send tray over the composer,
+    /// and Send takes them all (the text is the caption).
+    /// </summary>
     private void RenderAttach(TrayModel m)
     {
-        AttachButton.Visibility = m.FilesOn || m.AttachFor(OutboxReply.AdminKey) is not null ? Visibility.Visible : Visibility.Collapsed;
-        var draft = m.AttachFor(OutboxReply.AdminKey);
-        var key = draft is null ? "" : draft.Path + "|" + draft.Size;
+        var drafts = m.Attached(OutboxReply.AdminKey);
+        AttachButton.Visibility = m.FilesOn || drafts.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var key = string.Join("|", drafts.Select(d => d.Path + ":" + d.Described));
         if (key != _attachShown)
         {
+            var arriving = _attachShown.Length == 0 && drafts.Count > 0;
             _attachShown = key;
-            AttachHost.Content = draft is null ? null : FileCard.Chip(draft, () => m.RemoveAttach(OutboxReply.AdminKey));
-            AttachHost.Visibility = draft is null ? Visibility.Collapsed : Visibility.Visible;
-            if (draft is not null)
+            AttachHost.Content = drafts.Count == 0 ? null : FileCard.SendTray(this, m, OutboxReply.AdminKey);
+            AttachHost.Visibility = drafts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            if (arriving)
             {
                 Motion.Arrive(AttachHost, 0, 6, 1, 160);
             }
         }
-        SendButton.IsEnabled = draft is not null || !string.IsNullOrWhiteSpace(Input.Text);
+        SendButton.IsEnabled = drafts.Count > 0 || !string.IsNullOrWhiteSpace(Input.Text);
     }
 
-    private void OnAttach(object sender, RoutedEventArgs e) => FileCard.PickFor(this, Model, OutboxReply.AdminKey);
+    private void OnAttach(object sender, RoutedEventArgs e)
+    {
+        if (Model is { } m)
+        {
+            FileCard.OpenMenu(this, m, OutboxReply.AdminKey, AttachButton);
+        }
+    }
 
     /// <summary>The mouse wheel moves the quick replies sideways (a row of chips has nothing to scroll up or down).</summary>
     private void OnQuickWheel(object sender, MouseWheelEventArgs e)
@@ -529,7 +539,12 @@ public partial class ChatView : UserControl
             qb.Click += (_, _) => JumpTo(q.TargetKey);
             stack.Children.Add(qb);
         }
-        if (row.File is { } file)
+        if (row.Batch is { Count: > 1 } batch)
+        {
+            // v1.5: photos and videos sent together, as one grid; the caption (the batch's last line) under it.
+            stack.Children.Add(FileCard.BatchGrid(m, batch, row.Mine ? null : m.OwnerFirstStart, row.Mine));
+        }
+        else if (row.File is { } file)
         {
             // v1.5: the file card; the caption (if any) under it.
             stack.Children.Add(FileCard.Line(m, file, row.Mine ? null : m.OwnerFirstStart, row.Mine));
@@ -676,7 +691,7 @@ public partial class ChatView : UserControl
             m.Draft = Input.Text;
             UpdateQuick(m, m.Thread);
         }
-        var ready = !string.IsNullOrWhiteSpace(Input.Text) || Model?.AttachFor(OutboxReply.AdminKey) is not null;
+        var ready = !string.IsNullOrWhiteSpace(Input.Text) || Model?.Attached(OutboxReply.AdminKey).Count > 0;
         if (ready && !SendButton.IsEnabled)
         {
             Motion.Pop(SendButton);
@@ -696,8 +711,8 @@ public partial class ChatView : UserControl
 
     private void Send()
     {
-        // v1.5: with a picked file, the text is its caption (and may be empty).
-        var sent = Model?.AttachFor(OutboxReply.AdminKey) is not null ? Model.SendFile(OutboxReply.AdminKey, Input.Text) : Model?.Send(Input.Text) == true;
+        // v1.5: with picked files, the text is their caption (and may be empty).
+        var sent = Model?.Attached(OutboxReply.AdminKey).Count > 0 ? Model.SendFiles(OutboxReply.AdminKey, Input.Text) : Model?.Send(Input.Text) == true;
         if (sent)
         {
             Input.Clear();

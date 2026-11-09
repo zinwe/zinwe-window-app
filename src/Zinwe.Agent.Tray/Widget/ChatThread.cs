@@ -36,6 +36,8 @@ public sealed record ThreadRow
     public Zinwe.Agent.Core.Chat.ChatFile? File { get; init; }
     /// <summary>v1.5: a file the member is sending (still in the outbox): "Sending…", or Failed with Retry.</summary>
     public OutboxReply? Upload { get; init; }
+    /// <summary>v1.5: photos and videos sent together (this row is the batch's last line): one 2×2 grid.</summary>
+    public IReadOnlyList<Zinwe.Agent.Core.Chat.ChatFile>? Batch { get; init; }
 
     /// <summary>The one-line snippet a reply to this row quotes.</summary>
     public string Snippet
@@ -135,6 +137,10 @@ public static class ChatThread
                 Upload = f,
             });
         }
+
+        // v1.5: photos and videos sent together are one grid (on the batch's last row, which carries the caption).
+        rows = [.. Zinwe.Agent.Core.Chat.ChatFileBatches.Group(rows, r => r.Upload is null ? r.File : null, r => r.Mine ? "me" : "admin")
+            .Select(g => g.Count > 1 ? g[^1] with { Batch = [.. g.Select(r => r.File!)], Seen = g.Any(r => r.Seen) } : g[0])];
 
         // "Seen" belongs to the newest line the owner has read, not to every line above it.
         var seenAt = rows.FindLastIndex(r => r.Seen);

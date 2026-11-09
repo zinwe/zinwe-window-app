@@ -23,7 +23,7 @@ public enum Tab { Home, Chat, Tasks, Me }
 public enum TaskPop { None, Calendar, Status }
 
 /// <summary>Screens pushed over a tab, with a Back arrow.</summary>
-public enum Push { None, Time, Privacy, Settings, Notifications, Help }
+public enum Push { None, Time, Privacy, Settings, Notifications, Help, SharedFiles }
 
 /// <summary>Bottom sheets.</summary>
 public enum Sheet { None, Break, Out, Ask, Cant, Note, NewTask, Photo, Feedback, Issue, Leave }
@@ -52,7 +52,7 @@ public sealed partial class TrayModel : IDisposable
     private readonly WorkTimerStore _timerStore = new();
     private readonly ConsentStore _consent = new();
     private MessageOutbox _outbox = new();
-    private readonly TraySettingsStore _settingsStore = new();
+    private TraySettingsStore _settingsStore = new();
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;

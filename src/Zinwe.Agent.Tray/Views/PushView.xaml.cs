@@ -40,8 +40,12 @@ public partial class PushView : UserControl
         NotifPanel.Visibility = Show(m.Push == Push.Notifications);
         HelpPanel.Visibility = Show(m.Push == Push.Help);
         PrivacyPanel.Visibility = Show(m.Push == Push.Privacy);
+        SharedPanel.Visibility = Show(m.Push == Push.SharedFiles);
         switch (m.Push)
         {
+            case Push.SharedFiles:
+                RenderShared(m);
+                break;
             case Push.Time:
                 RenderTime(m);
                 break;
@@ -127,6 +131,7 @@ public partial class PushView : UserControl
         DarkMode.IsEnabled = !HighContrastTheme.IsHighContrast;
         SizeStandard.IsChecked = !s.TextLarge;
         SizeLarge.IsChecked = s.TextLarge;
+        RenderFilesSettings(m);
         RunsWithWindows.Text = $"Zinwe starts when you sign in to this PC and stays in the taskbar, bottom right. {m.CompanyStart} manages this, so it can't be switched off here.";
     }
 
@@ -152,6 +157,142 @@ public partial class PushView : UserControl
         {
             Model?.SaveSettings(Model.Settings with { TextLarge = SizeLarge.IsChecked == true });
         }
+    }
+
+    // ---- Files (v1.5) ----------------------------------------------------------------------
+
+    private string _filesShown = "";
+
+    /// <summary>Settings › Files: Save files to (Change…), Ask where to save each file, and My shared files.</summary>
+    private void RenderFilesSettings(TrayModel m)
+    {
+        FilesSection.Visibility = Show(m.FilesSupported);
+        var key = $"{m.SaveFolder}|{m.Settings.AskWhere}|{m.SharedFiles.Count}|{HighContrastTheme.IsDark}";
+        if (!m.FilesSupported || key == _filesShown)
+        {
+            return;
+        }
+        _filesShown = key;
+        FilesSettings.Children.Clear();
+
+        var folder = new Grid { Margin = new Thickness(14, 12, 14, 12) };
+        folder.ColumnDefinitions.Add(new ColumnDefinition());
+        folder.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        texts.Children.Add(Ui.Text(Core.Chat.ChatFiles.SaveToText, 13.5, FontWeights.SemiBold));
+        var where = Ui.Text(TrayModel.FolderLabel(m.SaveFolder), 12, fg: "Z.Muted", trim: true);
+        where.ToolTip = m.SaveFolder;
+        texts.Children.Add(where);
+        folder.Children.Add(texts);
+        var change = Tv.Btn("Change…", false, () => ChooseFolder(m), "Change where files are saved", compact: true);
+        change.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(change, 1);
+        folder.Children.Add(change);
+        AutomationProperties.SetName(folder, $"{Core.Chat.ChatFiles.SaveToText}: {m.SaveFolder}");
+        FilesSettings.Children.Add(folder);
+
+        var ask = new ToggleButton { Style = (Style)FindResource("Z.SwitchRow"), IsChecked = m.Settings.AskWhere };
+        var askText = new StackPanel();
+        askText.Children.Add(new TextBlock { Text = Core.Chat.ChatFiles.AskWhereText, FontWeight = FontWeights.SemiBold });
+        askText.Children.Add(Ui.Text("Download asks for a folder and a name each time", 12, fg: "Z.Muted", wrap: true));
+        ask.Content = askText;
+        AutomationProperties.SetName(ask, Core.Chat.ChatFiles.AskWhereText);
+        ask.Checked += (_, _) =>
+        {
+            if (!_syncing)
+            {
+                m.SetAskWhere(true);
+            }
+        };
+        ask.Unchecked += (_, _) =>
+        {
+            if (!_syncing)
+            {
+                m.SetAskWhere(false);
+            }
+        };
+        FilesSettings.Children.Add(ask);
+
+        var shared = new Grid { Margin = new Thickness(14, 12, 14, 12) };
+        shared.ColumnDefinitions.Add(new ColumnDefinition());
+        shared.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var sharedTexts = new StackPanel();
+        sharedTexts.Children.Add(Ui.Text(Core.Chat.ChatFiles.MySharedFilesText, 13.5, FontWeights.SemiBold));
+        sharedTexts.Children.Add(Ui.Text(m.SharedFiles.Count == 0 ? "None right now"
+            : $"{m.SharedFiles.Count} file{(m.SharedFiles.Count == 1 ? "" : "s")} others can download from this PC", 12, fg: "Z.Muted", wrap: true));
+        shared.Children.Add(sharedTexts);
+        var chevron = Ui.Glyph("M9 6l6 6-6 6", 14, "Z.Muted", 2);
+        chevron.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(chevron, 1);
+        shared.Children.Add(chevron);
+        var open = Tv.Bare(shared, () => m.Open(Push.SharedFiles), Core.Chat.ChatFiles.MySharedFilesText);
+        open.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        FilesSettings.Children.Add(open);
+    }
+
+    private void ChooseFolder(TrayModel m)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = Core.Chat.ChatFiles.SaveToText, Multiselect = false };
+        if (System.IO.Directory.Exists(m.SaveFolder))
+        {
+            dialog.InitialDirectory = m.SaveFolder;
+        }
+        if (dialog.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            m.SetSaveFolder(dialog.FolderName);
+        }
+    }
+
+    /// <summary>My shared files: each with its chat, date, size and Stop sharing.</summary>
+    private void RenderShared(TrayModel m)
+    {
+        SharedList.Children.Clear();
+        var note = Ui.Text(Core.Chat.ChatFiles.OwnFileText, 12.5, fg: "Z.Ink2", wrap: true);
+        note.Margin = new Thickness(4, 0, 4, 12);
+        SharedList.Children.Add(note);
+        var files = m.SharedFiles;
+        if (files.Count == 0)
+        {
+            var none = Ui.Text("You aren’t sharing any files right now.", 13, fg: "Z.Muted", wrap: true);
+            none.Margin = new Thickness(4, 8, 4, 0);
+            SharedList.Children.Add(none);
+            return;
+        }
+        var list = new StackPanel();
+        foreach (var f in files)
+        {
+            list.Children.Add(SharedRow(m, f));
+        }
+        SharedList.Children.Add(Ui.Card(list));
+    }
+
+    internal static FrameworkElement SharedRow(TrayModel m, Core.Chat.SharedFile f)
+    {
+        var grid = new Grid { Margin = new Thickness(14, 10, 10, 10) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var tile = Ui.Tile(FileCard.IconData(Core.Chat.ChatFiles.IconKind(f.Name)), 32, "Z.OrangeTint", "Z.OrangeInk", 8, 16);
+        tile.Margin = new Thickness(0, 0, 10, 0);
+        tile.VerticalAlignment = VerticalAlignment.Center;
+        grid.Children.Add(tile);
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var name = Ui.Text(f.Name, 13.5, FontWeights.SemiBold, trim: true);
+        name.ToolTip = f.Name;
+        texts.Children.Add(name);
+        var line = $"{f.ChatName ?? m.ChatName(f.ChatKey)} · {f.CreatedAt.ToLocalTime().ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)} · {Core.Chat.ChatFiles.FormatSize(f.Size)}";
+        texts.Children.Add(Ui.Text(line, 12, fg: "Z.Muted", trim: true));
+        Grid.SetColumn(texts, 1);
+        grid.Children.Add(texts);
+        FrameworkElement action = f.State == Core.Chat.ChatFile.StateStopped
+            ? Ui.Text("Stopping…", 12, fg: "Z.Muted")
+            : Tv.Btn(Core.Chat.ChatFiles.StopText, false, () => m.StopSharing(f.Id), $"{Core.Chat.ChatFiles.StopText}: {f.Name}", compact: true);
+        action.VerticalAlignment = VerticalAlignment.Center;
+        action.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(action, 2);
+        grid.Children.Add(action);
+        AutomationProperties.SetName(grid, $"{f.Name}, {line}");
+        return new Border { Child = grid, BorderThickness = new Thickness(0, 0, 0, 1) }.Res(Border.BorderBrushProperty, "Z.Line");
     }
 
     // ---- Notifications -----------------------------------------------------------------

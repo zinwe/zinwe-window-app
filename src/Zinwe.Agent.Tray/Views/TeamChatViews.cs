@@ -336,7 +336,7 @@ public sealed class TeamThreadView : UserControl
             return;
         }
         _scroll.Background = ChatPatternBrush.For(m.ChatPattern);
-        var lines = m.TeamThread;
+        var lines = TrayModel.Batched(m.TeamThread); // v1.5: photos and videos sent together are one grid
         var (canPost, note) = m.ThreadPosting;
         if (m.TeamEditing?.Id != _editingId)
         {
@@ -507,13 +507,21 @@ public sealed class TeamThreadView : UserControl
             body = Ui.Text(ChatEdits.DeletedText, 13.5, fg: "Z.Muted", wrap: true);
             body.FontStyle = FontStyles.Italic;
         }
+        else if (l.Batch is { Count: > 1 } batch)
+        {
+            // v1.5: photos and videos sent together, as one grid, then the caption (on the batch's last line).
+            var grid = FileCard.BatchGrid(m, batch, l.Mine ? null : l.Who, l.Mine);
+            grid.Margin = new Thickness(0, showName ? 4 : 0, 0, 0);
+            inner.Children.Add(grid);
+            body = batch[^1].Caption is { Length: > 0 } caption ? BodyText(caption, names, 13.5) : null;
+        }
         else if (msg.File is { } file)
         {
             // v1.5: the file card, then its caption (the line's body is only the fallback text for older apps).
             var card = FileCard.Line(m, file, l.Mine ? null : l.Who, l.Mine);
             card.Margin = new Thickness(0, showName ? 4 : 0, 0, 0);
             inner.Children.Add(card);
-            body = file.Caption is { Length: > 0 } caption ? BodyText(caption, names, 13.5) : null;
+            body = file.Caption is { Length: > 0 } fileCaption ? BodyText(fileCaption, names, 13.5) : null;
         }
         else if (l.Upload is { } upload)
         {
@@ -526,7 +534,7 @@ public sealed class TeamThreadView : UserControl
         }
         if (body is not null)
         {
-            body.Margin = new Thickness(0, msg.File is not null || l.Upload is not null ? 8 : showName ? 2 : 0, 0, 0);
+            body.Margin = new Thickness(0, msg.File is not null || l.Upload is not null || l.Batch is not null ? 8 : showName ? 2 : 0, 0, 0);
             inner.Children.Add(body);
         }
         var editing = m.TeamEditing?.Id == msg.Id && msg.Id > 0;
@@ -690,11 +698,12 @@ public sealed class TeamThreadView : UserControl
             : m.OpenConversation?.IsGroup == true ? "Message · @ to mention someone" : "Message · Shift+Enter for a new line";
         Inputs.Detach(_mentionBox);
         stack.Children.Add(_mentionBox);
-        // v1.5: the picked file waits here as a chip; the text typed becomes its caption.
+        // v1.5: the picked files wait here in the send tray; the text typed becomes their caption.
         var key = m.ChatOpen;
-        if (m.TeamEditing is null && m.AttachFor(key) is { } draft)
+        var drafts = m.Attached(key);
+        if (m.TeamEditing is null && key is not null && drafts.Count > 0)
         {
-            stack.Children.Add(FileCard.Chip(draft, () => m.RemoveAttach(key)));
+            stack.Children.Add(FileCard.SendTray(this, m, key));
         }
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition());
@@ -702,9 +711,9 @@ public sealed class TeamThreadView : UserControl
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Inputs.Detach(_input);
         row.Children.Add(_input);
-        if (m.TeamEditing is null && (m.FilesOn || m.AttachFor(key) is not null))
+        if (m.TeamEditing is null && key is not null && (m.FilesOn || drafts.Count > 0))
         {
-            var attach = FileCard.AttachButton(() => FileCard.PickFor(this, m, key));
+            var attach = FileCard.AttachButton(this, m, key);
             attach.Margin = new Thickness(4, 0, 0, 2);
             Grid.SetColumn(attach, 1);
             row.Children.Add(attach);
@@ -724,9 +733,9 @@ public sealed class TeamThreadView : UserControl
         _composer.Child = stack;
     }
 
-    /// <summary>v1.5 · Send with a chip in the open thread: the file goes, the typed text as its caption.</summary>
+    /// <summary>v1.5 · Send with files in the open thread's send tray: they go, the typed text as the caption.</summary>
     private static bool TrySendFile(TrayModel m, string text) =>
-        m.TeamEditing is null && m.ChatOpen is { } key && m.AttachFor(key) is not null && m.ThreadPosting.CanPost && m.SendFile(key, text);
+        m.TeamEditing is null && m.ChatOpen is { } key && m.Attached(key).Count > 0 && m.ThreadPosting.CanPost && m.SendFiles(key, text);
 
     private void BuildReport(TrayModel m)
     {

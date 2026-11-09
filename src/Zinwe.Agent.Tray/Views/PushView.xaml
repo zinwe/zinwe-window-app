@@ -101,7 +101,19 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+                <!-- v1.5: Files (Save files to, Ask where to save each file, My shared files); built in code. -->
+                <StackPanel x:Name="FilesSection" Visibility="Collapsed">
+                    <TextBlock Text="FILES" Style="{StaticResource Z.Lbl}" Margin="4,16,0,12" />
+                    <Border Style="{StaticResource Z.Card}" ClipToBounds="True">
+                        <StackPanel x:Name="FilesSettings" />
+                    </Border>
+                </StackPanel>
             </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== My shared files (v1.5) ===== -->
+        <ScrollViewer x:Name="SharedPanel" Style="{StaticResource Z.Scroll}" Visibility="Collapsed">
+            <StackPanel x:Name="SharedList" Margin="12,4,12,16" />
         </ScrollViewer>
 
         <!-- ===== Notifications ===== -->

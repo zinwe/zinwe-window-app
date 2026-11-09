@@ -44,8 +44,9 @@ public sealed record ChatRowView(string Key, string Name, string Initials, bool 
 /// it (highlighted); <paramref name="CanChange"/> = the member's own line, still within 15 minutes (Edit · Delete).
 /// </summary>
 /// v1.5: <paramref name="Upload"/> = a file the member is sending (still in the outbox): its name, "Sending…" or Failed.
+/// <paramref name="Batch"/> = photos and videos sent together, drawn as one 2×2 grid (this is the batch's last line).
 public sealed record TeamLine(TeamMessage Message, bool Mine, bool Sending, string Who, string Initials, bool MentionsMe = false,
-    bool CanChange = false, OutboxReply? Upload = null);
+    bool CanChange = false, OutboxReply? Upload = null, IReadOnlyList<ChatFile>? Batch = null);
 
 public sealed partial class TrayModel
 {

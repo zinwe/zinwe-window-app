@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -87,6 +88,10 @@ public partial class WidgetWindow : Window
 
         _model.Changed += Render;
         _model.Ticked += OnTick;
+        // v1.5: Save as… (and "Ask where to save each file") and the photo viewer belong to this window.
+        _model.SaveAsPicker = (name, folder) => Views.FileCard.SaveAs(this, name, folder);
+        _model.ViewerRequested += (path, name) =>
+            new Views.PhotoViewer(path, name, () => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })) { Owner = this }.Show();
         _model.FocusRequested += what =>
         {
             if (what == "composer")
@@ -327,6 +332,7 @@ public partial class WidgetWindow : Window
             Push.Privacy => "Policies & terms",
             Push.Settings => "Settings",
             Push.Notifications => "Notifications",
+            Push.SharedFiles => Zinwe.Agent.Core.Chat.ChatFiles.MySharedFilesText,
             _ => "Help",
         } : thread ? (m.ChatOpen == "admin" ? m.OwnerNameStart : m.ThreadHeader.Title) : m.Tab.ToString();
         // The wordmark says "Zinwe" (or today's Zingle); a dev copy adds its instance name next to it.
@@ -397,10 +403,26 @@ public partial class WidgetWindow : Window
             _chatMenuShown = "";
             return;
         }
-        var key = $"{m.ChatPattern}|{HighContrastTheme.IsDark}|{SystemParameters.HighContrast}";
+        var key = $"{m.ChatPattern}|{HighContrastTheme.IsDark}|{SystemParameters.HighContrast}|{m.FilesSupported}|{m.SharedFiles.Count}";
         if (key != _chatMenuShown)
         {
             _chatMenuShown = key;
+            // v1.5: My shared files, above the backgrounds (only with a service that shares files).
+            ChatMenuFiles.Children.Clear();
+            ChatMenuFiles.Visibility = Show(m.FilesSupported);
+            if (m.FilesSupported)
+            {
+                var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                texts.Children.Add(Views.Ui.Text(Zinwe.Agent.Core.Chat.ChatFiles.MySharedFilesText, 13, FontWeights.SemiBold));
+                texts.Children.Add(Views.Ui.Text(m.SharedFiles.Count == 0 ? "None right now" : $"{m.SharedFiles.Count} on this PC", 11.5, fg: "Z.Muted"));
+                var row = Views.Ui.Button(texts, "Z.MenuRow", () => m.Open(Push.SharedFiles), Zinwe.Agent.Core.Chat.ChatFiles.MySharedFilesText);
+                row.Padding = new Thickness(8, 0, 8, 0);
+                row.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                ChatMenuFiles.Children.Add(row);
+                var line = new Border { Height = 1, Margin = new Thickness(4, 4, 4, 4) };
+                line.SetResourceReference(Border.BackgroundProperty, "Z.Line");
+                ChatMenuFiles.Children.Add(line);
+            }
             ChatMenuItems.Children.Clear();
             foreach (var (pattern, name, sub) in ChatPatterns.All)
             {
