@@ -108,20 +108,29 @@ builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Tasks.TodoSync(
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Pictures.PictureSync(
     sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<MessageOutbox>(), sp.GetRequiredService<IWidgetFolder>(),
     sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Pictures.PictureSync>>(), DataDirectory(sp)));
-// v1.5 file sharing in chat: the big transfers get a client of their own (a 25 MB upload outlasts the 30 s one), and the
-// member's Downloads folder is reached as them, like the widget folder.
+// v1.5 file sharing in chat (round 2: files stay on this PC). The relay transfers get a client of their own with no overall
+// timeout (a 5 GB push takes long; each call has its own deadline), and every file the member shares or downloads is
+// touched AS them. The copies of files on network or removable drives live in %ProgramData%\Zinwe\shared.
 builder.Services.AddHttpClient<Zinwe.Agent.Core.Chat.ChatFileTransfer>((sp, http) =>
 {
     var options = sp.GetRequiredService<IOptions<AgentOptions>>().Value;
     http.BaseAddress = new Uri(options.BackendBaseUrl.TrimEnd('/') + "/");
-    http.Timeout = TimeSpan.FromMinutes(15);
+    http.Timeout = Timeout.InfiniteTimeSpan;
 });
-builder.Services.AddSingleton<IDownloadsFolder, SignedInUserDownloadsFolder>();
-// The tray's queued files (outbox kind chat_file) uploaded and posted, and the downloads and previews it asks for (pipe "files").
-builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Chat.ChatFileSync(
-    sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<Zinwe.Agent.Core.Chat.ChatFileTransfer>(),
-    sp.GetRequiredService<MessageOutbox>(), sp.GetRequiredService<IWidgetFolder>(), sp.GetRequiredService<IDownloadsFolder>(),
-    sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Chat.ChatFileSync>>(), DataDirectory(sp)));
+builder.Services.AddSingleton<Zinwe.Agent.Core.Chat.IUserFiles, SignedInUserFiles>();
+// The tray's queued files (outbox kind chat_file) registered and posted, served through the relay, and the downloads and
+// thumbnails it asks for (pipe "files").
+builder.Services.AddSingleton(sp =>
+{
+    if (UsbEnforcerSelector.IsRunningAsSystem())
+    {
+        Zinwe.Agent.Core.Chat.SharedCopies.EnsureRoot();
+    }
+    return new Zinwe.Agent.Core.Chat.ChatFileSync(
+        sp.GetRequiredService<BackendClient>(), sp.GetRequiredService<Zinwe.Agent.Core.Chat.ChatFileTransfer>(),
+        sp.GetRequiredService<MessageOutbox>(), sp.GetRequiredService<IWidgetFolder>(), sp.GetRequiredService<Zinwe.Agent.Core.Chat.IUserFiles>(),
+        sp.GetRequiredService<ILogger<Zinwe.Agent.Core.Chat.ChatFileSync>>(), DataDirectory(sp));
+});
 // The special-day logo (Zingle) for the tray's title bar: the public api/auth/zingle/ checked hourly (ZingleWorker), files
 // cached in the data folder and copied into the member's widget folder for the tray.
 builder.Services.AddSingleton(sp => new Zinwe.Agent.Core.Zingles.ZingleSync(

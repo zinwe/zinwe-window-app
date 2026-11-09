@@ -168,6 +168,8 @@ internal sealed partial class AgentWorker(
         // v1.5: files on loops of their own, so an upload never holds up the chat, nor a download an upload.
         var sendLoop = FileLoopAsync(() => files.SendDue, t => files.SyncSendAsync(identity.DeviceToken, t), chatCts.Token);
         var fetchLoop = FileLoopAsync(() => files.FetchDue, t => files.SyncFetchAsync(identity.DeviceToken, t), chatCts.Token);
+        // v1.5 round 2: while this PC holds shared files, one long-poll on the relay; each job is pushed from the file here.
+        var serveLoop = ServeLoopAsync(identity.DeviceToken, chatCts.Token);
         try
         {
             await BeatAsync(identity, ct);
@@ -175,7 +177,7 @@ internal sealed partial class AgentWorker(
         finally
         {
             await chatCts.CancelAsync();
-            foreach (var loop in new[] { chatLoop, sendLoop, fetchLoop })
+            foreach (var loop in new[] { chatLoop, sendLoop, fetchLoop, serveLoop })
             {
                 try
                 {
@@ -225,6 +227,24 @@ internal sealed partial class AgentWorker(
                 next = DateTimeOffset.UtcNow + interval;
             }
             await Task.Delay(ChatReplyCheckInterval, ct);
+        }
+    }
+
+    /// <summary>v1.5 round 2 · the serve loop: <see cref="Zinwe.Agent.Core.Chat.ChatFileSync.ServeAsync"/>, restarted after a fault.</summary>
+    private async Task ServeLoopAsync(string deviceToken, CancellationToken ct)
+    {
+        await Task.Yield();
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await files.ServeAsync(deviceToken, ct);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                LogChatLoopFailed(e.Message);
+                await Task.Delay(ChatReplyCheckInterval, ct);
+            }
         }
     }
 

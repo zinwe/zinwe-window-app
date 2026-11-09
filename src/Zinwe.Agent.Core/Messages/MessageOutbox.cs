@@ -25,15 +25,18 @@ public sealed record OutboxReply(
     long? TaskId = null, string? Action = null, long? StepId = null, bool? StepDone = null, bool Refused = false,
     string? TodoId = null, string? ChatKey = null, long? MessageId = null, long? MemberId = null,
     string? FilePath = null, string? FileName = null, long? FileSize = null, string? FileId = null, DateTimeOffset? UploadedAt = null,
-    string? Error = null)
+    string? Error = null, string? BatchId = null, string? Mime = null, string? ThumbB64 = null, int? Width = null, int? Height = null,
+    double? DurationS = null, bool Copied = false)
 {
     /// <summary>
     /// v1.5 · a file to send in a chat: <see cref="ChatKey"/> ("conv:12", "direct:4", or <see cref="AdminKey"/> for the admin
-    /// chat), <see cref="FilePath"/> = the tray's copy in the widget folder's <c>outbox-files\&lt;guid&gt;\</c>,
-    /// <see cref="FileName"/> / <see cref="FileSize"/> for the "Sending…" bubble, <see cref="Body"/> = the caption. The
-    /// service uploads it, keeps the stored <see cref="FileId"/> (and <see cref="UploadedAt"/>) here so a network error never
-    /// uploads twice, posts the line with that file_id, then deletes the copy. Refused for good = <see cref="Refused"/> with
-    /// <see cref="Error"/> (the words to show): "Failed", with Retry. Older services leave this kind alone.
+    /// chat), <see cref="FilePath"/> = where the file stays (round 2: the member's own path, or our copy of a file on a
+    /// network or removable drive, <see cref="Copied"/>), <see cref="FileName"/> / <see cref="FileSize"/> for the "Sending…"
+    /// bubble, <see cref="Body"/> = the caption (only on the last file of a batch). Round 2 adds the batch, the mime, the
+    /// tray's thumbnail (a ≤ 40 KB JPEG as base64), the size in pixels and a video's length. The service registers it,
+    /// keeps the <see cref="FileId"/> (and <see cref="UploadedAt"/>) here so a network error never registers twice, then
+    /// posts the line with that file_id. Refused for good = <see cref="Refused"/> with <see cref="Error"/> (the words to
+    /// show): "Failed", with Retry. Older services leave this kind alone.
     /// </summary>
     public const string ChatFileKind = "chat_file";
 
@@ -246,22 +249,25 @@ public sealed class MessageOutbox
     public bool HasPendingOtherThanPicture => All().Any(i => !i.IsPicture && !i.IsChatFile && !i.Refused);
 
     /// <summary>
-    /// v1.5 · queue a file for a chat (see <see cref="OutboxReply.ChatFileKind"/>). <paramref name="path"/> is the tray's copy
-    /// in the widget folder. Returns the item, or null when it couldn't be written. Only the tray calls this, and only while
-    /// a service that sends files is running.
+    /// v1.5 · queue the files of one send (see <see cref="OutboxReply.ChatFileKind"/>), in one write so a batch never goes
+    /// half. Each gets a fresh id and "now" (in order). Returns them, or null when they couldn't be written. Only the tray
+    /// calls this, and only while a service that sends files is running.
     /// </summary>
-    public OutboxReply? AppendChatFile(string chatKey, string path, string name, long size, string? caption)
+    public IReadOnlyList<OutboxReply>? AppendChatFiles(IReadOnlyList<OutboxReply> files)
     {
-        var item = new OutboxReply(Guid.NewGuid().ToString("N"), (caption ?? "").Trim(), DateTimeOffset.UtcNow, OutboxReply.ChatFileKind,
-            ChatKey: chatKey, FilePath: path, FileName: name, FileSize: size);
+        var now = DateTimeOffset.UtcNow;
+        var items = files.Select((f, i) => f with
+        {
+            Id = Guid.NewGuid().ToString("N"), Kind = OutboxReply.ChatFileKind, CreatedAtUtc = now.AddTicks(i), Refused = false,
+        }).ToList();
         lock (_lock)
         {
-            return _folder.Use(dir =>
+            return _folder.Use<IReadOnlyList<OutboxReply>?>(dir =>
             {
                 var file = Path.Combine(dir, FileName);
                 var all = Load(file);
-                all.Items.Add(item);
-                return Save(file, all) ? item : null;
+                all.Items.AddRange(items);
+                return Save(file, all) ? items : null;
             }, null);
         }
     }

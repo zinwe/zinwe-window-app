@@ -436,8 +436,32 @@ public sealed record ChatMessageRequest(
 /// </summary>
 public sealed record FilePostResult(ChatWriteOutcome Outcome, string? Field = null, string? Error = null);
 
-/// <summary>v1.5 · what became of an upload: the stored file (not attached yet), or why not.</summary>
-public sealed record FileUploadResult(ChatWriteOutcome Outcome, Chat.ChatFile? File = null, string? Error = null, int Status = 0);
+/// <summary>v1.5 · what became of a registration: the file's record (not on a line yet), or why not.</summary>
+public sealed record FileRegisterResult(ChatWriteOutcome Outcome, Chat.ChatFile? File = null, string? Error = null, int Status = 0);
+
+/// <summary>
+/// v1.5 round 2 · POST chat/files/: register a file that stays on this PC (JSON, no bytes). <paramref name="LocalRef"/> is
+/// opaque to the server (the path here); the thumbnail is a ≤ 40 KB JPEG as base64; the hash may follow by PATCH.
+/// </summary>
+public sealed record FileRegisterRequest(
+    string Name,
+    long Size,
+    string Mime,
+    [property: JsonPropertyName("local_ref")] string LocalRef,
+    [property: JsonPropertyName("sha256"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Sha256 = null,
+    [property: JsonPropertyName("thumb_b64"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ThumbB64 = null,
+    [property: JsonPropertyName("width"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Width = null,
+    [property: JsonPropertyName("height"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Height = null,
+    [property: JsonPropertyName("duration_s"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? DurationS = null,
+    [property: JsonPropertyName("batch_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BatchId = null);
+
+/// <summary>v1.5 round 2 · PATCH chat/files/&lt;id&gt;/ (the holder only): the hash once made, or "gone" (changed, moved or deleted here).</summary>
+public sealed record FilePatchRequest(
+    [property: JsonPropertyName("sha256"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Sha256 = null,
+    [property: JsonPropertyName("gone"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Gone = null);
+
+/// <summary>v1.5 round 2 · a get ticket asked for one file: the ticket, or Gone (410/404: "isn't shared any more"), or Off.</summary>
+public sealed record FileTicketResult(ChatWriteOutcome Outcome, Chat.FileTicket? Ticket = null, string? Error = null);
 
 /// <summary>v1.5 · what became of a download: stored in the stream, gone (expired, not allowed), too big, or refused.</summary>
 public enum FileFetchOutcome
@@ -543,4 +567,6 @@ public sealed record EventUploadResponse(int Accepted, int Duplicates);
 [JsonSerializable(typeof(DirectChatRequest))]
 [JsonSerializable(typeof(ChatPrefsRequest))]
 [JsonSerializable(typeof(LeaveRequest))]
+[JsonSerializable(typeof(FileRegisterRequest))]
+[JsonSerializable(typeof(FilePatchRequest))]
 internal sealed partial class BackendJsonContext : JsonSerializerContext;
